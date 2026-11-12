@@ -20,9 +20,9 @@ if (-not $importRes.Success) {
     exit 1
 }
 
-# 2. Static check of all GDScript files under src/ and tests/
+# 2. Static check of all GDScript files under src/, levels/, and tests/
 Write-Host "`n[2/3] Checking GDScript files (--check-only)..." -ForegroundColor Yellow
-$scriptDirs = @("src", "tests") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+$scriptDirs = @("src", "levels", "tests") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 $gdFiles = @()
 foreach ($dir in $scriptDirs) {
     $gdFiles += Get-ChildItem -Path $dir -Recurse -Filter "*.gd" | Sort-Object FullName
