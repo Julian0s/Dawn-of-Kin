@@ -1,0 +1,18 @@
+# Godot 4 generated cache and temporary files
+.godot/
+*.tmp
+*.log
+
+# Local test artifacts and screenshots
+test_output/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Exported builds (if created locally later)
+build/
+export/
