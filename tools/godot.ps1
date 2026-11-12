@@ -65,20 +65,25 @@ function Invoke-Godot {
         $outTask = $proc.StandardOutput.ReadToEndAsync()
         $errTask = $proc.StandardError.ReadToEndAsync()
 
+        $timedOut = $false
         if ($TimeoutSeconds -gt 0) {
             $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
             if (-not $finished) {
+                $timedOut = $true
                 try { $proc.Kill() } catch {}
-                throw "Godot process timed out after $TimeoutSeconds seconds."
+                [void]$proc.WaitForExit(2000)
+                [void][System.Threading.Tasks.Task]::WaitAll(@($outTask, $errTask), 2000)
             }
         }
 
-        # Parameterless WaitForExit ensures async stream readers flush and ExitCode is populated.
-        $proc.WaitForExit()
-        [void][System.Threading.Tasks.Task]::WaitAll(@($outTask, $errTask))
+        if (-not $timedOut) {
+            # Parameterless WaitForExit ensures async stream readers flush and ExitCode is populated.
+            $proc.WaitForExit()
+            [void][System.Threading.Tasks.Task]::WaitAll(@($outTask, $errTask))
+        }
 
         $stdoutLines = @()
-        if ($outTask.Result) {
+        if ($outTask.IsCompleted -and $outTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion -and $outTask.Result) {
             $stdoutLines = @($outTask.Result -split "`r?`n")
             if ($stdoutLines.Count -gt 0 -and $stdoutLines[-1] -eq "") {
                 $stdoutLines = if ($stdoutLines.Count -gt 1) { $stdoutLines[0..($stdoutLines.Count - 2)] } else { @() }
@@ -86,15 +91,19 @@ function Invoke-Godot {
         }
 
         $stderrLines = @()
-        if ($errTask.Result) {
+        if ($errTask.IsCompleted -and $errTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion -and $errTask.Result) {
             $stderrLines = @($errTask.Result -split "`r?`n")
             if ($stderrLines.Count -gt 0 -and $stderrLines[-1] -eq "") {
                 $stderrLines = if ($stderrLines.Count -gt 1) { $stderrLines[0..($stderrLines.Count - 2)] } else { @() }
             }
         }
 
+        if ($timedOut) {
+            $stderrLines += "ERROR: Godot process timed out after $TimeoutSeconds seconds."
+        }
+
         $allLines = @($stdoutLines + $stderrLines)
-        $hasError = $false
+        $hasError = $timedOut
         $hasWarning = $false
 
         foreach ($line in $allLines) {
@@ -105,7 +114,7 @@ function Invoke-Godot {
             }
         }
 
-        $exitCode = [int]$proc.ExitCode
+        $exitCode = if ($timedOut) { 124 } else { [int]$proc.ExitCode }
         return [PSCustomObject]@{
             ExitCode   = $exitCode
             Stdout     = $stdoutLines
@@ -113,7 +122,8 @@ function Invoke-Godot {
             AllLines   = $allLines
             HasError   = $hasError
             HasWarning = $hasWarning
-            Success    = ($exitCode -eq 0) -and (-not $hasError) -and (-not ($FailOnWarnings -and $hasWarning))
+            TimedOut   = $timedOut
+            Success    = (-not $timedOut) -and ($exitCode -eq 0) -and (-not $hasError) -and (-not ($FailOnWarnings -and $hasWarning))
         }
     } finally {
         $proc.Dispose()

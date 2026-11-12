@@ -45,6 +45,11 @@ func _run_all() -> void:
 			continue
 
 		var script: GDScript = resource
+		if not script.can_instantiate():
+			suite_errors += 1
+			failure_report.append("%s: Script failed to compile or cannot be instantiated." % suite_path)
+			continue
+
 		var instance: Variant = script.new()
 		if not (instance is TestCase):
 			suite_errors += 1
@@ -107,16 +112,19 @@ func _run_all() -> void:
 		elapsed_ms,
 	])
 
-	if total_tests == 0:
-		push_error("Test runner discovered 0 matching tests.")
-		quit(1)
-		return
-
 	if failed_tests > 0 or suite_errors > 0:
 		print("")
 		print("Failures:")
 		for entry: String in failure_report:
 			print("  - %s" % entry)
+
+	if total_tests == 0:
+		if suite_errors == 0:
+			push_error("Test runner discovered 0 matching tests.")
+		quit(1)
+		return
+
+	if failed_tests > 0 or suite_errors > 0:
 		quit(1)
 		return
 
