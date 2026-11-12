@@ -24,44 +24,73 @@ function Get-GodotExecutable {
     throw "Godot executable not found. Set the GODOT_BIN environment variable to the Godot 4.7.2 executable path."
 }
 
+function Format-WindowsArgument {
+    param([string]$Arg)
+    if ($Arg -eq "") {
+        return '""'
+    }
+    if ($Arg -match '[\s"]') {
+        return '"' + ($Arg -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    }
+    return $Arg
+}
+
 function Invoke-Godot {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$Arguments,
 
-        [switch]$FailOnWarnings
+        [switch]$FailOnWarnings,
+
+        [int]$TimeoutSeconds = 0
     )
 
     $godot = Get-GodotExecutable
-    $tmpOut = [System.IO.Path]::GetTempFileName()
-    $tmpErr = [System.IO.Path]::GetTempFileName()
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $godot
+    $psi.Arguments = (($Arguments | ForEach-Object { Format-WindowsArgument $_ }) -join " ")
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    $psi.CreateNoWindow = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
 
     try {
-        # Quote arguments containing spaces for Start-Process on Windows.
-        $quotedArgs = foreach ($arg in $Arguments) {
-            if ($arg -match '\s' -and -not ($arg.StartsWith('"') -and $arg.EndsWith('"'))) {
-                "`"$arg`""
-            } else {
-                $arg
+        [void]$proc.Start()
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        $errTask = $proc.StandardError.ReadToEndAsync()
+
+        if ($TimeoutSeconds -gt 0) {
+            $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
+            if (-not $finished) {
+                try { $proc.Kill() } catch {}
+                throw "Godot process timed out after $TimeoutSeconds seconds."
             }
         }
 
-        $proc = Start-Process -FilePath $godot `
-            -ArgumentList $quotedArgs `
-            -RedirectStandardOutput $tmpOut `
-            -RedirectStandardError $tmpErr `
-            -Wait `
-            -PassThru `
-            -NoNewWindow
+        # Parameterless WaitForExit ensures async stream readers flush and ExitCode is populated.
+        $proc.WaitForExit()
+        [void][System.Threading.Tasks.Task]::WaitAll(@($outTask, $errTask))
 
         $stdoutLines = @()
-        if (Test-Path $tmpOut) {
-            $stdoutLines = @(Get-Content -Path $tmpOut -Encoding UTF8)
+        if ($outTask.Result) {
+            $stdoutLines = @($outTask.Result -split "`r?`n")
+            if ($stdoutLines.Count -gt 0 -and $stdoutLines[-1] -eq "") {
+                $stdoutLines = if ($stdoutLines.Count -gt 1) { $stdoutLines[0..($stdoutLines.Count - 2)] } else { @() }
+            }
         }
+
         $stderrLines = @()
-        if (Test-Path $tmpErr) {
-            $stderrLines = @(Get-Content -Path $tmpErr -Encoding UTF8)
+        if ($errTask.Result) {
+            $stderrLines = @($errTask.Result -split "`r?`n")
+            if ($stderrLines.Count -gt 0 -and $stderrLines[-1] -eq "") {
+                $stderrLines = if ($stderrLines.Count -gt 1) { $stderrLines[0..($stderrLines.Count - 2)] } else { @() }
+            }
         }
 
         $allLines = @($stdoutLines + $stderrLines)
@@ -76,16 +105,17 @@ function Invoke-Godot {
             }
         }
 
+        $exitCode = [int]$proc.ExitCode
         return [PSCustomObject]@{
-            ExitCode   = $proc.ExitCode
+            ExitCode   = $exitCode
             Stdout     = $stdoutLines
             Stderr     = $stderrLines
             AllLines   = $allLines
             HasError   = $hasError
             HasWarning = $hasWarning
-            Success    = ($proc.ExitCode -eq 0) -and (-not $hasError) -and (-not ($FailOnWarnings -and $hasWarning))
+            Success    = ($exitCode -eq 0) -and (-not $hasError) -and (-not ($FailOnWarnings -and $hasWarning))
         }
     } finally {
-        Remove-Item $tmpOut, $tmpErr -ErrorAction SilentlyContinue
+        $proc.Dispose()
     }
 }
