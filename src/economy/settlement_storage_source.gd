@@ -24,7 +24,7 @@ func end_batch(discard_dirty: bool = false) -> void:
 			return
 		if _batch_dirty:
 			_batch_dirty = false
-			storage_changed.emit()
+			_dispatch_storage_changed()
 
 
 func is_batch_active() -> bool:
@@ -35,6 +35,10 @@ func _emit_storage_changed() -> void:
 	if _batch_depth > 0:
 		_batch_dirty = true
 		return
+	_dispatch_storage_changed()
+
+
+func _dispatch_storage_changed() -> void:
 	storage_changed.emit()
 
 

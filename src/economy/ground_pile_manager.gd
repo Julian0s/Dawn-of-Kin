@@ -1,0 +1,591 @@
+class_name GroundPileManager
+extends SettlementStorageSource
+## Single transactional storage authority backing SettlementInventory with physical camp piles.
+## Enforces atomic staged deposits with exact snapshot rollback, centralized time-driven decay,
+## and reentrancy safety during both commits and signal notifications.
+
+enum MergeExposurePolicy {
+	WEIGHTED_AVERAGE,
+	KEEP_OLDEST,
+}
+
+var merge_exposure_policy: MergeExposurePolicy = MergeExposurePolicy.WEIGHTED_AVERAGE
+var pile_creator_override: Callable = Callable()
+
+var _definitions: Dictionary = {}
+var _camp_zone: CampStorageZone = null
+var _piles_root: Node3D = null
+var _time_provider: WorldTimeProvider = null
+var _piles: Array[GroundResourcePile] = []
+var _decayed: Dictionary = {}
+var _next_pile_id: int = 1
+var _last_decay_time_sec: float = 0.0
+var _is_mutating: bool = false
+var _is_notifying: bool = false
+var _visual_cache: Dictionary = {"meshes": {}, "materials": {}}
+
+
+func _init(
+	p_definitions: Dictionary = {},
+	p_camp_zone: CampStorageZone = null,
+	p_piles_root: Node3D = null,
+	p_time_provider: WorldTimeProvider = null
+) -> void:
+	configure(p_definitions, p_camp_zone, p_piles_root, p_time_provider)
+
+
+func configure(
+	p_definitions: Dictionary,
+	p_camp_zone: CampStorageZone,
+	p_piles_root: Node3D,
+	p_time_provider: WorldTimeProvider = null
+) -> void:
+	set_definitions(p_definitions)
+	_camp_zone = p_camp_zone
+	_piles_root = p_piles_root
+	set_time_provider(p_time_provider)
+
+
+func set_definitions(p_definitions: Dictionary) -> void:
+	_definitions.clear()
+	for raw_key: Variant in p_definitions.keys():
+		var def_var: Variant = p_definitions[raw_key]
+		if def_var is ResourceDefinition:
+			var def: ResourceDefinition = def_var as ResourceDefinition
+			if def.is_valid():
+				_definitions[def.resource_id] = def
+
+
+func set_camp_zone(p_camp_zone: CampStorageZone) -> void:
+	_camp_zone = p_camp_zone
+
+
+func get_camp_zone() -> CampStorageZone:
+	return _camp_zone
+
+
+func set_piles_root(p_piles_root: Node3D) -> void:
+	_piles_root = p_piles_root
+
+
+func set_time_provider(p_time_provider: WorldTimeProvider) -> void:
+	_time_provider = p_time_provider
+	if _time_provider != null:
+		var now: float = _time_provider.get_world_time_sec()
+		_last_decay_time_sec = now if is_finite(now) else 0.0
+	else:
+		_last_decay_time_sec = 0.0
+
+
+func get_time_provider() -> WorldTimeProvider:
+	return _time_provider
+
+
+func is_locked() -> bool:
+	return _is_mutating or _is_notifying
+
+
+func cleanup() -> void:
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile):
+			if pile.get_parent() != null:
+				pile.get_parent().remove_child(pile)
+			pile.free()
+	_piles.clear()
+	_decayed.clear()
+	_visual_cache = {"meshes": {}, "materials": {}}
+	pile_creator_override = Callable()
+
+
+func _dispatch_storage_changed() -> void:
+	_is_notifying = true
+	storage_changed.emit()
+	_is_notifying = false
+
+
+func get_amount(resource_id: StringName) -> int:
+	if resource_id == &"":
+		return 0
+	var total: int = 0
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and pile.resource_id == resource_id:
+			total += pile.amount
+	return total
+
+
+func get_all_amounts() -> Dictionary:
+	var totals: Dictionary = {}
+	for pile: GroundResourcePile in _piles:
+		if not is_instance_valid(pile) or pile.amount <= 0:
+			continue
+		totals[pile.resource_id] = (totals.get(pile.resource_id, 0) as int) + pile.amount
+	return totals
+
+
+func get_piles() -> Array[GroundResourcePile]:
+	var result: Array[GroundResourcePile] = []
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile):
+			result.append(pile)
+	return result
+
+
+func get_piles_for_resource(resource_id: StringName) -> Array[GroundResourcePile]:
+	var result: Array[GroundResourcePile] = []
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and pile.resource_id == resource_id:
+			result.append(pile)
+	return result
+
+
+func get_pile_by_id(pile_id: int) -> GroundResourcePile:
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and pile.pile_id == pile_id:
+			return pile
+	return null
+
+
+func get_total_decayed(resource_id: StringName) -> int:
+	if resource_id == &"":
+		return 0
+	return _decayed.get(resource_id, 0) as int
+
+
+func get_all_decayed() -> Dictionary:
+	return _decayed.duplicate()
+
+
+func deposit(resource_id: StringName, amount: int) -> bool:
+	if amount <= 0:
+		return false
+	return deposit_batch({resource_id: amount})
+
+
+func can_deposit_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_deposit_plan(amounts)
+	return plan["ok"] as bool
+
+
+func deposit_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_deposit_plan(amounts)
+	if not (plan["ok"] as bool):
+		return false
+	return _commit_deposit_plan(plan)
+
+
+func try_create_pile_at(resource_id: StringName, amount: int, world_pos: Vector3) -> GroundResourcePile:
+	if is_locked() or amount <= 0:
+		return null
+	if _camp_zone == null or not _camp_zone.is_valid():
+		return null
+	if _piles_root == null or not is_instance_valid(_piles_root):
+		return null
+	if not _definitions.has(resource_id):
+		return null
+	var def: ResourceDefinition = _definitions[resource_id] as ResourceDefinition
+	if def == null or not def.is_valid():
+		return null
+	if _camp_zone.max_pile_amount > 0 and amount > _camp_zone.max_pile_amount:
+		return null
+
+	var occupied: Array[Vector3] = _collect_occupied_world_positions()
+	var validation: Dictionary = _camp_zone.validate_pile_position(world_pos, occupied)
+	if not (validation["valid"] as bool):
+		return null
+
+	var resolved_world: Vector3 = validation["position"] as Vector3
+	var local_pos: Vector3 = _world_to_piles_local(resolved_world)
+	var plan: Dictionary = {
+		"ok": true,
+		"merges": [],
+		"creates": [
+			{
+				"definition": def,
+				"amount": amount,
+				"world_pos": resolved_world,
+				"local_pos": local_pos,
+			}
+		],
+	}
+	if not _commit_deposit_plan(plan):
+		return null
+	return _piles[_piles.size() - 1]
+
+
+func withdraw(resource_id: StringName, amount: int) -> bool:
+	if is_locked() or resource_id == &"" or amount <= 0:
+		return false
+
+	var matching: Array[GroundResourcePile] = []
+	var available: int = 0
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and pile.resource_id == resource_id and pile.amount > 0:
+			matching.append(pile)
+			available += pile.amount
+	if available < amount:
+		return false
+
+	matching.sort_custom(_sort_withdraw_piles)
+
+	_is_mutating = true
+	var remaining: int = amount
+	for pile: GroundResourcePile in matching:
+		if remaining <= 0:
+			break
+		var take: int = mini(remaining, pile.amount)
+		var left: int = pile.amount - take
+		remaining -= take
+		if left <= 0:
+			_remove_and_free_pile(pile)
+		else:
+			pile.apply_state(left, pile.elapsed_exposure_sec, pile.decay_accumulator_sec)
+	_is_mutating = false
+	_emit_storage_changed()
+	return true
+
+
+func step_decay() -> Dictionary:
+	var losses: Dictionary = {}
+	if is_locked() or _time_provider == null:
+		return losses
+
+	var now: float = _time_provider.get_world_time_sec()
+	if not is_finite(now):
+		return losses
+
+	if _time_provider.is_paused():
+		_last_decay_time_sec = now
+		return losses
+
+	var delta_sec: float = maxf(0.0, now - _last_decay_time_sec)
+	_last_decay_time_sec = now
+	if delta_sec <= 0.0:
+		return losses
+	if _camp_zone == null or not _camp_zone.is_valid():
+		return losses
+
+	var zone_mult: float = _camp_zone.decay_multiplier
+	if zone_mult <= 0.0:
+		return losses
+
+	var eff_delta: float = delta_sec * zone_mult
+	if eff_delta <= 0.0:
+		return losses
+
+	_is_mutating = true
+	var changed: bool = false
+	var snapshot: Array[GroundResourcePile] = _piles.duplicate()
+	for pile: GroundResourcePile in snapshot:
+		if not is_instance_valid(pile) or pile.definition == null:
+			continue
+		var profile: DecayProfile = pile.definition.decay_profile
+		if profile == null or not profile.can_decay or not profile.is_valid():
+			continue
+
+		if profile.decay_mode == DecayProfile.DecayMode.EXPIRE_ALL:
+			if profile.exposure_duration_sec <= 0.0:
+				continue
+			var new_elapsed: float = pile.elapsed_exposure_sec + eff_delta
+			if new_elapsed >= profile.exposure_duration_sec - 0.000001:
+				var expired_amount: int = pile.amount
+				_record_decay(pile.resource_id, expired_amount, losses)
+				_remove_and_free_pile(pile)
+				changed = true
+			else:
+				pile.apply_state(pile.amount, new_elapsed, pile.decay_accumulator_sec)
+		else:
+			var interval: float = profile.gradual_unit_interval_sec
+			var grace: float = profile.exposure_duration_sec
+			if interval <= 0.0:
+				interval = profile.exposure_duration_sec
+				grace = 0.0
+			if interval <= 0.0:
+				continue
+			var old_elapsed: float = pile.elapsed_exposure_sec
+			var new_elapsed_grad: float = old_elapsed + eff_delta
+			var old_over: float = maxf(0.0, old_elapsed - grace)
+			var new_over: float = maxf(0.0, new_elapsed_grad - grace)
+			var accum: float = pile.decay_accumulator_sec + (new_over - old_over)
+			var units_to_lose: int = mini(pile.amount, int(floor(accum / interval + 0.000001)))
+			accum = maxf(0.0, accum - float(units_to_lose) * interval)
+			var remaining_units: int = pile.amount - units_to_lose
+			if units_to_lose > 0:
+				_record_decay(pile.resource_id, units_to_lose, losses)
+				changed = true
+			if remaining_units <= 0:
+				_remove_and_free_pile(pile)
+			else:
+				pile.apply_state(remaining_units, new_elapsed_grad, accum)
+
+	_is_mutating = false
+	if changed:
+		_emit_storage_changed()
+	return losses
+
+
+func _build_deposit_plan(amounts: Dictionary) -> Dictionary:
+	if amounts.is_empty():
+		return {"ok": false, "reason": "empty_batch", "merges": [], "creates": []}
+	if _camp_zone == null or not _camp_zone.is_valid():
+		return {"ok": false, "reason": "invalid_camp_zone", "merges": [], "creates": []}
+	if _piles_root == null or not is_instance_valid(_piles_root):
+		return {"ok": false, "reason": "invalid_piles_root", "merges": [], "creates": []}
+
+	var sorted_keys: Array[StringName] = []
+	for raw_key: Variant in amounts.keys():
+		if not (raw_key is StringName or raw_key is String):
+			return {"ok": false, "reason": "invalid_resource_key", "merges": [], "creates": []}
+		var res_id: StringName = StringName(raw_key)
+		if res_id == &"":
+			return {"ok": false, "reason": "empty_resource_id", "merges": [], "creates": []}
+		var raw_val: Variant = amounts[raw_key]
+		if not (raw_val is int) or (raw_val as int) <= 0:
+			return {"ok": false, "reason": "invalid_amount", "merges": [], "creates": []}
+		if not _definitions.has(res_id):
+			return {"ok": false, "reason": "unknown_resource_id", "merges": [], "creates": []}
+		var def: ResourceDefinition = _definitions[res_id] as ResourceDefinition
+		if def == null or not def.is_valid():
+			return {"ok": false, "reason": "invalid_definition", "merges": [], "creates": []}
+		if sorted_keys.has(res_id):
+			return {"ok": false, "reason": "duplicate_resource_id", "merges": [], "creates": []}
+		sorted_keys.append(res_id)
+
+	sorted_keys.sort_custom(_sort_resource_ids)
+
+	var merges: Array[Dictionary] = []
+	var creates: Array[Dictionary] = []
+	var virtual_amounts: Dictionary = {}
+	var occupied: Array[Vector3] = []
+	for pile: GroundResourcePile in _piles:
+		if not is_instance_valid(pile):
+			continue
+		virtual_amounts[pile.pile_id] = pile.amount
+		occupied.append(_piles_local_to_world(pile.position))
+
+	var candidate_slots: Array[Vector3] = _camp_zone.get_candidate_slots()
+	var max_per_pile: int = _camp_zone.max_pile_amount
+
+	var ordered_piles: Array[GroundResourcePile] = get_piles()
+	ordered_piles.sort_custom(_sort_piles_by_id)
+
+	for res_id: StringName in sorted_keys:
+		var def: ResourceDefinition = _definitions[res_id] as ResourceDefinition
+		var remaining: int = amounts[res_id] as int
+
+		for pile: GroundResourcePile in ordered_piles:
+			if remaining <= 0:
+				break
+			if pile.resource_id != res_id:
+				continue
+			var v_amt: int = virtual_amounts[pile.pile_id] as int
+			var add_here: int = remaining
+			if max_per_pile > 0:
+				var cap_left: int = maxi(0, max_per_pile - v_amt)
+				add_here = mini(remaining, cap_left)
+			if add_here <= 0:
+				continue
+			merges.append({
+				"pile": pile,
+				"add_amount": add_here,
+			})
+			virtual_amounts[pile.pile_id] = v_amt + add_here
+			remaining -= add_here
+
+		while remaining > 0:
+			var placed: bool = false
+			for slot_world: Vector3 in candidate_slots:
+				var validation: Dictionary = _camp_zone.validate_pile_position(slot_world, occupied)
+				if not (validation["valid"] as bool):
+					continue
+				var resolved_world: Vector3 = validation["position"] as Vector3
+				var take: int = mini(remaining, max_per_pile) if max_per_pile > 0 else remaining
+				creates.append({
+					"definition": def,
+					"amount": take,
+					"world_pos": resolved_world,
+					"local_pos": _world_to_piles_local(resolved_world),
+				})
+				occupied.append(resolved_world)
+				remaining -= take
+				placed = true
+				break
+			if not placed:
+				return {"ok": false, "reason": "no_valid_camp_slot", "merges": [], "creates": []}
+
+	return {"ok": true, "reason": "", "merges": merges, "creates": creates}
+
+
+func _commit_deposit_plan(plan: Dictionary) -> bool:
+	_is_mutating = true
+
+	var merge_snapshots: Array[Dictionary] = []
+	for m: Dictionary in (plan["merges"] as Array):
+		var pile: GroundResourcePile = m["pile"] as GroundResourcePile
+		merge_snapshots.append({
+			"pile": pile,
+			"amount": pile.amount,
+			"elapsed": pile.elapsed_exposure_sec,
+			"accum": pile.decay_accumulator_sec,
+		})
+
+	for m: Dictionary in (plan["merges"] as Array):
+		var pile: GroundResourcePile = m["pile"] as GroundResourcePile
+		var add_amount: int = m["add_amount"] as int
+		var next_state: Dictionary = _compute_merged_state(pile, add_amount)
+		pile.apply_state(
+			next_state["amount"] as int,
+			next_state["elapsed"] as float,
+			next_state["accum"] as float
+		)
+
+	var created_piles: Array[GroundResourcePile] = []
+	var staged_next_id: int = _next_pile_id
+	var commit_ok: bool = true
+
+	for c: Dictionary in (plan["creates"] as Array):
+		var def: ResourceDefinition = c["definition"] as ResourceDefinition
+		var amt: int = c["amount"] as int
+		var local_pos: Vector3 = c["local_pos"] as Vector3
+		var new_pile: GroundResourcePile = _instantiate_pile(staged_next_id, def, amt, local_pos)
+		if new_pile == null or not new_pile.is_valid():
+			if new_pile != null and is_instance_valid(new_pile):
+				if new_pile.get_parent() != null:
+					new_pile.get_parent().remove_child(new_pile)
+				new_pile.free()
+			commit_ok = false
+			break
+		staged_next_id += 1
+		created_piles.append(new_pile)
+
+	if not commit_ok:
+		for snap: Dictionary in merge_snapshots:
+			var pile: GroundResourcePile = snap["pile"] as GroundResourcePile
+			if is_instance_valid(pile):
+				pile.apply_state(
+					snap["amount"] as int,
+					snap["elapsed"] as float,
+					snap["accum"] as float
+				)
+		for cp: GroundResourcePile in created_piles:
+			if is_instance_valid(cp):
+				if cp.get_parent() != null:
+					cp.get_parent().remove_child(cp)
+				cp.free()
+		_is_mutating = false
+		return false
+
+	_next_pile_id = staged_next_id
+	for cp: GroundResourcePile in created_piles:
+		_piles.append(cp)
+
+	_is_mutating = false
+	_emit_storage_changed()
+	return true
+
+
+func _instantiate_pile(
+	p_pile_id: int,
+	p_definition: ResourceDefinition,
+	p_amount: int,
+	p_local_pos: Vector3
+) -> GroundResourcePile:
+	if pile_creator_override.is_valid():
+		var custom_result: Variant = pile_creator_override.call(
+			p_pile_id,
+			p_definition,
+			p_amount,
+			p_local_pos
+		)
+		if not (custom_result is GroundResourcePile):
+			return null
+		var override_pile: GroundResourcePile = custom_result as GroundResourcePile
+		if override_pile.get_parent() == null:
+			_piles_root.add_child(override_pile)
+		return override_pile
+
+	var pile: GroundResourcePile = GroundResourcePile.new()
+	_piles_root.add_child(pile)
+	pile.configure_initial(
+		p_pile_id,
+		p_definition,
+		p_amount,
+		p_local_pos,
+		0.0,
+		0.0,
+		_visual_cache
+	)
+	return pile
+
+
+func _compute_merged_state(pile: GroundResourcePile, add_amount: int) -> Dictionary:
+	var old_amount: int = pile.amount
+	var new_amount: int = old_amount + add_amount
+	if merge_exposure_policy == MergeExposurePolicy.KEEP_OLDEST or new_amount <= 0:
+		return {
+			"amount": new_amount,
+			"elapsed": pile.elapsed_exposure_sec,
+			"accum": pile.decay_accumulator_sec,
+		}
+	var ratio: float = float(old_amount) / float(new_amount)
+	return {
+		"amount": new_amount,
+		"elapsed": pile.elapsed_exposure_sec * ratio,
+		"accum": pile.decay_accumulator_sec * ratio,
+	}
+
+
+func _remove_and_free_pile(pile: GroundResourcePile) -> void:
+	_piles.erase(pile)
+	if is_instance_valid(pile):
+		if pile.get_parent() != null:
+			pile.get_parent().remove_child(pile)
+		pile.free()
+
+
+func _record_decay(resource_id: StringName, lost_amount: int, step_losses: Dictionary) -> void:
+	if lost_amount <= 0:
+		return
+	_decayed[resource_id] = (_decayed.get(resource_id, 0) as int) + lost_amount
+	step_losses[resource_id] = (step_losses.get(resource_id, 0) as int) + lost_amount
+
+
+func _collect_occupied_world_positions() -> Array[Vector3]:
+	var occupied: Array[Vector3] = []
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile):
+			occupied.append(_piles_local_to_world(pile.position))
+	return occupied
+
+
+func _world_to_piles_local(world_pos: Vector3) -> Vector3:
+	if _piles_root != null and is_instance_valid(_piles_root) and _piles_root.is_inside_tree():
+		return _piles_root.to_local(world_pos)
+	if _piles_root != null and is_instance_valid(_piles_root):
+		return world_pos - _piles_root.position
+	return world_pos
+
+
+func _piles_local_to_world(local_pos: Vector3) -> Vector3:
+	if _piles_root != null and is_instance_valid(_piles_root) and _piles_root.is_inside_tree():
+		return _piles_root.to_global(local_pos)
+	if _piles_root != null and is_instance_valid(_piles_root):
+		return _piles_root.position + local_pos
+	return local_pos
+
+
+func _sort_resource_ids(a: StringName, b: StringName) -> bool:
+	return String(a) < String(b)
+
+
+func _sort_piles_by_id(a: GroundResourcePile, b: GroundResourcePile) -> bool:
+	return a.pile_id < b.pile_id
+
+
+func _sort_withdraw_piles(a: GroundResourcePile, b: GroundResourcePile) -> bool:
+	if not is_equal_approx(a.elapsed_exposure_sec, b.elapsed_exposure_sec):
+		return a.elapsed_exposure_sec > b.elapsed_exposure_sec
+	return a.pile_id < b.pile_id
