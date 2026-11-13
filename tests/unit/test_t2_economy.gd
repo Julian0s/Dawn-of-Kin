@@ -9,6 +9,41 @@ const STONE_RES: ResourceDefinition = preload("res://data/resources/stone.tres")
 const LEADER_A_DEF: CharacterDefinition = preload("res://data/characters/leader_a.tres")
 const LEADER_B_DEF: CharacterDefinition = preload("res://data/characters/leader_b.tres")
 
+var _observer_ctx: Dictionary = {}
+
+
+func after_each() -> void:
+	_observer_ctx.clear()
+
+
+func _on_record_atomic_snapshot(signal_name: String) -> void:
+	var inventory: SettlementInventory = _observer_ctx["inventory"] as SettlementInventory
+	var load: UnitCarryLoad = _observer_ctx["load"] as UnitCarryLoad
+	var snapshots: Array = _observer_ctx["snapshots"] as Array
+	snapshots.append({
+		"signal": signal_name,
+		"inv_wood": inventory.get_amount(&"wood"),
+		"inv_food": inventory.get_amount(&"food"),
+		"load_wood": load.get_amount(&"wood"),
+		"load_food": load.get_amount(&"food"),
+		"load_empty": load.is_empty(),
+		"total_wood": inventory.get_amount(&"wood") + load.get_amount(&"wood"),
+		"total_food": inventory.get_amount(&"food") + load.get_amount(&"food"),
+	})
+
+
+func _on_attempt_reentrant_delivery() -> void:
+	var inventory: SettlementInventory = _observer_ctx["inventory"] as SettlementInventory
+	var worker_a: UnitCarryLoad = _observer_ctx["worker_a"] as UnitCarryLoad
+	var worker_b: UnitCarryLoad = _observer_ctx["worker_b"] as UnitCarryLoad
+	var results: Array = _observer_ctx["results"] as Array
+	results.append(inventory.deliver_from_carry_load(worker_a))
+	results.append(inventory.deliver_from_carry_load(worker_b))
+
+
+func _on_increment_counter(counter_key: String) -> void:
+	_observer_ctx[counter_key] = int(_observer_ctx.get(counter_key, 0)) + 1
+
 
 func test_01_total_weight_for_equal_and_mixed_resources() -> void:
 	var load := UnitCarryLoad.new(20)
@@ -141,6 +176,7 @@ func test_08_preserve_carried_load_when_capacity_parameters_change() -> void:
 
 	# Removing modifier or shrinking base capacity must NEVER delete carried items
 	assert_true(load.remove_capacity_modifier(&"cart")) # effective 20 while carrying 28
+	assert_true(load.is_overloaded(), "Overloaded state must remain observable instead of hidden")
 	assert_eq(load.get_amount(&"wood"), 14)
 	assert_eq(load.get_current_weight(), 28)
 	assert_eq(load.get_remaining_capacity(), 0)
@@ -148,11 +184,13 @@ func test_08_preserve_carried_load_when_capacity_parameters_change() -> void:
 	assert_false(load.can_fit_one(FOOD_RES))
 
 	assert_true(load.set_base_capacity(10))
+	assert_true(load.is_overloaded())
 	assert_eq(load.get_amount(&"wood"), 14)
 	assert_eq(load.get_remaining_capacity(), 0)
 
 	# After unloading enough to get below capacity, additions work again
 	assert_eq(load.remove_units(&"wood", 10), 10) # weight 8 / 10
+	assert_false(load.is_overloaded())
 	assert_eq(load.get_remaining_capacity(), 2)
 	assert_true(load.can_fit_one(WOOD_RES))
 
@@ -248,3 +286,203 @@ func test_11_conservation_across_sources_carry_loads_and_future_piles() -> void:
 		+ inventory.get_total_decayed(&"wood")
 	)
 	assert_eq(total_accounted, 30)
+
+
+class RejectingStorageSource:
+	extends SettlementStorageSource
+
+	func can_deposit_batch(_amounts: Dictionary) -> bool:
+		return false
+
+
+class PartialRejectingStorageSource:
+	extends InMemoryStorageSource
+
+	var rejected_resource_id: StringName = &"stone"
+
+	func deposit(resource_id: StringName, amount: int) -> bool:
+		if resource_id == rejected_resource_id:
+			return false
+		return super.deposit(resource_id, amount)
+
+
+func test_12_observer_sees_atomic_final_state_across_all_signals() -> void:
+	var storage := InMemoryStorageSource.new()
+	var inventory := SettlementInventory.new(storage)
+	var load := UnitCarryLoad.new(20)
+	assert_true(load.add_units(WOOD_RES, 4))
+	assert_true(load.add_units(FOOD_RES, 5))
+
+	var snapshots: Array = []
+	_observer_ctx = {
+		"inventory": inventory,
+		"load": load,
+		"snapshots": snapshots,
+	}
+
+	storage.storage_changed.connect(_on_record_atomic_snapshot.bind("storage_changed"))
+	inventory.inventory_changed.connect(_on_record_atomic_snapshot.bind("inventory_changed"))
+	load.load_changed.connect(_on_record_atomic_snapshot.bind("load_changed"))
+
+	var delivered: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(delivered.get(&"wood", 0)), 4)
+	assert_eq(int(delivered.get(&"food", 0)), 5)
+
+	# Exactly one notification per object even with two categories delivered
+	assert_eq(snapshots.size(), 3)
+	for entry_var: Variant in snapshots:
+		var entry: Dictionary = entry_var as Dictionary
+		assert_true(bool(entry["load_empty"]), "Observer '%s' saw non-empty intermediate carry load" % entry["signal"])
+		assert_eq(int(entry["inv_wood"]), 4, "Observer '%s' saw partial wood in inventory" % entry["signal"])
+		assert_eq(int(entry["inv_food"]), 5, "Observer '%s' saw partial food in inventory" % entry["signal"])
+		assert_eq(int(entry["load_wood"]), 0)
+		assert_eq(int(entry["load_food"]), 0)
+		assert_eq(int(entry["total_wood"]), 4, "Conservation violated during '%s'" % entry["signal"])
+		assert_eq(int(entry["total_food"]), 5, "Conservation violated during '%s'" % entry["signal"])
+
+
+func test_13_reentrant_delivery_inside_signal_callback_cannot_duplicate() -> void:
+	var storage := InMemoryStorageSource.new()
+	var inventory := SettlementInventory.new(storage)
+	var worker_a := UnitCarryLoad.new(20)
+	var worker_b := UnitCarryLoad.new(20)
+	assert_true(worker_a.add_units(WOOD_RES, 6))
+	assert_true(worker_b.add_units(FOOD_RES, 3))
+
+	var reentrant_results: Array = []
+	_observer_ctx = {
+		"inventory": inventory,
+		"worker_a": worker_a,
+		"worker_b": worker_b,
+		"results": reentrant_results,
+	}
+	inventory.inventory_changed.connect(_on_attempt_reentrant_delivery)
+	worker_a.load_changed.connect(_on_attempt_reentrant_delivery)
+
+	var delivered: Dictionary = inventory.deliver_from_carry_load(worker_a)
+	assert_eq(int(delivered.get(&"wood", 0)), 6)
+	assert_eq(inventory.get_amount(&"wood"), 6)
+	assert_eq(inventory.get_amount(&"food"), 0, "Reentrant delivery of another load during callback must be blocked")
+	assert_true(worker_a.is_empty())
+	assert_eq(worker_b.get_amount(&"food"), 3)
+	assert_eq(reentrant_results.size(), 4)
+	for res_var: Variant in reentrant_results:
+		var res: Dictionary = res_var as Dictionary
+		assert_true(res.is_empty(), "All reentrant delivery calls must return empty Dictionary")
+
+	# Normal delivery of worker_b succeeds after transaction completes
+	var delivered_b: Dictionary = inventory.deliver_from_carry_load(worker_b)
+	assert_eq(int(delivered_b.get(&"food", 0)), 3)
+	assert_eq(inventory.get_amount(&"food"), 3)
+	assert_true(worker_b.is_empty())
+
+
+func test_14_rejected_delivery_preserves_load_and_emits_no_signals() -> void:
+	var rejecting := RejectingStorageSource.new()
+	var inv_rejected := SettlementInventory.new(rejecting)
+	var load_a := UnitCarryLoad.new(20)
+	assert_true(load_a.add_units(WOOD_RES, 4))
+	assert_true(load_a.add_units(FOOD_RES, 2))
+
+	_observer_ctx = {"count_a": 0, "count_b": 0}
+	inv_rejected.inventory_changed.connect(_on_increment_counter.bind("count_a"))
+	load_a.load_changed.connect(_on_increment_counter.bind("count_a"))
+
+	var delivered_a: Dictionary = inv_rejected.deliver_from_carry_load(load_a)
+	assert_true(delivered_a.is_empty())
+	assert_eq(int(_observer_ctx["count_a"]), 0, "Rejected delivery must not emit any signals")
+	assert_eq(load_a.get_amount(&"wood"), 4)
+	assert_eq(load_a.get_amount(&"food"), 2)
+	assert_eq(load_a.get_current_weight(), 10)
+	assert_eq(inv_rejected.get_amount(&"wood"), 0)
+
+	# Mid-batch rejection (wood succeeds individually, stone rejects) must roll back wood cleanly
+	var partial_reject := PartialRejectingStorageSource.new()
+	var inv_partial := SettlementInventory.new(partial_reject)
+	var load_b := UnitCarryLoad.new(20)
+	assert_true(load_b.add_units(WOOD_RES, 3))
+	assert_true(load_b.add_units(STONE_RES, 2))
+
+	partial_reject.storage_changed.connect(_on_increment_counter.bind("count_b"))
+	inv_partial.inventory_changed.connect(_on_increment_counter.bind("count_b"))
+	load_b.load_changed.connect(_on_increment_counter.bind("count_b"))
+
+	var delivered_b: Dictionary = inv_partial.deliver_from_carry_load(load_b)
+	assert_true(delivered_b.is_empty())
+	assert_eq(int(_observer_ctx["count_b"]), 0, "Rolled-back partial batch must emit zero signals")
+	assert_eq(partial_reject.get_amount(&"wood"), 0, "Rolled-back batch must leave zero partial wood in storage")
+	assert_eq(partial_reject.get_amount(&"stone"), 0)
+	assert_eq(load_b.get_amount(&"wood"), 3, "Rolled-back batch must preserve wood in carry load")
+	assert_eq(load_b.get_amount(&"stone"), 2, "Rolled-back batch must preserve stone in carry load")
+	assert_true(load_b.add_units(WOOD_RES, 1), "Weight registry must remain intact after rollback")
+
+
+func test_15_repeated_delivery_after_emptying_does_not_duplicate() -> void:
+	var storage := InMemoryStorageSource.new()
+	var inventory := SettlementInventory.new(storage)
+	var load := UnitCarryLoad.new(20)
+	assert_true(load.add_units(STONE_RES, 4))
+
+	_observer_ctx = {"inv_signals": 0}
+	inventory.inventory_changed.connect(_on_increment_counter.bind("inv_signals"))
+
+	var first: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(first.get(&"stone", 0)), 4)
+	assert_eq(int(_observer_ctx["inv_signals"]), 1)
+
+	var second: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_true(second.is_empty())
+	assert_eq(int(_observer_ctx["inv_signals"]), 1)
+	assert_eq(inventory.get_amount(&"stone"), 4)
+	assert_true(load.is_empty())
+
+
+func test_16_delivered_report_matches_removed_and_conservation_across_transfers() -> void:
+	var source_food: int = 25
+	var source_wood: int = 18
+	var source_stone: int = 12
+
+	var storage := InMemoryStorageSource.new()
+	var inventory := SettlementInventory.new(storage)
+	var load := UnitCarryLoad.new(20)
+
+	source_food -= 4
+	source_wood -= 5
+	assert_true(load.add_units(FOOD_RES, 4))
+	assert_true(load.add_units(WOOD_RES, 5))
+
+	var expected_before: Dictionary = load.get_all_amounts()
+	var delivered_1: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(delivered_1, expected_before)
+
+	# Second mixed load including stone
+	source_stone -= 4
+	source_wood -= 4
+	assert_true(load.add_units(STONE_RES, 4))
+	assert_true(load.add_units(WOOD_RES, 4))
+
+	var expected_second: Dictionary = load.get_all_amounts()
+	var delivered_2: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(delivered_2, expected_second)
+
+	assert_eq(source_food + load.get_amount(&"food") + inventory.get_amount(&"food"), 25)
+	assert_eq(source_wood + load.get_amount(&"wood") + inventory.get_amount(&"wood"), 18)
+	assert_eq(source_stone + load.get_amount(&"stone") + inventory.get_amount(&"stone"), 12)
+
+
+func test_17_overloaded_carry_load_delivers_atomically_without_loss() -> void:
+	var storage := InMemoryStorageSource.new()
+	var inventory := SettlementInventory.new(storage)
+	var load := UnitCarryLoad.new(20)
+	assert_true(load.set_capacity_modifier(&"pack", 10))
+	assert_true(load.add_units(WOOD_RES, 12)) # 24 weight
+	assert_true(load.remove_capacity_modifier(&"pack")) # effective 20 < 24
+
+	assert_true(load.is_overloaded())
+	assert_eq(load.get_current_weight(), 24)
+
+	var delivered: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(delivered.get(&"wood", 0)), 12)
+	assert_eq(inventory.get_amount(&"wood"), 12)
+	assert_false(load.is_overloaded())
+	assert_true(load.is_empty())

@@ -21,7 +21,7 @@ func deposit(resource_id: StringName, amount: int) -> bool:
 	if resource_id.is_empty() or amount <= 0:
 		return false
 	_amounts[resource_id] = get_amount(resource_id) + amount
-	storage_changed.emit()
+	_emit_storage_changed()
 	return true
 
 
@@ -36,7 +36,7 @@ func withdraw(resource_id: StringName, amount: int) -> bool:
 		_amounts.erase(resource_id)
 	else:
 		_amounts[resource_id] = next_amount
-	storage_changed.emit()
+	_emit_storage_changed()
 	return true
 
 
@@ -53,7 +53,7 @@ func record_intentional_decay(resource_id: StringName, amount: int) -> int:
 	else:
 		_amounts[resource_id] = next_amount
 	_decayed[resource_id] = int(_decayed.get(resource_id, 0)) + decayed
-	storage_changed.emit()
+	_emit_storage_changed()
 	return decayed
 
 

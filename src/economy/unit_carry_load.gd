@@ -10,10 +10,46 @@ var _base_capacity: int = 0
 var _capacity_modifiers: Dictionary = {}
 var _amounts: Dictionary = {}
 var _unit_weights: Dictionary = {}
+var _batch_depth: int = 0
+var _dirty_load: bool = false
+var _dirty_capacity: bool = false
 
 
 func _init(initial_base_capacity: int = 20) -> void:
 	_base_capacity = maxi(0, initial_base_capacity)
+
+
+func begin_batch() -> void:
+	_batch_depth += 1
+
+
+func end_batch(discard_load_dirty: bool = false) -> void:
+	if _batch_depth <= 0:
+		return
+	_batch_depth -= 1
+	if _batch_depth == 0:
+		if _dirty_capacity:
+			_dirty_capacity = false
+			capacity_changed.emit()
+		if discard_load_dirty:
+			_dirty_load = false
+		elif _dirty_load:
+			_dirty_load = false
+			load_changed.emit()
+
+
+func _emit_load_changed() -> void:
+	if _batch_depth > 0:
+		_dirty_load = true
+		return
+	load_changed.emit()
+
+
+func _emit_capacity_changed() -> void:
+	if _batch_depth > 0:
+		_dirty_capacity = true
+		return
+	capacity_changed.emit()
 
 
 func get_base_capacity() -> int:
@@ -26,7 +62,7 @@ func set_base_capacity(new_capacity: int) -> bool:
 	if _base_capacity == new_capacity:
 		return true
 	_base_capacity = new_capacity
-	capacity_changed.emit()
+	_emit_capacity_changed()
 	return true
 
 
@@ -38,7 +74,7 @@ func set_capacity_modifier(modifier_id: StringName, delta: int) -> bool:
 	if _capacity_modifiers.has(modifier_id) and int(_capacity_modifiers[modifier_id]) == delta:
 		return true
 	_capacity_modifiers[modifier_id] = delta
-	capacity_changed.emit()
+	_emit_capacity_changed()
 	return true
 
 
@@ -46,7 +82,7 @@ func remove_capacity_modifier(modifier_id: StringName) -> bool:
 	if modifier_id.is_empty() or not _capacity_modifiers.has(modifier_id):
 		return false
 	_capacity_modifiers.erase(modifier_id)
-	capacity_changed.emit()
+	_emit_capacity_changed()
 	return true
 
 
@@ -91,6 +127,10 @@ func is_full() -> bool:
 	return get_remaining_capacity() <= 0
 
 
+func is_overloaded() -> bool:
+	return get_current_weight() > get_effective_capacity()
+
+
 func get_amount(resource_id: StringName) -> int:
 	if resource_id.is_empty():
 		return 0
@@ -99,6 +139,15 @@ func get_amount(resource_id: StringName) -> int:
 
 func get_all_amounts() -> Dictionary:
 	return _amounts.duplicate()
+
+
+func get_all_unit_weights() -> Dictionary:
+	return _unit_weights.duplicate()
+
+
+func restore_load_snapshot(amounts: Dictionary, unit_weights: Dictionary) -> void:
+	_amounts = amounts.duplicate()
+	_unit_weights = unit_weights.duplicate()
 
 
 func get_registered_unit_weight(resource_id: StringName) -> int:
@@ -150,7 +199,7 @@ func add_resource(resource_id: StringName, unit_weight: int, amount: int) -> boo
 
 	_unit_weights[resource_id] = unit_weight
 	_amounts[resource_id] = get_amount(resource_id) + amount
-	load_changed.emit()
+	_emit_load_changed()
 	return true
 
 
@@ -169,7 +218,7 @@ func remove_units(resource_id: StringName, amount: int) -> int:
 	else:
 		_amounts[resource_id] = next_amount
 
-	load_changed.emit()
+	_emit_load_changed()
 	return removed
 
 
@@ -179,7 +228,7 @@ func take_all() -> Dictionary:
 	var taken: Dictionary = _amounts.duplicate()
 	_amounts.clear()
 	_unit_weights.clear()
-	load_changed.emit()
+	_emit_load_changed()
 	return taken
 
 

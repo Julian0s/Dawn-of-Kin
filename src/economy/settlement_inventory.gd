@@ -7,6 +7,7 @@ extends RefCounted
 signal inventory_changed()
 
 var _storage_source: SettlementStorageSource = null
+var _is_delivering: bool = false
 
 
 func _init(storage_source: SettlementStorageSource = null) -> void:
@@ -62,20 +63,41 @@ func withdraw(resource_id: StringName, amount: int) -> bool:
 
 
 func deliver_from_carry_load(carry_load: UnitCarryLoad) -> Dictionary:
-	if _storage_source == null or carry_load == null or carry_load.is_empty():
+	if _is_delivering or _storage_source == null or carry_load == null or carry_load.is_empty():
 		return {}
-	var delivered: Dictionary = {}
+
 	var snapshot: Dictionary = carry_load.get_all_amounts()
+	var weights_backup: Dictionary = carry_load.get_all_unit_weights()
+	var pending: Dictionary = {}
 	for key: Variant in snapshot.keys():
+		if not (key is StringName):
+			return {}
 		var resource_id: StringName = key as StringName
 		var amount: int = int(snapshot[resource_id])
-		if amount <= 0:
-			continue
-		if _storage_source.deposit(resource_id, amount):
-			var removed: int = carry_load.remove_units(resource_id, amount)
-			if removed > 0:
-				delivered[resource_id] = removed
-	return delivered
+		if resource_id.is_empty() or amount <= 0 or int(weights_backup.get(resource_id, 0)) <= 0:
+			return {}
+		pending[resource_id] = amount
+
+	if pending.is_empty() or not _storage_source.can_deposit_batch(pending):
+		return {}
+
+	_is_delivering = true
+	carry_load.begin_batch()
+	_storage_source.begin_batch()
+
+	var taken: Dictionary = carry_load.take_all()
+	if taken.is_empty() or not _storage_source.deposit_batch(taken):
+		carry_load.restore_load_snapshot(snapshot, weights_backup)
+		_storage_source.end_batch(true)
+		carry_load.end_batch(true)
+		_is_delivering = false
+		return {}
+
+	# Both states are now final and conserved before any observer callback runs.
+	_storage_source.end_batch(false)
+	carry_load.end_batch(false)
+	_is_delivering = false
+	return taken.duplicate()
 
 
 func get_total_decayed(resource_id: StringName) -> int:
