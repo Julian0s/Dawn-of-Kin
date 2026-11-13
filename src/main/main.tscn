@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
@@ -10,6 +10,8 @@
 [ext_resource type="Script" path="res://src/rts/selection_manager.gd" id="8_selection_manager"]
 [ext_resource type="Script" path="res://src/rts/rts_input_controller.gd" id="9_input_controller"]
 [ext_resource type="PackedScene" path="res://src/ui/selection_box_overlay.tscn" id="10_selection_box_overlay"]
+[ext_resource type="Script" path="res://src/rts/command_controller.gd" id="11_command_controller"]
+[ext_resource type="PackedScene" path="res://src/rts/destination_marker.tscn" id="12_destination_marker"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -47,11 +49,19 @@ definition = ExtResource("7_leader_b")
 [node name="SelectionManager" type="Node" parent="."]
 script = ExtResource("8_selection_manager")
 
+[node name="CommandController" type="Node" parent="."]
+script = ExtResource("11_command_controller")
+selection_manager_path = NodePath("../SelectionManager")
+destination_marker_path = NodePath("../DestinationMarker")
+
 [node name="RtsInputController" type="Node" parent="."]
 script = ExtResource("9_input_controller")
 selection_manager_path = NodePath("../SelectionManager")
 camera_rig_path = NodePath("../RtsCameraRig")
 selection_box_overlay_path = NodePath("../UiLayer/SelectionBoxOverlay")
+command_controller_path = NodePath("../CommandController")
+
+[node name="DestinationMarker" parent="." instance=ExtResource("12_destination_marker")]
 
 [node name="RtsCameraRig" parent="." instance=ExtResource("3_camera_rig")]
 

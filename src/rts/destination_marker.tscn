@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/rts/destination_marker.gd" id="1_marker_script"]
+
+[node name="DestinationMarker" type="Node3D"]
+visible = false
+script = ExtResource("1_marker_script")
+
+[node name="OuterRing" type="MeshInstance3D" parent="."]
+
+[node name="InnerRing" type="MeshInstance3D" parent="."]

@@ -8,10 +8,12 @@ const BASE_DRAG_THRESHOLD_PX: float = 6.0
 @export var selection_manager_path: NodePath = NodePath()
 @export var camera_rig_path: NodePath = NodePath()
 @export var selection_box_overlay_path: NodePath = NodePath()
+@export var command_controller_path: NodePath = NodePath()
 
 var _selection_manager: SelectionManager = null
 var _camera_rig: RtsCameraRig = null
 var _selection_box_overlay: SelectionBoxOverlay = null
+var _command_controller: CommandController = null
 var _world_picker: WorldPicker = WorldPicker.new()
 
 var _left_pressed: bool = false
@@ -61,6 +63,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		_resolve_dependencies()
 		if _selection_manager != null:
 			_selection_manager.clear_selection()
+		if viewport != null:
+			viewport.set_input_as_handled()
+		return
+
+	if event.is_action_pressed(InputActions.COMMAND):
+		var command_pos: Vector2 = _extract_event_position(event, viewport)
+		_last_pointer_pos = command_pos
+		_has_pointer_pos = true
+		_handle_right_click(command_pos)
 		if viewport != null:
 			viewport.set_input_as_handled()
 		return
@@ -121,12 +132,15 @@ func _unhandled_input(event: InputEvent) -> void:
 func configure(
 	selection_manager: SelectionManager,
 	camera_rig: RtsCameraRig,
-	selection_box_overlay: SelectionBoxOverlay = null
+	selection_box_overlay: SelectionBoxOverlay = null,
+	command_controller: CommandController = null
 ) -> void:
 	_selection_manager = selection_manager
 	_camera_rig = camera_rig
 	if selection_box_overlay != null:
 		_selection_box_overlay = selection_box_overlay
+	if command_controller != null:
+		_command_controller = command_controller
 
 
 func set_world_picker(picker: WorldPicker) -> void:
@@ -177,6 +191,14 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 			_selection_manager.select_single(pick.unit)
 	elif not shift_held:
 		_selection_manager.clear_selection()
+
+
+func _handle_right_click(screen_pos: Vector2) -> void:
+	_resolve_dependencies()
+	if _command_controller == null:
+		return
+	var pick: PickResult = pick_at_screen_pos(screen_pos)
+	_command_controller.command_at(pick)
 
 
 func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: bool) -> void:
@@ -247,6 +269,8 @@ func _resolve_dependencies() -> void:
 		_camera_rig = get_node_or_null(camera_rig_path) as RtsCameraRig
 	if _selection_box_overlay == null and not selection_box_overlay_path.is_empty():
 		_selection_box_overlay = get_node_or_null(selection_box_overlay_path) as SelectionBoxOverlay
+	if _command_controller == null and not command_controller_path.is_empty():
+		_command_controller = get_node_or_null(command_controller_path) as CommandController
 
 
 func _can_pick() -> bool:
