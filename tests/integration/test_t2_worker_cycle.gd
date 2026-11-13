@@ -29,7 +29,8 @@ func _accelerate_work_walk(units: Array) -> void:
 		if u is Unit:
 			var unit_node: Unit = u as Unit
 			var fast_def: CharacterDefinition = unit_node.get_definition().duplicate() as CharacterDefinition
-			fast_def.work_approach_speed = 4.8
+			fast_def.move_speed = 7.5
+			fast_def.work_approach_speed = 7.5
 			fast_def.max_load_speed_multiplier = 1.0
 			unit_node.apply_definition(fast_def)
 
@@ -360,6 +361,7 @@ func test_04_two_workers_competing_for_last_unit_and_max_worker_cap() -> void:
 	var cmd: CommandController = ctx["command_controller"] as CommandController
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	_accelerate_work_walk([leader_a, leader_b])
 
 	var bush: ResourceSource = BUSH_SCENE.instantiate() as ResourceSource
 	bush.position = Vector3(1.0, 0.0, 2.0)
@@ -433,6 +435,7 @@ func test_05_cancel_or_move_replacement_preserves_carry_load_and_allows_subseque
 	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
+	_accelerate_work_walk([leader_a])
 
 	var bush: ResourceSource = BUSH_SCENE.instantiate() as ResourceSource
 	bush.position = Vector3(5.0, 0.0, 2.0)

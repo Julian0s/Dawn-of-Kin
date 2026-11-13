@@ -1,9 +1,8 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/economy/resource_source.gd" id="1_script"]
 [ext_resource type="Resource" path="res://data/resources/food.tres" id="2_food_def"]
 [ext_resource type="Material" path="res://assets/placeholder/mat_bush_source_foliage.tres" id="3_mat_foliage"]
-[ext_resource type="Material" path="res://assets/placeholder/mat_trunk_placeholder.tres" id="4_mat_trunk"]
 [ext_resource type="Material" path="res://assets/placeholder/mat_source_ring_subtle.tres" id="5_mat_ring"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_interaction"]
@@ -23,21 +22,14 @@ height = 0.85
 radial_segments = 8
 rings = 4
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_berry"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fruit"]
 albedo_color = Color(0.84, 0.16, 0.16, 1)
 roughness = 0.55
 
-[sub_resource type="SphereMesh" id="SphereMesh_berry"]
-material = SubResource("StandardMaterial3D_berry")
+[sub_resource type="SphereMesh" id="SphereMesh_fruit"]
+material = SubResource("StandardMaterial3D_fruit")
 radius = 0.17
 height = 0.28
-radial_segments = 6
-rings = 3
-
-[sub_resource type="SphereMesh" id="SphereMesh_bush_depleted"]
-material = ExtResource("4_mat_trunk")
-radius = 0.42
-height = 0.45
 radial_segments = 6
 rings = 3
 
@@ -80,30 +72,37 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 0.38, 0.25)
 cast_shadow = 0
 mesh = SubResource("SphereMesh_bush_tuft")
 
-[node name="BerryA" type="MeshInstance3D" parent="AvailableVisual"]
+[node name="Fruits" type="Node3D" parent="AvailableVisual"]
+
+[node name="Fruit01" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.46, 0.72, 0.42)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_berry")
+mesh = SubResource("SphereMesh_fruit")
 
-[node name="BerryB" type="MeshInstance3D" parent="AvailableVisual"]
+[node name="Fruit02" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.74, 0.36)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_berry")
+mesh = SubResource("SphereMesh_fruit")
 
-[node name="BerryC" type="MeshInstance3D" parent="AvailableVisual"]
+[node name="Fruit03" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08, 0.96, 0.14)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_berry")
+mesh = SubResource("SphereMesh_fruit")
 
-[node name="BerryD" type="MeshInstance3D" parent="AvailableVisual"]
+[node name="Fruit04" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.18, 0.62, -0.44)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_berry")
+mesh = SubResource("SphereMesh_fruit")
 
-[node name="BerryE" type="MeshInstance3D" parent="AvailableVisual"]
+[node name="Fruit05" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.56, 0.55, -0.15)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_berry")
+mesh = SubResource("SphereMesh_fruit")
+
+[node name="Fruit06" type="MeshInstance3D" parent="AvailableVisual/Fruits"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.22, 0.85, -0.05)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fruit")
 
 [node name="DiscoverabilityBadge" type="Node3D" parent="."]
 
@@ -125,7 +124,12 @@ pixel_size = 0.015
 [node name="DepletedVisual" type="Node3D" parent="."]
 visible = false
 
-[node name="BareShrubMesh" type="MeshInstance3D" parent="DepletedVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.22, 0)
+[node name="ShrubFoliageMesh" type="MeshInstance3D" parent="DepletedVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 cast_shadow = 0
-mesh = SubResource("SphereMesh_bush_depleted")
+mesh = SubResource("SphereMesh_bush")
+
+[node name="ShrubTuftMesh" type="MeshInstance3D" parent="DepletedVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 0.38, 0.25)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_bush_tuft")

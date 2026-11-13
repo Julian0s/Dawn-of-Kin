@@ -16,22 +16,22 @@ radius = 1.2
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_trunk"]
 material = ExtResource("3_mat_trunk")
-top_radius = 0.24
-bottom_radius = 0.36
-height = 2.4
+top_radius = 0.14
+bottom_radius = 0.24
+height = 1.75
 radial_segments = 8
 
 [sub_resource type="SphereMesh" id="SphereMesh_canopy"]
 material = ExtResource("4_mat_foliage")
-radius = 1.35
-height = 2.1
+radius = 1.05
+height = 1.55
 radial_segments = 8
 rings = 5
 
 [sub_resource type="SphereMesh" id="SphereMesh_canopy_upper"]
 material = ExtResource("4_mat_foliage")
-radius = 0.92
-height = 1.45
+radius = 0.72
+height = 1.1
 radial_segments = 8
 rings = 4
 
@@ -79,16 +79,23 @@ shape = SubResource("CylinderShape3D_interaction")
 
 [node name="AvailableVisual" type="Node3D" parent="."]
 
-[node name="TrunkMesh" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+[node name="StumpBaseMesh" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.19, 0)
+mesh = SubResource("CylinderMesh_stump")
+
+[node name="FellingPivot" type="Node3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.36, 0)
+
+[node name="TrunkMesh" type="MeshInstance3D" parent="AvailableVisual/FellingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.86, 0)
 mesh = SubResource("CylinderMesh_trunk")
 
-[node name="CanopyMesh" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.85, 0)
+[node name="CanopyMesh" type="MeshInstance3D" parent="AvailableVisual/FellingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, 0)
 mesh = SubResource("SphereMesh_canopy")
 
-[node name="CanopyUpperMesh" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, 3.6, -0.22)
+[node name="CanopyUpperMesh" type="MeshInstance3D" parent="AvailableVisual/FellingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, 2.4, -0.14)
 mesh = SubResource("SphereMesh_canopy_upper")
 
 [node name="DiscoverabilityBadge" type="Node3D" parent="."]
@@ -99,7 +106,7 @@ cast_shadow = 0
 mesh = SubResource("TorusMesh_marker_ring")
 
 [node name="BadgeLabel" type="Label3D" parent="DiscoverabilityBadge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.85, 0)
 billboard = 1
 modulate = Color(0.96, 0.94, 0.85, 0.94)
 outline_modulate = Color(0.1, 0.12, 0.1, 0.92)

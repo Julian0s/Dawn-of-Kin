@@ -74,6 +74,10 @@
 - **DECIDIDO — Armazenamento por categoria e evolução progressiva:** o armazenamento contempla madeira, pedra, alimentos e futuras categorias, partindo de pilhas individuais no chão do acampamento inicial (sem construções pré-existentes) até armazéns e depósitos construíveis em marcos posteriores (`T3+`).
 - **Fontes iniciais previstas:** coleta de frutos, pesca, caça, plantações e, posteriormente, criação de animais.
 - **Recursos de trabalho iniciais previstos:** madeira, pedra e alimentos; minério é uma expansão posterior.
+- **DECIDIDO:** a aparência das fontes deve refletir coerentemente a extração.
+- **DECIDIDO:** a árvore não permanece vertical após fornecer troncos; frutos podem ser coletados sem destruir a planta.
+- **PROPOSTA:** implementação provisória de árvores pequenas/frágeis e animação de derrubada sem ferramentas.
+- **ABERTO:** ferramentas para árvores maduras, regeneração de frutos e regras futuras de sustentabilidade.
 - **PROPOSTA:** permitir entrega parcial quando a fonte se esgota antes de `100%` e suportar múltiplas categorias na mochila em caso de redirecionamento de ordem.
 - **PROPOSTA:** interface mostrar porcentagem de carga individual do morador selecionado, estoque utilizável por categoria (sincronizado com as pilhas do acampamento), indicação/alerta de pilhas expostas à deterioração, saldo alimentar por dia e autonomia estimada; consequências graduais se faltar alimento (redução de produtividade e risco para moradores comuns).
 - **ABERTO:** duração exata da exposição, perda gradual versus desaparecimento integral, política de exposição ao adicionar materiais novos a uma pilha antiga, diferenças de deterioração por categoria, valores numéricos exatos de peso unitário, capacidade individual inicial, taxa de coleta, consumo e eventuais tetos por pilha ou depósito, a calibrar por testes.

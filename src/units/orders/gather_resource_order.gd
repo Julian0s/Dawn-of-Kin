@@ -38,6 +38,7 @@ var _explicit_prepare_duration_sec: float = -1.0
 var _approach_retries: int = 0
 var _delivered_trips: int = 0
 var _has_reservation: bool = false
+var _awaiting_felling_before_delivery: bool = false
 var _deliver_order: DeliverToCampOrder = null
 
 
@@ -208,12 +209,14 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if _deliver_order != null and _deliver_order.is_active():
 		_deliver_order.cancel(movement, reason)
 	_deliver_order = null
+	_awaiting_felling_before_delivery = false
 	resolved_target = Vector3(INF, INF, INF)
 	_release_source_reservation()
 	super.cancel(movement, reason)
 
 
 func _start_approaching_source(movement: UnitMovement) -> void:
+	_awaiting_felling_before_delivery = false
 	if not _is_source_usable():
 		_handle_source_unavailable(movement)
 		return
@@ -295,20 +298,35 @@ func _enter_gathering_phase(movement: UnitMovement) -> void:
 	_gather_elapsed = 0.0
 	_prepare_elapsed = 0.0
 	_preparing_cycle = (_resolve_prepare_duration_sec() > 0.0)
+	_awaiting_felling_before_delivery = false
 	_phase = Phase.GATHERING
 	_unit.set_order_state(self, Unit.State.WORKING)
 
 
 func _update_gathering(movement: UnitMovement, delta: float) -> void:
 	if not _is_source_usable():
+		_awaiting_felling_before_delivery = false
 		_handle_source_unavailable(movement)
+		return
+
+	var dt: float = maxf(delta, 0.0)
+	if _awaiting_felling_before_delivery:
+		movement.face_towards(source.global_position, dt)
+		if source.is_felling():
+			return
+		_awaiting_felling_before_delivery = false
+		_start_delivering(movement)
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
 	var def: ResourceDefinition = source.get_definition()
 	if not carry_load.can_fit_one(def):
 		if not carry_load.is_empty():
-			_start_delivering(movement)
+			if source.is_felling():
+				movement.face_towards(source.global_position, dt)
+				_awaiting_felling_before_delivery = true
+			else:
+				_start_delivering(movement)
 		else:
 			_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)
 		return
@@ -317,7 +335,6 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 		_start_approaching_source(movement)
 		return
 
-	var dt: float = maxf(delta, 0.0)
 	movement.face_towards(source.global_position, dt)
 
 	if _preparing_cycle:
@@ -338,7 +355,10 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 
 	if extracted <= 0:
 		if not carry_load.is_empty() and (source.is_depleted() or not carry_load.can_fit_one(def)):
-			_start_delivering(movement)
+			if source.is_felling():
+				_awaiting_felling_before_delivery = true
+			else:
+				_start_delivering(movement)
 		elif source.is_depleted():
 			_handle_source_unavailable(movement)
 		else:
@@ -346,7 +366,10 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 		return
 
 	if carry_load.is_full() or not carry_load.can_fit_one(def) or source.is_depleted():
-		_start_delivering(movement)
+		if source.is_felling():
+			_awaiting_felling_before_delivery = true
+		else:
+			_start_delivering(movement)
 
 
 func _start_delivering(movement: UnitMovement) -> void:

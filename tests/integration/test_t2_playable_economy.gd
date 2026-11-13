@@ -27,6 +27,7 @@ func _accelerate_sources(test_map: TestMap, op_sec: float = 0.12, prep_sec: floa
 		return
 	for src: ResourceSource in test_map.get_resource_sources():
 		src.set_gather_cycle_timings(op_sec, prep_sec)
+		src.felling_duration_sec = minf(src.felling_duration_sec, 0.10)
 
 
 func _accelerate_work_walk(units: Array) -> void:
@@ -34,7 +35,8 @@ func _accelerate_work_walk(units: Array) -> void:
 		if u is Unit:
 			var unit_node: Unit = u as Unit
 			var fast_def: CharacterDefinition = unit_node.get_definition().duplicate() as CharacterDefinition
-			fast_def.work_approach_speed = 4.8
+			fast_def.move_speed = 7.5
+			fast_def.work_approach_speed = 7.5
 			fast_def.max_load_speed_multiplier = 1.0
 			unit_node.apply_definition(fast_def)
 
