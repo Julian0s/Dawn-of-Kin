@@ -4,10 +4,22 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ## Estado atual
 
-- **Marco ativo:** T2 — Trabalho e Recursos (**em fase de planejamento e revisão técnica; implementação de código ainda não autorizada**)
+- **Marco ativo:** T2 — Trabalho e Recursos (**em implementação incremental; T2 completa ainda não concluída nem aprovada**)
+  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada) e `T2.2` (fontes naturais coletáveis e picking contextual).
+  - **Não implementadas:** `T2.3` (ciclo de coleta/transporte/descarga), `T2.4` (composição jogável no `TestMap`), `T2.5` (HUD) e `T2.6` (validação global e aceite).
+  - **Não verificado / pendente:** testes visuais/manuais em janela gráfica e benchmark final da T2 na Intel UHD 620.
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
+
+### Pendências conhecidas para `T2.3`–`T2.6`
+
+- Ativação periódica da deterioração na cena jogável.
+- Configuração de `DecayProfile` nos materiais efetivamente usados pelo jogo.
+- Integração de `ResourceSource` com as ordens dos trabalhadores (`T2.3`).
+- Transporte físico até o acampamento (`T2.3`–`T2.4`).
+- Atualização do HUD (`T2.5`).
+- Benchmark gráfico na Intel UHD 620 (`T2.6`).
 
 ## Requisitos de ambiente
 

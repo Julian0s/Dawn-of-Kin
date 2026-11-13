@@ -1,0 +1,65 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/economy/resource_source.gd" id="1_script"]
+[ext_resource type="Resource" path="res://data/resources/stone.tres" id="2_stone_def"]
+[ext_resource type="Material" path="res://assets/placeholder/mat_rock_placeholder.tres" id="3_mat_rock"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_solid"]
+radius = 0.9
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_interaction"]
+radius = 1.05
+
+[sub_resource type="SphereMesh" id="SphereMesh_rock"]
+material = ExtResource("3_mat_rock")
+radius = 0.95
+height = 1.35
+radial_segments = 7
+rings = 4
+
+[sub_resource type="SphereMesh" id="SphereMesh_rubble"]
+material = ExtResource("3_mat_rock")
+radius = 0.55
+height = 0.35
+radial_segments = 6
+rings = 3
+
+[node name="RockSource" type="Node3D"]
+script = ExtResource("1_script")
+source_id = &"rock_source"
+definition = ExtResource("2_stone_def")
+initial_amount = 20
+max_extract_per_operation = 1
+max_simultaneous_workers = 2
+interaction_radius = 1.7
+
+[node name="SolidBody" type="StaticBody3D" parent="."]
+collision_layer = 2
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SolidBody"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+shape = SubResource("SphereShape3D_solid")
+
+[node name="InteractionArea" type="Area3D" parent="."]
+collision_layer = 32
+collision_mask = 0
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionArea"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+shape = SubResource("SphereShape3D_interaction")
+
+[node name="AvailableVisual" type="Node3D" parent="."]
+
+[node name="RockMesh" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
+mesh = SubResource("SphereMesh_rock")
+
+[node name="DepletedVisual" type="Node3D" parent="."]
+visible = false
+
+[node name="RubbleMesh" type="MeshInstance3D" parent="DepletedVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14, 0)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_rubble")

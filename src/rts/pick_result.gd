@@ -8,10 +8,12 @@ enum Kind {
 	UNIT,
 	GROUND,
 	OBSTACLE,
+	RESOURCE_SOURCE,
 }
 
 var kind: Kind = Kind.NONE
 var unit: Unit = null
+var resource_source: ResourceSource = null
 var position: Vector3 = Vector3.ZERO
 var normal: Vector3 = Vector3.UP
 var collider: Object = null
@@ -62,6 +64,21 @@ static func from_obstacle(
 	return res
 
 
+static func from_resource_source(
+	p_resource_source: ResourceSource,
+	p_position: Vector3,
+	p_normal: Vector3,
+	p_collider: Object = null
+) -> PickResult:
+	var res := PickResult.new()
+	res.kind = Kind.RESOURCE_SOURCE
+	res.resource_source = p_resource_source
+	res.position = p_position
+	res.normal = p_normal
+	res.collider = p_collider
+	return res
+
+
 func is_none() -> bool:
 	return kind == Kind.NONE
 
@@ -76,3 +93,11 @@ func is_ground() -> bool:
 
 func is_obstacle() -> bool:
 	return kind == Kind.OBSTACLE
+
+
+func is_resource_source() -> bool:
+	return kind == Kind.RESOURCE_SOURCE and resource_source != null and is_instance_valid(resource_source)
+
+
+func is_available_resource_source() -> bool:
+	return is_resource_source() and resource_source.is_available()

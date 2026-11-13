@@ -5,7 +5,7 @@
 **Uso:** referência de produto e handoff de desenvolvimento para Antigravity + Godot  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
-> **Regra de leitura:** **DECIDIDO** = aprovado na conversa; **PROPOSTA** = sugestão para testar, não compromisso; **ABERTO** = depende de definição futura. O marco **T1 — Fundação RTS** já foi implementado e encerrado (`t1-complete`, commit `2808799`); a fase atual **T2 — Trabalho e Recursos** encontra-se exclusivamente em planejamento e revisão técnica, sem código da T2 implementado até o momento.
+> **Regra de leitura:** **DECIDIDO** = aprovado na conversa; **PROPOSTA** = sugestão para testar, não compromisso; **ABERTO** = depende de definição futura. O marco **T1 — Fundação RTS** foi concluído e aprovado (`t1-complete`, commit `2808799`). A fase **T2 — Trabalho e Recursos** está em implementação incremental (ainda não concluída nem aprovada globalmente): `T2.0`, `T2.1` e `T2.2` encontram-se implementadas e testadas automaticamente em headless; `T2.3` até `T2.6` ainda não foram implementadas, permanecendo pendentes testes gráficos manuais e o benchmark final na Intel UHD 620. Os documentos técnicos em `docs/architecture/T2_architecture_DRAFT.md` e `docs/T2_Implementation_Plan_DRAFT.md` permanecem como rascunhos até consolidação formal.
 
 ## 1. Visão do jogo
 

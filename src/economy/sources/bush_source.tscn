@@ -1,0 +1,82 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://src/economy/resource_source.gd" id="1_script"]
+[ext_resource type="Resource" path="res://data/resources/food.tres" id="2_food_def"]
+[ext_resource type="Material" path="res://assets/placeholder/mat_foliage_placeholder.tres" id="3_mat_foliage"]
+[ext_resource type="Material" path="res://assets/placeholder/mat_trunk_placeholder.tres" id="4_mat_trunk"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_interaction"]
+radius = 0.75
+
+[sub_resource type="SphereMesh" id="SphereMesh_bush"]
+material = ExtResource("3_mat_foliage")
+radius = 0.65
+height = 0.95
+radial_segments = 8
+rings = 4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_berry"]
+albedo_color = Color(0.78, 0.16, 0.18, 1)
+roughness = 0.6
+
+[sub_resource type="SphereMesh" id="SphereMesh_berry"]
+material = SubResource("StandardMaterial3D_berry")
+radius = 0.09
+height = 0.18
+radial_segments = 6
+rings = 3
+
+[sub_resource type="SphereMesh" id="SphereMesh_bush_depleted"]
+material = ExtResource("4_mat_trunk")
+radius = 0.42
+height = 0.45
+radial_segments = 6
+rings = 3
+
+[node name="BushSource" type="Node3D"]
+script = ExtResource("1_script")
+source_id = &"bush_source"
+definition = ExtResource("2_food_def")
+initial_amount = 15
+max_extract_per_operation = 1
+max_simultaneous_workers = 2
+interaction_radius = 1.4
+
+[node name="InteractionArea" type="Area3D" parent="."]
+collision_layer = 32
+collision_mask = 0
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionArea"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
+shape = SubResource("SphereShape3D_interaction")
+
+[node name="AvailableVisual" type="Node3D" parent="."]
+
+[node name="BushMesh" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_bush")
+
+[node name="BerryA" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.56, 0.28)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_berry")
+
+[node name="BerryB" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0.62, 0.24)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_berry")
+
+[node name="BerryC" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.05, 0.76, -0.28)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_berry")
+
+[node name="DepletedVisual" type="Node3D" parent="."]
+visible = false
+
+[node name="BareShrubMesh" type="MeshInstance3D" parent="DepletedVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.22, 0)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_bush_depleted")

@@ -14,6 +14,7 @@ var _selection_manager: SelectionManager = null
 var _world_navigation: WorldNavigation = null
 var _destination_marker: DestinationMarker = null
 var _last_plan: GroupMovePlanner.PlanResult = null
+var _last_command_reason: String = ""
 
 
 func _ready() -> void:
@@ -39,20 +40,30 @@ func get_last_plan() -> GroupMovePlanner.PlanResult:
 	return _last_plan
 
 
+func get_last_command_reason() -> String:
+	return _last_command_reason
+
+
 func command_at(pick: PickResult) -> bool:
 	_resolve_dependencies()
+	_last_command_reason = ""
 
 	if pick == null or pick.is_none() or not pick.position.is_finite():
+		_last_command_reason = "invalid_pick"
 		return false
 	if _selection_manager == null or _selection_manager.is_empty():
+		_last_command_reason = "empty_selection"
 		return false
 	if _world_navigation == null or not is_instance_valid(_world_navigation):
+		_last_command_reason = "missing_navigation"
 		return false
 	if not _world_navigation.is_navigation_ready():
+		_last_command_reason = "navigation_not_ready"
 		return false
 
 	var units: Array[Unit] = _collect_commandable_units()
 	if units.is_empty():
+		_last_command_reason = "no_commandable_units"
 		return false
 
 	var requested_target: Vector3 = pick.position
@@ -76,7 +87,13 @@ func command_at(pick: PickResult) -> bool:
 				requested_target = pick.position
 			allow_snapped_anchor = true
 			marker_normal = Vector3.UP
+		PickResult.Kind.RESOURCE_SOURCE:
+			# T2.2 contextual recognition without GatherResourceOrder (T2.3):
+			# avoid accidental MoveOrder and preserve any active order on selected units.
+			_last_command_reason = _resolve_resource_source_reason(pick)
+			return false
 		_:
+			_last_command_reason = "unsupported_pick_kind"
 			return false
 
 	if not requested_target.is_finite():
@@ -117,6 +134,14 @@ func command_at(pick: PickResult) -> bool:
 
 	command_issued.emit(pick, marker_pos, units.size(), plan.all_slots_reachable)
 	return true
+
+
+func _resolve_resource_source_reason(pick: PickResult) -> String:
+	if pick == null or not pick.is_resource_source():
+		return "invalid_resource_source"
+	if pick.resource_source.is_depleted():
+		return "resource_source_depleted"
+	return "gather_order_not_integrated"
 
 
 func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]:
