@@ -327,12 +327,52 @@ func test_05_world_navigation_respects_resource_solid_bodies_when_rebaked() -> v
 		frames += 1
 	assert_true(nav.is_navigation_ready())
 
-	# Rock SolidBody (MASK_OBSTACLES) should route path cleanly around rock without error
+	# Rock SolidBody (MASK_OBSTACLES) has radius = 0.9 at (0, 0.5, 0).
+	# NavigationMesh uses DEFAULT_AGENT_RADIUS = 0.5 and DEFAULT_CELL_SIZE = 0.25.
+	# Theoretical exclusion zone radius is rock_radius (0.9) + agent_radius (0.5) = 1.4 m.
+	# Any segment intersecting the horizontal circle around (0, 0) of radius rock_radius (0.9)
+	# would mean the route physically cuts through the solid body of the rock.
 	var route: WorldNavigation.PathResult = nav.find_path(Vector3(-4.0, 0.0, 0.0), Vector3(4.0, 0.0, 0.0))
-	assert_true(route.is_ok())
-	assert_true(route.reachable)
-	var bypassed_rock: bool = false
-	for pt: Vector3 in route.path:
-		if Vector2(pt.x, pt.z).length() > 0.8:
-			bypassed_rock = true
-	assert_true(bypassed_rock, "Baked path should route safely around solid resource obstacle")
+	assert_true(route.is_ok(), "Path query must succeed")
+	assert_true(route.reachable, "Path between opposite sides of rock must be reachable")
+	assert_gt(float(route.path.size()), 2.0, "Path around obstacle must have intermediate waypoints")
+
+	var rock_center_2d := Vector2(rock.position.x, rock.position.z)
+	var solid_radius: float = 0.9 # from SphereShape3D_solid in rock_source.tscn
+
+	var min_route_dist: float = _compute_min_horizontal_distance_to_point(route.path, rock_center_2d)
+	# The actual routed path must stay completely clear of the solid obstacle (>= 0.9m).
+	assert_gt(min_route_dist, solid_radius, "Actual route must never penetrate rock solid radius (0.9m)")
+
+	# Negative control: a straight line synthetic path passing through the center (-4,0,0) -> (4,0,0)
+	# MUST fail the exact same geometric clearance check.
+	var straight_synthetic_path := PackedVector3Array([Vector3(-4.0, 0.0, 0.0), Vector3(4.0, 0.0, 0.0)])
+	var synthetic_min_dist: float = _compute_min_horizontal_distance_to_point(straight_synthetic_path, rock_center_2d)
+	assert_near(synthetic_min_dist, 0.0, 0.001, "Straight synthetic path through rock center must have ~0 distance")
+	assert_false(synthetic_min_dist > solid_radius, "Negative control: straight path must fail clearance check")
+
+
+static func _compute_min_horizontal_distance_to_point(path: PackedVector3Array, target_2d: Vector2) -> float:
+	if path.is_empty():
+		return INF
+	if path.size() == 1:
+		return Vector2(path[0].x, path[0].z).distance_to(target_2d)
+
+	var min_dist: float = INF
+	for i: int in range(path.size() - 1):
+		var a := Vector2(path[i].x, path[i].z)
+		var b := Vector2(path[i + 1].x, path[i + 1].z)
+		var seg_dist: float = _distance_point_to_segment_2d(target_2d, a, b)
+		if seg_dist < min_dist:
+			min_dist = seg_dist
+	return min_dist
+
+
+static func _distance_point_to_segment_2d(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab: Vector2 = b - a
+	var l2: float = ab.length_squared()
+	if l2 < 0.000001:
+		return p.distance_to(a)
+	var t: float = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
+	var proj: Vector2 = a + ab * t
+	return p.distance_to(proj)
