@@ -272,10 +272,14 @@ func test_04_depleted_and_available_source_command_safety_and_t1_preservation() 
 	var res_pick: PickResult = controller.pick_at_screen_pos(tree_screen)
 	assert_true(res_pick.is_available_resource_source())
 
+	var saved_inventory: SettlementInventory = cmd.get_settlement_inventory()
+	var saved_camp_zone: CampStorageZone = cmd.get_camp_storage_zone()
+	cmd.configure_economy(null, null)
 	await _simulate_right_click(tree_screen)
 	assert_eq(cmd.get_last_command_reason(), GatherResourceOrder.REASON_MISSING_ECONOMY)
 	assert_eq(leader_a.get_current_order(), active_order, "Right-clicking resource without configured economy must preserve active order")
 	assert_eq(leader_a.get_state(), Unit.State.MOVING)
+	cmd.configure_economy(saved_inventory, saved_camp_zone)
 
 	# 3. Deplete tree, verify deterministic depleted picking & safe contextual command rejection
 	tree.max_extract_per_operation = 50

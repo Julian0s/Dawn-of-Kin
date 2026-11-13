@@ -99,10 +99,12 @@ mesh = SubResource("BoxMesh_exp_shoulders")
 
 [node name="Backpack_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.96, 0.26)
+visible = false
 mesh = SubResource("BoxMesh_exp_backpack")
 
 [node name="Bedroll_Primary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
 transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, 1.31, 0.26)
+visible = false
 mesh = SubResource("CylinderMesh_exp_bedroll")
 
 [node name="Head_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
@@ -138,6 +140,7 @@ mesh = SubResource("CylinderMesh_clk_crown")
 
 [node name="WalkingStaff_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
 transform = Transform3D(1, 0, 0, 0, 0.992546, 0.121869, 0, -0.121869, 0.992546, 0.4, 0.92, -0.14)
+visible = false
 mesh = SubResource("CylinderMesh_clk_staff")
 
 [node name="ForwardSash_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]

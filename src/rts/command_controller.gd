@@ -47,6 +47,14 @@ func configure_economy(
 	_camp_storage_zone = camp_storage_zone
 
 
+func get_settlement_inventory() -> SettlementInventory:
+	return _settlement_inventory
+
+
+func get_camp_storage_zone() -> CampStorageZone:
+	return _camp_storage_zone
+
+
 func get_last_plan() -> GroupMovePlanner.PlanResult:
 	return _last_plan
 

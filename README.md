@@ -5,20 +5,17 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco ativo:** T2 — Trabalho e Recursos (**em implementação incremental; T2 completa ainda não concluída nem aprovada**)
-  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada), `T2.2` (fontes naturais coletáveis e picking contextual) e `T2.3` (ciclo do trabalhador: coleta, transporte físico, retorno automático ao acampamento, descarga e concorrência).
-  - **Não implementadas:** `T2.4` (composição jogável no `TestMap`), `T2.5` (HUD) e `T2.6` (validação global e aceite).
-  - **Não verificado / pendente:** testes visuais/manuais em janela gráfica e benchmark final da T2 na Intel UHD 620.
+  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada), `T2.2` (fontes naturais coletáveis e picking contextual), `T2.3` (ciclo do trabalhador: coleta, transporte físico, retorno automático ao acampamento, descarga e concorrência) e `T2.4` (composição jogável no `TestMap`/`MainScene`, `EconomyClockController` centralizado, `DecayProfile` provisórios e ocultação visual de ferramentas iniciais nos protagonistas).
+  - **Não implementadas:** `T2.5` (HUD) e `T2.6` (validação global e aceite).
+  - **Não verificado / pendente:** testes visuais/interativos manuais em janela gráfica e benchmark final da T2 na Intel UHD 620 (`run_game.ps1` validou apenas abertura sem warnings/erros em 90 frames).
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 
-### Pendências conhecidas para `T2.4`–`T2.6`
+### Pendências conhecidas para `T2.5`–`T2.6`
 
-- Composição jogável no `TestMap` com zona de acampamento, fontes naturais e injeção de economia na `MainScene` (`T2.4`).
-- Ativação periódica da deterioração na cena jogável (`T2.4`).
-- Configuração de `DecayProfile` nos materiais efetivamente usados pelo jogo (`T2.4`).
 - Atualização do HUD (`T2.5`).
-- Benchmark gráfico na Intel UHD 620 (`T2.6`).
+- Teste interativo manual em janela gráfica e benchmark gráfico final na Intel UHD 620 (`T2.6`).
 
 ## Requisitos de ambiente
 

@@ -31,7 +31,7 @@ definition = ExtResource("2_stone_def")
 initial_amount = 20
 max_extract_per_operation = 1
 max_simultaneous_workers = 2
-interaction_radius = 1.7
+interaction_radius = 2.15
 
 [node name="SolidBody" type="StaticBody3D" parent="."]
 collision_layer = 2

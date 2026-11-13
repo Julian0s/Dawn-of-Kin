@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=27 format=3]
 
 [ext_resource type="Script" path="res://levels/test_map/test_map.gd" id="1_script"]
 [ext_resource type="Material" path="res://assets/placeholder/mat_ground_placeholder.tres" id="2_mat_ground"]
@@ -8,6 +8,10 @@
 [ext_resource type="PackedScene" path="res://assets/placeholder/rock_placeholder.tscn" id="6_rock"]
 [ext_resource type="PackedScene" path="res://assets/placeholder/tree_placeholder.tscn" id="7_tree"]
 [ext_resource type="Script" path="res://src/navigation/world_navigation.gd" id="8_world_nav"]
+[ext_resource type="Script" path="res://src/economy/camp_storage_zone.gd" id="9_camp_zone"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/tree_source.tscn" id="10_tree_source"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/rock_source.tscn" id="11_rock_source"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/bush_source.tscn" id="12_bush_source"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_ground"]
 material = ExtResource("2_mat_ground")
@@ -50,6 +54,14 @@ size = Vector3(0.6, 1.6, 6.8)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_enclosure_ew"]
 size = Vector3(0.6, 1.6, 6.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_camp_clearing"]
+albedo_color = Color(0.36, 0.33, 0.24, 1)
+roughness = 0.95
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_camp_clearing"]
+material = SubResource("StandardMaterial3D_camp_clearing")
+size = Vector2(5.6, 4.4)
 
 [node name="TestMap" type="Node3D"]
 script = ExtResource("1_script")
@@ -207,3 +219,55 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 19)
 
 [node name="Tree06" parent="Obstacles/Trees" instance=ExtResource("7_tree")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 21)
+
+[node name="CampStorageZone" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5)
+script = ExtResource("9_camp_zone")
+zone_id = &"camp_storage_main"
+zone_bounds_half_extents = Vector2(2.8, 2.2)
+slot_spacing = 1.2
+
+[node name="CampBoundaryVisual" type="MeshInstance3D" parent="CampStorageZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
+cast_shadow = 0
+mesh = SubResource("PlaneMesh_camp_clearing")
+
+[node name="CampPiles" type="Node3D" parent="."]
+
+[node name="ResourceSources" type="Node3D" parent="."]
+
+[node name="WoodTree01" parent="ResourceSources" instance=ExtResource("10_tree_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.5, 0, -1.5)
+source_id = &"wood_tree_01"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="WoodTree02" parent="ResourceSources" instance=ExtResource("10_tree_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0, 8.5)
+source_id = &"wood_tree_02"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="StoneRock01" parent="ResourceSources" instance=ExtResource("11_rock_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0, -1.5)
+source_id = &"stone_rock_01"
+initial_amount = 18
+max_extract_per_operation = 1
+
+[node name="StoneRock02" parent="ResourceSources" instance=ExtResource("11_rock_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0, 12.5)
+source_id = &"stone_rock_02"
+initial_amount = 18
+max_extract_per_operation = 1
+
+[node name="FoodBush01" parent="ResourceSources" instance=ExtResource("12_bush_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0, 4.5)
+source_id = &"food_bush_01"
+initial_amount = 30
+max_extract_per_operation = 2
+
+[node name="FoodBush02" parent="ResourceSources" instance=ExtResource("12_bush_source")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 10.5)
+source_id = &"food_bush_02"
+initial_amount = 30
+max_extract_per_operation = 2
