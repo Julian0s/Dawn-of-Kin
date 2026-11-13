@@ -24,15 +24,29 @@ signal order_finished(order: UnitOrder)
 @onready var _agent: NavigationAgent3D = $NavigationAgent3D
 @onready var _explorer_visual: Node3D = $VisualRoot/ExplorerVisual
 @onready var _cloak_visual: Node3D = $VisualRoot/CloakVisual
+@onready var _selection_area: Area3D = $SelectionArea
+@onready var _selection_indicator: SelectionIndicator = $SelectionIndicator
 
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
 var _world_navigation: WorldNavigation = null
+var _is_selected: bool = false
+var _is_hovered: bool = false
 
 
 func _ready() -> void:
 	collision_layer = CollisionLayers.MASK_UNITS
 	collision_mask = CollisionLayers.MASK_WORLD_SOLID
+
+	if _selection_area != null:
+		_selection_area.collision_layer = CollisionLayers.MASK_SELECTION
+		_selection_area.collision_mask = 0
+		_selection_area.monitoring = false
+		_selection_area.monitorable = true
+
+	if _selection_indicator != null:
+		_selection_indicator.set_selected(_is_selected)
+		_selection_indicator.set_hovered(_is_hovered)
 
 	if _movement != null:
 		_movement.configure(self, _agent)
@@ -123,6 +137,34 @@ func get_definition() -> CharacterDefinition:
 
 func get_character_id() -> StringName:
 	return definition.character_id if definition != null else &""
+
+
+func set_selected(selected: bool) -> void:
+	_is_selected = selected
+	if _selection_indicator != null:
+		_selection_indicator.set_selected(selected)
+
+
+func is_selected() -> bool:
+	return _is_selected
+
+
+func set_hovered(hovered: bool) -> void:
+	_is_hovered = hovered
+	if _selection_indicator != null:
+		_selection_indicator.set_hovered(hovered)
+
+
+func is_hovered() -> bool:
+	return _is_hovered
+
+
+func get_selection_area() -> Area3D:
+	return _selection_area
+
+
+func get_selection_indicator() -> SelectionIndicator:
+	return _selection_indicator
 
 
 func issue_order(order: UnitOrder) -> void:

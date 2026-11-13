@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/units/selection_indicator.gd" id="1_indicator_script"]
+
+[node name="SelectionIndicator" type="Node3D"]
+visible = false
+script = ExtResource("1_indicator_script")
+
+[node name="SelectedRing" type="MeshInstance3D" parent="."]
+visible = false
+
+[node name="HoverRing" type="MeshInstance3D" parent="."]
+visible = false

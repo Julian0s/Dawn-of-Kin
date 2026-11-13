@@ -1,11 +1,16 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://src/units/unit.gd" id="1_unit_script"]
 [ext_resource type="Script" path="res://src/units/unit_movement.gd" id="2_movement_script"]
+[ext_resource type="PackedScene" path="res://src/units/selection_indicator.tscn" id="3_selection_indicator"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.4
 height = 1.75
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_selection"]
+radius = 0.58
+height = 2.05
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_exp_boots"]
 top_radius = 0.24
@@ -143,3 +148,14 @@ mesh = SubResource("BoxMesh_clk_sash")
 
 [node name="UnitMovement" type="Node" parent="."]
 script = ExtResource("2_movement_script")
+
+[node name="SelectionArea" type="Area3D" parent="."]
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SelectionArea"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.025, 0)
+shape = SubResource("CapsuleShape3D_selection")
+
+[node name="SelectionIndicator" parent="." instance=ExtResource("3_selection_indicator")]
