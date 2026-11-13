@@ -4,7 +4,8 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ## Estado atual
 
-- **Marco ativo:** T1 — Fundação RTS (em validação final técnica da T1.10; aguardando revisão e protocolo manual `AC-16`)
+- **Marco ativo:** T2 — Trabalho e Recursos (**em fase de planejamento e revisão técnica; implementação de código ainda não autorizada**)
+- **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 

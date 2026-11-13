@@ -50,23 +50,28 @@
 
 ## 4. Loop central e controles RTS
 
-**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → recursos entram no estoque → construir e melhorar → sustentar famílias → explorar e lidar com ameaças ocasionais.
+**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → coletar e transportar recursos até locais de armazenamento → recursos entram no estoque → construir e melhorar → sustentar famílias → explorar e lidar com ameaças ocasionais.
 
-- **DECIDIDO:** clique esquerdo seleciona personagem; clique direito dá ordem contextual (mover, colher, cortar, construir, interagir).
-- **DECIDIDO:** tarefas são executadas automaticamente; o jogador não precisa controlar fisicamente cada golpe ou movimento.
-- **PROPOSTA:** arrastar caixa para seleção múltipla; Shift para enfileirar ordens; ícones discretos de estado; câmera com zoom, arraste e limites do mapa.
-- **PROPOSTA:** estados da unidade: ocioso, deslocando, trabalhando, transportando, defendendo, incapacitado.
+- **DECIDIDO:** clique esquerdo seleciona personagem; clique direito dá ordem contextual (mover, colher, cortar, entregar carga, construir, interagir).
+- **DECIDIDO:** tarefas são executadas automaticamente; o jogador não precisa controlar fisicamente cada golpe, deslocamento ou retorno de descarga.
+- **PROPOSTA:** arrastar caixa para seleção múltipla; Shift para enfileirar ordens; ícones discretos de estado e barra/porcentagem de carga; câmera com zoom, arraste e limites do mapa.
+- **PROPOSTA:** estados da unidade: ocioso, deslocando, trabalhando, transportando, defendendo, incapacitado (com `ocioso`, `deslocando`, `trabalhando` e `transportando` diretamente associados ao ciclo físico de coleta e entrega).
 - **Regra de UX:** preferir uma única ação contextual clara a painéis cheios de microcomandos.
 
 ## 5. Sobrevivência e economia simplificadas
 
 - **DECIDIDO:** não há barras individuais de fome ou sede.
-- **DECIDIDO:** o assentamento mantém um **estoque coletivo de pontos de alimentos**. Cada pessoa tem um consumo periódico; todos são sustentados por esse estoque.
+- **DECIDIDO:** o assentamento mantém um **estoque coletivo de pontos de alimentos** e demais recursos compartilhados. Cada pessoa tem um consumo periódico; todos são sustentados por esse estoque.
 - **DECIDIDO:** não é necessário cozinhar receitas complexas ou fabricar alimento ingrediente por ingrediente.
+- **DECIDIDO — Transporte físico e entrada no estoque:** os materiais coletados (madeira, pedra, alimentos e futuras categorias) **não** aparecem instantaneamente no estoque compartilhado durante a coleta. Cada trabalhador carrega fisicamente os materiais coletados e a transferência para o estoque coletivo acontece apenas quando ele descarrega em um local de armazenamento válido do assentamento.
+- **DECIDIDO — Peso, capacidade individual e porcentagem de carga:** cada tipo de material possui peso unitário específico e cada habitante (incluindo o casal protagonista) possui capacidade individual de carga. A capacidade ocupada deve ser representada em porcentagem (`0%` a `100%`) com base no peso total transportado, permitindo futura evolução da capacidade por características, profissão, equipamentos ou melhorias.
+- **DECIDIDO — Retorno automático ao acampamento:** quando a carga do trabalhador atingir `100%`, ou não houver espaço livre suficiente para comportar mais uma unidade coletável do material, ele interrompe o ciclo na fonte e retorna ao acampamento para descarregar.
+- **DECIDIDO — Armazenamento por categoria e evolução:** devem existir locais apropriados para armazenar madeira, pedra, alimentos e, futuramente, outras categorias, com suporte à evolução estrutural e de capacidade conforme a comunidade se desenvolve.
 - **Fontes iniciais previstas:** coleta de frutos, pesca, caça, plantações e, posteriormente, criação de animais.
 - **Recursos de trabalho iniciais previstos:** madeira, pedra e alimentos; minério é uma expansão posterior.
-- **PROPOSTA:** interface mostrar saldo alimentar por dia e autonomia estimada; consequências graduais se faltar alimento (redução de produtividade e risco para moradores comuns).
-- **ABERTO:** números de geração, consumo e penalidades, a calibrar por testes.
+- **PROPOSTA:** começar no Nível 1 com pontos rústicos especializados de acampamento para madeira, pedra e alimentos sem exigir construção prévia, evoluindo para depósitos construíveis na T3+; permitir que o trabalhador carregue múltiplas categorias na mesma carga em caso de redirecionamento e entregue carga parcial caso a fonte se esgote antes de atingir `100%`.
+- **PROPOSTA:** interface mostrar porcentagem de carga individual do morador selecionado, estoque coletivo por categoria, saldo alimentar por dia e autonomia estimada; consequências graduais se faltar alimento (redução de produtividade e risco para moradores comuns).
+- **ABERTO:** valores numéricos exatos de peso unitário, capacidade individual inicial, taxa de coleta, consumo, tetos de capacidade dos depósitos por nível e comportamento ao esgotar ou lotar todos os depósitos disponíveis, a calibrar por testes.
 
 ## 6. Construção, profissões e nível da comunidade
 
@@ -75,6 +80,7 @@
 - **DECIDIDO:** cada casal casado deve ter uma casinha/residência própria.
 - **DECIDIDO:** o jogador direciona a força de trabalho e decide quem atua como agricultor, pescador, lenhador, construtor, ferreiro, guarda etc.
 - **DECIDIDO:** a expansão de prédios e profissões será associada ao **nível de desenvolvimento da comunidade**, ainda sem fórmula definida.
+- **DECIDIDO — Evolução do armazenamento:** o armazenamento por categoria (madeira, pedra, alimentos e futuras categorias) evolui com o desenvolvimento do assentamento, partindo de pontos rústicos no acampamento inicial até depósitos dedicados e ampliações construíveis.
 - **ABERTO:** teto tecnológico; intenção atual é manter uma identidade rústica, com aparência melhorada progressivamente, e não avançar obrigatoriamente à indústria moderna.
 
 **Escada de progressão — PROPOSTA, não fechada:**
@@ -195,7 +201,7 @@
 | Marco | Escopo | Evidência mínima de conclusão |
 |---|---|---|
 | T1 — Fundação RTS | Câmera, terreno demonstrativo, casal selecionável, clique para mover | Os dois recebem e concluem ordens de movimento sem travar |
-| T2 — Trabalho e recursos | Recursos coletáveis, estoque compartilhado, tarefas automáticas | Ordem em árvore/arbusto altera estoque corretamente |
+| T2 — Trabalho e recursos | Recursos coletáveis com peso, capacidade individual (0%–100%), transporte físico, pontos de armazenamento por categoria e estoque compartilhado | Ordem em árvore/arbusto/rocha acumula carga na unidade e o estoque coletivo só aumenta após entrega física no depósito compatível |
 | T3 — Construção | Posicionar obra, descontar recursos, designar construtor | Abrigo/casa completado e persistido |
 | T4 — Mundo e calendário | Ciclo dia/noite, tempo, região inicial, salvar/carregar | Estado e construções persistem após reiniciar |
 | T5 — Família | Entidades familiares, fases, residência, nascimentos em modo teste | Vínculos e progressão sobrevivem ao save/load |
@@ -208,7 +214,7 @@
 ## 14. Critérios de aceite do primeiro protótipo
 
 1. Jogador consegue selecionar um ou ambos protagonistas e dar ordens pelo mouse.
-2. Personagens encontram caminho e executam ao menos um trabalho de coleta.
+2. Personagens encontram caminho, executam trabalho de coleta acumulando carga física individual e entregam os recursos nos locais de armazenamento apropriados do assentamento.
 3. Existe estoque coletivo com alimentos e outro recurso de construção.
 4. Jogador posiciona e conclui um abrigo sem entrar em interior.
 5. Interface é legível em câmera isométrica e não exige microgestão de fome individual.

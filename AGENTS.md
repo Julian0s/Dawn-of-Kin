@@ -2,8 +2,11 @@
 
 ## Fonte de verdade e escopo
 - Ler `Dawn_of_Kin_GDD_v1.0.md` antes de propor qualquer alteração. Respeitar os marcadores **DECIDIDO**, **PROPOSTA** e **ABERTO**; não converter hipóteses em funcionalidades obrigatórias.
-- Projeto: jogo single-player em Godot 4.x/GDScript, RTS isométrico 3D. A fase atual é **T1 — Fundação RTS**. Não implementar T2–T8 sem autorização específica.
+- Projeto: jogo single-player em Godot 4.x/GDScript, RTS isométrico 3D.
+- Estado atual do projeto: **T1 — Fundação RTS CONCLUÍDA** (marcada com tag Git `t1-complete` no commit `2808799`). A fase atual é **T2 — Trabalho e Recursos (EM PLANEJAMENTO E REVISÃO TÉCNICA)**. Não implementar código da T2 ou fases posteriores (T2.0 a T8) sem autorização específica prévia do usuário.
 - Avaliar o workspace real: conferir arquivos, versão instalada do Godot, renderer, hardware disponível, plugins e estado do Git antes de propor arquitetura.
+- Obrigação de confrontar relatórios com documentação e código real: nunca afirmar que testes foram executados ou que arquivos estão sincronizados sem validação e evidência concreta.
+- Trabalho estritamente incremental: submeter análise e plano revisável para aprovação explícita antes de criar ou alterar código.
 
 ## Qualidade antes da velocidade
 - Priorizar corretude, robustez, legibilidade, extensibilidade responsável e boa experiência de jogo. Entrega rápida, por si só, não é critério de sucesso.
