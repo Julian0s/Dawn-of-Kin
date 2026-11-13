@@ -15,7 +15,8 @@ enum SilhouetteKind {
 @export var silhouette_kind: SilhouetteKind = SilhouetteKind.EXPLORER_PACK
 @export var primary_color: Color = Color(0.86, 0.34, 0.18, 1.0)
 @export var secondary_color: Color = Color(0.22, 0.17, 0.14, 1.0)
+@export var base_carry_capacity: int = 20
 
 
 func is_valid() -> bool:
-	return not character_id.is_empty() and move_speed > 0.0 and is_finite(move_speed) and turn_rate > 0.0
+	return not character_id.is_empty() and move_speed > 0.0 and is_finite(move_speed) and turn_rate > 0.0 and base_carry_capacity > 0

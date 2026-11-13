@@ -11,3 +11,4 @@ turn_rate = 10.0
 silhouette_kind = 0
 primary_color = Color(0.86, 0.34, 0.18, 1)
 secondary_color = Color(0.22, 0.17, 0.14, 1)
+base_carry_capacity = 20

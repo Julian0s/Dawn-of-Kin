@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/economy/resource_definition.gd" id="1_res_def"]
+
+[resource]
+script = ExtResource("1_res_def")
+resource_id = &"stone"
+display_name = "Stone"
+category = 2
+unit_weight = 3
