@@ -1,7 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
-[ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="1_test_map"]
-[ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="2_debug_overlay"]
+[ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
+[ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
+[ext_resource type="PackedScene" path="res://src/camera/rts_camera_rig.tscn" id="3_camera_rig"]
+[ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="4_debug_overlay"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -19,17 +21,15 @@ ambient_light_source = 3
 ambient_light_sky_contribution = 0.7
 
 [node name="Main" type="Node3D"]
+script = ExtResource("1_main_script")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_main")
 
-[node name="TestMap" parent="." instance=ExtResource("1_test_map")]
+[node name="TestMap" parent="." instance=ExtResource("2_test_map")]
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.707107, -0.50816, 0.491705, 0, 0.695376, 0.718646, -0.707107, -0.50816, 0.491705, 26, 38, 26)
-fov = 35.0
-far = 200.0
+[node name="RtsCameraRig" parent="." instance=ExtResource("3_camera_rig")]
 
 [node name="UiLayer" type="CanvasLayer" parent="."]
 
-[node name="DebugOverlay" parent="UiLayer" instance=ExtResource("2_debug_overlay")]
+[node name="DebugOverlay" parent="UiLayer" instance=ExtResource("4_debug_overlay")]
