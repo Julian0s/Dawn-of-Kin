@@ -24,6 +24,15 @@ const STEP_UP_FORWARD_PROBE: float = 0.14
 const STUCK_WINDOW_SEC: float = 1.5
 const STUCK_MIN_PROGRESS_XZ: float = 0.25
 const MAX_REPATH_ATTEMPTS: int = 1
+const AVOIDANCE_RADIUS: float = 0.5
+const AVOIDANCE_NEIGHBOR_DISTANCE: float = 3.5
+const AVOIDANCE_MAX_NEIGHBORS: int = 8
+const AVOIDANCE_TIME_HORIZON_AGENTS: float = 0.8
+const AVOIDANCE_PRIORITY_IDLE: float = 1.0
+const AVOIDANCE_PRIORITY_MOVING: float = 0.5
+const AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_XZ: float = 0.45
+const AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_Y: float = 0.75
+const AVOIDANCE_MIN_ROTATION_SPEED: float = 0.2
 
 @export var navigation_agent_path: NodePath = ^"../NavigationAgent3D"
 
@@ -42,6 +51,8 @@ var _active_path_index: int = 0
 var _progress_anchor_xz: Vector2 = Vector2.ZERO
 var _no_progress_timer: float = 0.0
 var _repath_attempts: int = 0
+var _safe_velocity: Vector3 = Vector3.ZERO
+var _has_safe_velocity: bool = false
 
 
 func _ready() -> void:
@@ -50,9 +61,14 @@ func _ready() -> void:
 	_configure_body_and_agent()
 
 
+func _exit_tree() -> void:
+	_disconnect_agent_signals()
+
+
 func configure(body: CharacterBody3D, agent: NavigationAgent3D = null) -> void:
 	_body = body
-	if agent != null:
+	if agent != null and agent != _agent:
+		_disconnect_agent_signals()
 		_agent = agent
 	elif _agent == null:
 		_agent = get_node_or_null(navigation_agent_path) as NavigationAgent3D
@@ -71,6 +87,8 @@ func get_world_navigation() -> WorldNavigation:
 func set_motion_profile(move_speed: float, turn_rate: float) -> void:
 	_move_speed = maxf(move_speed, 0.1)
 	_turn_rate = maxf(turn_rate, 0.1)
+	if _agent != null:
+		_agent.max_speed = _move_speed
 
 
 func get_move_state() -> MoveState:
@@ -109,11 +127,17 @@ func begin_move_to(target: Vector3) -> bool:
 	_repath_attempts = 0
 	_no_progress_timer = 0.0
 	_progress_anchor_xz = Vector2(_body.global_position.x, _body.global_position.z)
+	_safe_velocity = Vector3.ZERO
+	_has_safe_velocity = false
 
 	if is_at_target(_target_position):
 		_move_state = MoveState.ARRIVED
+		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
+		_agent.set_velocity(Vector3.ZERO)
 		return true
 
+	_agent.max_speed = _move_speed
+	_agent.avoidance_priority = AVOIDANCE_PRIORITY_MOVING
 	_agent.target_position = _target_position
 	_agent.get_next_path_position()
 	_refresh_active_path()
@@ -127,11 +151,16 @@ func stop_movement() -> void:
 	_repath_attempts = 0
 	_active_path = PackedVector3Array()
 	_active_path_index = 0
+	_safe_velocity = Vector3.ZERO
+	_has_safe_velocity = false
 	if _body != null:
 		_body.velocity.x = 0.0
 		_body.velocity.z = 0.0
-	if _agent != null and _body != null:
-		_agent.target_position = _body.global_position
+	if _agent != null:
+		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
+		_agent.set_velocity(Vector3.ZERO)
+		if _body != null:
+			_agent.target_position = _body.global_position
 
 
 func step_movement(delta: float) -> void:
@@ -146,6 +175,9 @@ func step_movement(delta: float) -> void:
 		vel.y = 0.0
 
 	if _move_state != MoveState.MOVING:
+		if _agent != null and _agent.avoidance_enabled:
+			_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
+			_agent.set_velocity(Vector3.ZERO)
 		vel.x = 0.0
 		vel.z = 0.0
 		_body.velocity = vel
@@ -169,6 +201,7 @@ func step_movement(delta: float) -> void:
 	var delta_xz: Vector2 = Vector2(steer_point.x - body_pos.x, steer_point.z - body_pos.z)
 	var dist_xz: float = delta_xz.length()
 
+	var desired_xz: Vector2 = Vector2.ZERO
 	if dist_xz > 0.001:
 		var dir_xz: Vector2 = delta_xz / dist_xz
 		var step_speed: float = _move_speed
@@ -176,25 +209,38 @@ func step_movement(delta: float) -> void:
 		if on_final_segment and delta > 0.0:
 			var dist_to_final_xz: float = _distance_xz(body_pos, _target_position)
 			step_speed = minf(_move_speed, dist_to_final_xz / delta)
-		vel.x = dir_xz.x * step_speed
-		vel.z = dir_xz.y * step_speed
+		desired_xz = dir_xz * step_speed
 
-		var target_yaw: float = atan2(-dir_xz.x, -dir_xz.y)
+	if _agent.avoidance_enabled:
+		_agent.max_speed = _move_speed
+		_agent.avoidance_priority = AVOIDANCE_PRIORITY_MOVING
+		_agent.set_velocity(Vector3(desired_xz.x, 0.0, desired_xz.y))
+
+	var applied_xz: Vector2 = desired_xz
+	if _agent.avoidance_enabled and _has_safe_velocity:
+		var safe_xz := Vector2(_safe_velocity.x, _safe_velocity.z)
+		if safe_xz.length() > _move_speed:
+			safe_xz = safe_xz.normalized() * _move_speed
+		applied_xz = _clamp_avoidance_to_navmesh(body_pos, safe_xz, desired_xz, delta)
+
+	vel.x = applied_xz.x
+	vel.z = applied_xz.y
+
+	if applied_xz.length() > AVOIDANCE_MIN_ROTATION_SPEED:
+		var move_dir: Vector2 = applied_xz.normalized()
+		var target_yaw: float = atan2(-move_dir.x, -move_dir.y)
 		var rot_alpha: float = 1.0 - exp(-_turn_rate * delta)
 		_body.rotation.y = lerp_angle(_body.rotation.y, target_yaw, rot_alpha)
-	else:
-		vel.x = 0.0
-		vel.z = 0.0
 
 	var pre_move_xz: Vector2 = Vector2(_body.global_position.x, _body.global_position.z)
 	_body.velocity = vel
 	_body.move_and_slide()
 
-	if dist_xz > 0.001:
+	if applied_xz.length() > 0.001:
 		var post_move_xz: Vector2 = Vector2(_body.global_position.x, _body.global_position.z)
-		var expected_xz: float = Vector2(vel.x, vel.z).length() * delta
+		var expected_xz: float = applied_xz.length() * delta
 		if expected_xz > 0.01 and post_move_xz.distance_to(pre_move_xz) < expected_xz * 0.35:
-			_try_terrain_step_up(Vector2(vel.x, vel.z).normalized(), expected_xz)
+			_try_terrain_step_up(applied_xz.normalized(), expected_xz)
 
 	if is_at_target(_target_position):
 		_finish_arrival(_body.velocity)
@@ -206,7 +252,12 @@ func step_movement(delta: float) -> void:
 func _finish_arrival(current_vel: Vector3) -> void:
 	_move_state = MoveState.ARRIVED
 	_no_progress_timer = 0.0
+	_safe_velocity = Vector3.ZERO
+	_has_safe_velocity = false
 	_body.velocity = Vector3(0.0, current_vel.y, 0.0)
+	if _agent != null:
+		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
+		_agent.set_velocity(Vector3.ZERO)
 
 
 func _resolve_steer_point() -> Vector3:
@@ -349,10 +400,83 @@ func _configure_body_and_agent() -> void:
 		_agent.path_desired_distance = AGENT_PATH_DESIRED_DISTANCE
 		_agent.target_desired_distance = AGENT_TARGET_DESIRED_DISTANCE
 		_agent.path_max_distance = AGENT_PATH_MAX_DISTANCE
-		_agent.radius = WorldNavigation.DEFAULT_AGENT_RADIUS
+		_agent.use_3d_avoidance = false
+		_agent.radius = AVOIDANCE_RADIUS
 		_agent.height = WorldNavigation.DEFAULT_AGENT_HEIGHT
-		_agent.avoidance_enabled = false
+		_agent.neighbor_distance = AVOIDANCE_NEIGHBOR_DISTANCE
+		_agent.max_neighbors = AVOIDANCE_MAX_NEIGHBORS
+		_agent.time_horizon_agents = AVOIDANCE_TIME_HORIZON_AGENTS
+		_agent.time_horizon_obstacles = 0.0
+		_agent.max_speed = _move_speed
+		_agent.avoidance_layers = 1
+		_agent.avoidance_mask = 1
+		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
+		_agent.avoidance_enabled = true
+		_connect_agent_signals()
 		_bind_agent_map()
+
+
+func _connect_agent_signals() -> void:
+	if _agent != null and not _agent.velocity_computed.is_connected(_on_velocity_computed):
+		_agent.velocity_computed.connect(_on_velocity_computed)
+
+
+func _disconnect_agent_signals() -> void:
+	if _agent != null and is_instance_valid(_agent) and _agent.velocity_computed.is_connected(_on_velocity_computed):
+		_agent.velocity_computed.disconnect(_on_velocity_computed)
+
+
+func _on_velocity_computed(safe_velocity: Vector3) -> void:
+	if _move_state != MoveState.MOVING:
+		_safe_velocity = Vector3.ZERO
+		_has_safe_velocity = false
+		return
+	if safe_velocity.is_finite():
+		_safe_velocity = safe_velocity
+		_has_safe_velocity = true
+
+
+func _clamp_avoidance_to_navmesh(
+	body_pos: Vector3,
+	safe_xz: Vector2,
+	desired_xz: Vector2,
+	delta: float
+) -> Vector2:
+	if safe_xz.length_squared() < 0.001:
+		return safe_xz
+	if _world_navigation == null or not _world_navigation.is_navigation_ready():
+		return safe_xz
+	if safe_xz.distance_to(desired_xz) <= 0.15:
+		return safe_xz
+
+	var lookahead: float = maxf(delta * 8.0, 0.35)
+	var probe_dir: Vector2 = safe_xz.normalized()
+	var probe_pos := Vector3(body_pos.x + probe_dir.x * lookahead, body_pos.y, body_pos.z + probe_dir.y * lookahead)
+	var snapped: Vector3 = _world_navigation.snap_to_navmesh(probe_pos)
+	if not snapped.is_finite():
+		return desired_xz
+
+	if _distance_xz(probe_pos, snapped) <= AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_XZ and absf(snapped.y - body_pos.y) <= AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_Y:
+		return safe_xz
+
+	var inward_xz := Vector2(snapped.x - probe_pos.x, snapped.z - probe_pos.z)
+	if inward_xz.length_squared() < 0.0001:
+		return desired_xz
+
+	var outward_dir: Vector2 = -inward_xz.normalized()
+	var outward_proj: float = safe_xz.dot(outward_dir)
+	if outward_proj > 0.0:
+		var clamped_xz: Vector2 = safe_xz - outward_dir * outward_proj
+		if clamped_xz.length_squared() > 0.001:
+			var check_dir: Vector2 = clamped_xz.normalized()
+			var check_pos := Vector3(body_pos.x + check_dir.x * lookahead, body_pos.y, body_pos.z + check_dir.y * lookahead)
+			var check_snap: Vector3 = _world_navigation.snap_to_navmesh(check_pos)
+			if check_snap.is_finite() and _distance_xz(check_pos, check_snap) <= AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_XZ and absf(check_snap.y - body_pos.y) <= AVOIDANCE_NAVMESH_CLAMP_TOLERANCE_Y:
+				return clamped_xz
+
+	if desired_xz.length_squared() > 0.001:
+		return desired_xz.normalized() * minf(desired_xz.length(), safe_xz.length())
+	return Vector2.ZERO
 
 
 func _bind_agent_map() -> void:

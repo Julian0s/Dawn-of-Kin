@@ -18,6 +18,7 @@ class PlanResult extends RefCounted:
 	var targets: Array[Vector3] = []
 	var all_slots_reachable: bool = false
 	var requested_target_reachable: bool = true
+	var adjusted_for_occupancy: bool = false
 
 
 static func plan_targets(
@@ -27,7 +28,8 @@ static func plan_targets(
 	clearance: float = DEFAULT_CLEARANCE,
 	snap_callable: Callable = Callable(),
 	reachability_callable: Callable = Callable(),
-	allow_snapped_anchor_on_unreachable: bool = true
+	allow_snapped_anchor_on_unreachable: bool = true,
+	occupied_positions: Array[Vector3] = []
 ) -> PlanResult:
 	var result := PlanResult.new()
 	var unit_count: int = unit_positions.size()
@@ -70,13 +72,33 @@ static func plan_targets(
 
 	result.anchor_position = anchor
 
+	var valid_occupied: Array[Vector3] = []
+	for occ_pos: Vector3 in occupied_positions:
+		if occ_pos.is_finite():
+			valid_occupied.append(occ_pos)
+
 	if unit_count == 1:
 		var single_reachable: bool = true
 		if has_reachability:
 			single_reachable = _is_reachable(unit_positions[0], anchor, reachability_callable)
 		if not single_reachable and not allow_snapped_anchor_on_unreachable:
 			return _build_unreachable_fallback_plan(unit_positions, requested_target, min_spacing)
-		result.targets.append(anchor)
+
+		var resolved_single: Vector3 = anchor
+		if single_reachable and not valid_occupied.is_empty() and not _is_separated_from_all(anchor, valid_occupied, min_spacing):
+			var free_slot: Vector3 = _find_unoccupied_reachable_slot(
+				unit_positions[0],
+				anchor,
+				min_spacing,
+				snap_callable,
+				reachability_callable,
+				valid_occupied
+			)
+			if free_slot.is_finite():
+				resolved_single = free_slot
+				result.adjusted_for_occupancy = true
+
+		result.targets.append(resolved_single)
 		result.all_slots_reachable = single_reachable
 		result.valid = true
 		return result
@@ -95,6 +117,9 @@ static func plan_targets(
 		if has_reachability and not _any_unit_can_reach(unit_positions, candidate, reachability_callable):
 			continue
 		if not _is_separated_from_all(candidate, accepted_slots, min_spacing):
+			continue
+		if not valid_occupied.is_empty() and not _is_separated_from_all(candidate, valid_occupied, min_spacing):
+			result.adjusted_for_occupancy = true
 			continue
 		accepted_slots.append(candidate)
 
@@ -213,6 +238,42 @@ static func _build_unreachable_fallback_plan(
 	result.targets = assign_slots_minimum_distance(unit_positions, slots)
 	result.valid = result.targets.size() == count
 	return result
+
+
+static func _find_unoccupied_reachable_slot(
+	unit_pos: Vector3,
+	anchor: Vector3,
+	min_spacing: float,
+	snap_callable: Callable,
+	reachability_callable: Callable,
+	occupied_positions: Array[Vector3]
+) -> Vector3:
+	var has_reachability: bool = reachability_callable.is_valid()
+	var right_axis: Vector3 = _compute_right_axis_xz(unit_pos, anchor)
+	var best_slot := Vector3(NAN, NAN, NAN)
+	var best_score: float = INF
+	var base_angle: float = atan2(right_axis.z, right_axis.x)
+
+	for ring_idx: int in range(1, MAX_RING_COUNT + 1):
+		var radius: float = min_spacing * float(ring_idx)
+		var ring_samples: int = maxi(RING_BASE_SAMPLES * 2 * ring_idx, ceili(TAU * radius / (min_spacing * 0.5)))
+		for sample_idx: int in range(ring_samples):
+			var angle: float = base_angle + TAU * (float(sample_idx) / float(ring_samples))
+			var raw_pos: Vector3 = anchor + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+			var candidate: Vector3 = _snap_position(raw_pos, snap_callable)
+			if not candidate.is_finite():
+				continue
+			if has_reachability and not _is_reachable(unit_pos, candidate, reachability_callable):
+				continue
+			if not _is_separated_from_all(candidate, occupied_positions, min_spacing):
+				continue
+			var score: float = _distance_xz(candidate, anchor) + 0.15 * _distance_xz(candidate, unit_pos)
+			if score < best_score:
+				best_score = score
+				best_slot = candidate
+		if best_slot.is_finite():
+			return best_slot
+	return best_slot
 
 
 static func _find_nearby_reachable_anchor(

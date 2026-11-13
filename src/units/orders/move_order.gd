@@ -4,13 +4,21 @@ extends UnitOrder
 ## Distinguishes full reachability from partial fallback and reports explicit failure reasons.
 
 var target_position: Vector3 = Vector3.ZERO
+var requested_target: Vector3 = Vector3.ZERO
+var adjusted_for_occupancy: bool = false
 var resolved_target: Vector3 = Vector3.ZERO
 var is_partial_unreachable: bool = false
 var navigation_reason: String = ""
 
 
-func _init(p_target_position: Vector3 = Vector3.ZERO) -> void:
+func _init(
+	p_target_position: Vector3 = Vector3.ZERO,
+	p_requested_target: Vector3 = Vector3(INF, INF, INF),
+	p_adjusted_for_occupancy: bool = false
+) -> void:
 	target_position = p_target_position
+	requested_target = p_requested_target if p_requested_target.is_finite() else p_target_position
+	adjusted_for_occupancy = p_adjusted_for_occupancy
 	resolved_target = p_target_position
 
 

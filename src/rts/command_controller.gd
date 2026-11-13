@@ -86,6 +86,7 @@ func command_at(pick: PickResult) -> bool:
 	for unit: Unit in units:
 		unit_positions.append(unit.global_position)
 
+	var occupied_positions: Array[Vector3] = _collect_occupied_positions(units)
 	var snap_cb := Callable(_world_navigation, "snap_to_navmesh")
 	var reach_cb := Callable(_world_navigation, "is_position_reachable")
 	var plan: GroupMovePlanner.PlanResult = GroupMovePlanner.plan_targets(
@@ -95,7 +96,8 @@ func command_at(pick: PickResult) -> bool:
 		formation_clearance,
 		snap_cb,
 		reach_cb,
-		allow_snapped_anchor
+		allow_snapped_anchor,
+		occupied_positions
 	)
 	_last_plan = plan
 	if not plan.valid or plan.targets.size() != units.size():
@@ -105,14 +107,43 @@ func command_at(pick: PickResult) -> bool:
 		var unit: Unit = units[idx]
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
-		unit.issue_order(MoveOrder.new(plan.targets[idx]))
+		unit.issue_order(MoveOrder.new(plan.targets[idx], requested_target, plan.adjusted_for_occupancy))
 
 	var marker_pos: Vector3 = plan.anchor_position if plan.all_slots_reachable else requested_target
+	if units.size() == 1 and plan.all_slots_reachable and plan.adjusted_for_occupancy:
+		marker_pos = plan.targets[0]
 	if _destination_marker != null and is_instance_valid(_destination_marker):
 		_destination_marker.show_at(marker_pos, marker_normal, plan.all_slots_reachable)
 
 	command_issued.emit(pick, marker_pos, units.size(), plan.all_slots_reachable)
 	return true
+
+
+func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]:
+	var occupied: Array[Vector3] = []
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return occupied
+
+	for node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
+		if not (node is Unit):
+			continue
+		var other: Unit = node as Unit
+		if not is_instance_valid(other) or not other.is_inside_tree():
+			continue
+		if commanded_units.has(other):
+			continue
+
+		if other.get_state() == Unit.State.MOVING:
+			var other_order: UnitOrder = other.get_current_order()
+			if other_order is MoveOrder:
+				var reserved: Vector3 = (other_order as MoveOrder).resolved_target
+				if reserved.is_finite():
+					occupied.append(reserved)
+					continue
+		occupied.append(other.global_position)
+
+	return occupied
 
 
 func _collect_commandable_units() -> Array[Unit]:

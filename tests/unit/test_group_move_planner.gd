@@ -161,6 +161,118 @@ func test_06_assignment_avoids_crossed_paths() -> void:
 	assert_vec3_near(assigned_swapped[1], Vector3(-3.0, 0.0, 0.0), 0.001)
 
 
+func test_07_single_unit_adjusts_around_occupied_position() -> void:
+	var identity_snap := func(pos: Vector3) -> Vector3:
+		return pos
+	var always_ok := func(_from: Vector3, _to: Vector3) -> bool:
+		return true
+
+	var units: Array[Vector3] = [Vector3(-5.0, 0.0, 0.0)]
+	var occupied: Array[Vector3] = [Vector3(0.0, 0.0, 0.0)]
+
+	var plan: GroupMovePlanner.PlanResult = GroupMovePlanner.plan_targets(
+		units,
+		Vector3(0.1, 0.0, 0.1),
+		0.5,
+		0.8,
+		identity_snap,
+		always_ok,
+		false,
+		occupied
+	)
+
+	assert_true(plan.valid)
+	assert_true(plan.all_slots_reachable)
+	assert_true(plan.requested_target_reachable)
+	assert_true(plan.adjusted_for_occupancy, "Overlapping occupied slot must trigger occupancy adjustment")
+	assert_eq(plan.targets.size(), 1)
+	assert_true(
+		_dist_xz(plan.targets[0], occupied[0]) >= MIN_SPACING_DEFAULT - 0.002,
+		"Adjusted single-unit slot must preserve min_spacing from occupied position"
+	)
+
+	# Far occupied position must leave single-unit target unadjusted
+	var far_occupied: Array[Vector3] = [Vector3(10.0, 0.0, 10.0)]
+	var clear_plan: GroupMovePlanner.PlanResult = GroupMovePlanner.plan_targets(
+		units,
+		Vector3(0.0, 0.0, 0.0),
+		0.5,
+		0.8,
+		identity_snap,
+		always_ok,
+		false,
+		far_occupied
+	)
+	assert_true(clear_plan.valid)
+	assert_false(clear_plan.adjusted_for_occupancy, "Distant occupied position must not alter requested target")
+	assert_vec3_near(clear_plan.targets[0], Vector3.ZERO, 0.001)
+
+
+func test_08_group_move_respects_external_occupied_positions() -> void:
+	var identity_snap := func(pos: Vector3) -> Vector3:
+		return pos
+	var always_ok := func(_from: Vector3, _to: Vector3) -> bool:
+		return true
+
+	var units: Array[Vector3] = [
+		Vector3(-6.0, 0.0, -1.0),
+		Vector3(-6.0, 0.0, 1.0),
+	]
+	# External unit is parked near the left slot around (0,0,0)
+	var occupied: Array[Vector3] = [Vector3(-1.0, 0.0, 0.0)]
+
+	var plan: GroupMovePlanner.PlanResult = GroupMovePlanner.plan_targets(
+		units,
+		Vector3(0.0, 0.0, 0.0),
+		0.5,
+		0.8,
+		identity_snap,
+		always_ok,
+		false,
+		occupied
+	)
+
+	assert_true(plan.valid)
+	assert_true(plan.all_slots_reachable)
+	assert_eq(plan.targets.size(), 2)
+	assert_true(
+		_dist_xz(plan.targets[0], plan.targets[1]) >= MIN_SPACING_DEFAULT - 0.002,
+		"Group targets must stay spaced apart from each other"
+	)
+	for slot: Vector3 in plan.targets:
+		assert_true(
+			_dist_xz(slot, occupied[0]) >= MIN_SPACING_DEFAULT - 0.002,
+			"Group slots must stay clear of external occupied positions"
+		)
+
+
+func test_09_unreachable_target_with_occupied_positions_preserves_unreachable_contract() -> void:
+	var snap_inside_enclosure := func(pos: Vector3) -> Vector3:
+		return pos
+	var block_enclosure := func(_from: Vector3, to: Vector3) -> bool:
+		return to.x < 10.0
+
+	var units: Array[Vector3] = [Vector3(-4.0, 0.0, 0.0)]
+	var occupied: Array[Vector3] = [Vector3(12.0, 0.0, 0.0)]
+
+	var plan: GroupMovePlanner.PlanResult = GroupMovePlanner.plan_targets(
+		units,
+		Vector3(12.0, 0.0, 0.0),
+		0.5,
+		0.8,
+		snap_inside_enclosure,
+		block_enclosure,
+		false,
+		occupied
+	)
+
+	assert_true(plan.valid)
+	assert_false(plan.requested_target_reachable, "Unreachable target must remain marked unreachable")
+	assert_false(plan.all_slots_reachable, "Unreachable enclosure must not claim reachable slots")
+	assert_false(plan.adjusted_for_occupancy, "Unreachable target must not masquerade as occupancy adjustment")
+	assert_vec3_near(plan.targets[0], Vector3(12.0, 0.0, 0.0), 0.001)
+
+
 static func _dist_xz(a: Vector3, b: Vector3) -> float:
 	var dx: float = a.x - b.x
 	var dz: float = a.z - b.z
