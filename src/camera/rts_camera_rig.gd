@@ -24,7 +24,7 @@ const ZOOM_SNAP_EPSILON: float = 0.001
 @export var reference_distance: float = 36.0
 @export var pan_smoothing: float = 16.0
 @export var edge_pan_enabled: bool = true
-@export var edge_pan_margin_base_px: float = 16.0
+@export var edge_pan_margin_base_px: float = 6.0
 @export var map_bounds: Rect2 = Rect2(-32.0, -32.0, 64.0, 64.0)
 
 @onready var _yaw_pivot: Node3D = $YawPivot
@@ -41,6 +41,7 @@ var _is_dragging: bool = false
 var _pending_drag_pixels: Vector2 = Vector2.ZERO
 var _window_has_focus: bool = false
 var _mouse_inside_window: bool = false
+var _last_mouse_pos: Vector2 = -Vector2.ONE
 
 
 func _ready() -> void:
@@ -100,6 +101,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion:
 		var motion: InputEventMouseMotion = event as InputEventMouseMotion
+		_last_mouse_pos = motion.position
 		if viewport != null and viewport.get_visible_rect().has_point(motion.position):
 			_mouse_inside_window = true
 		if _is_dragging:
@@ -252,9 +254,14 @@ func _collect_pan_direction() -> Vector2:
 	if edge_pan_enabled and not _is_dragging and _window_has_focus and _mouse_inside_window:
 		var viewport: Viewport = get_viewport()
 		if viewport != null:
-			var margin_px: float = edge_pan_margin_base_px * CameraMath.get_dpi_scale(DisplayServer.screen_get_dpi())
+			var scale_factor: float = 1.0
+			var win: Window = viewport.get_window()
+			if win != null and win.size.y > 64:
+				scale_factor = viewport.get_visible_rect().size.y / float(win.size.y)
+			var margin_px: float = edge_pan_margin_base_px * scale_factor
+			var mouse_pos: Vector2 = _last_mouse_pos if _last_mouse_pos.x >= 0.0 else viewport.get_mouse_position()
 			var edge_dir: Vector2 = CameraMath.compute_edge_pan_direction(
-				viewport.get_mouse_position(),
+				mouse_pos,
 				viewport.get_visible_rect().size,
 				margin_px
 			)

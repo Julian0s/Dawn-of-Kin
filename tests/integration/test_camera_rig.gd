@@ -230,6 +230,55 @@ func test_07_no_unexpected_drift_and_main_scene_preservation() -> void:
 	assert_near(rig.get_current_zoom_distance(), rig.default_distance, 0.0001, "Zoom must remain steady with no user input")
 
 
+func test_08_edge_pan_activation_zones_and_toggle() -> void:
+	var rig: RtsCameraRig = CAMERA_RIG_SCENE.instantiate() as RtsCameraRig
+	rig.edge_pan_enabled = true
+	rig.edge_pan_margin_base_px = 6.0
+	add_test_child(rig)
+	rig.set_map_bounds(Rect2(-100.0, -100.0, 200.0, 200.0))
+	rig.set_focus_position(Vector2.ZERO)
+	await wait_process_frames(2)
+
+	# Simulate focus and mouse inside window
+	rig._window_has_focus = true
+	rig._mouse_inside_window = true
+
+	var vp: Viewport = rig.get_viewport()
+	var vp_size: Vector2 = vp.get_visible_rect().size
+
+	# Center (e.g. 960, 540): stationary
+	var center: Vector2 = vp_size * 0.5
+	var motion := InputEventMouseMotion.new()
+	motion.position = center
+	vp.push_input(motion, true)
+	await wait_process_frames(1)
+	rig.step_camera(1.0 / 60.0)
+	assert_vec2_near(rig.get_focus_position(), Vector2.ZERO, 0.0001, "Cursor at center must not pan camera")
+
+	# 40px away from left edge: stationary
+	motion.position = Vector2(40.0, center.y)
+	vp.push_input(motion, true)
+	await wait_process_frames(1)
+	rig.step_camera(1.0 / 60.0)
+	assert_vec2_near(rig.get_focus_position(), Vector2.ZERO, 0.0001, "Cursor 40px from edge must not pan camera")
+
+	# Close to left edge (e.g. 2px): pans left
+	motion.position = Vector2(2.0, center.y)
+	vp.push_input(motion, true)
+	await wait_process_frames(1)
+	for _i: int in range(10):
+		rig.step_camera(1.0 / 60.0)
+	assert_lt(rig.get_focus_position().x, 0.0, "Cursor at 2px from left edge must pan left")
+
+	# Explicitly disabled edge scrolling: camera does not pan at 2px
+	rig.edge_pan_enabled = false
+	rig.set_focus_position(Vector2.ZERO)
+	await wait_process_frames(1)
+	for _i: int in range(10):
+		rig.step_camera(1.0 / 60.0)
+	assert_vec2_near(rig.get_focus_position(), Vector2.ZERO, 0.0001, "Edge pan disabled must prevent panning at edge")
+
+
 func _set_action_pressed(action: StringName, pressed: bool) -> void:
 	var ev: InputEventAction = InputEventAction.new()
 	ev.action = action

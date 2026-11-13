@@ -65,10 +65,11 @@ func test_06_drag_screen_pan_and_edge_pan() -> void:
 	assert_vec2_near(pan_far, pan_near * 2.0, 0.0001, "Drag pan must scale linearly with zoom distance")
 
 	var viewport: Vector2 = Vector2(1920.0, 1080.0)
-	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(960.0, 540.0), viewport, 16.0), Vector2.ZERO, 0.0001)
-	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(-5.0, 540.0), viewport, 16.0), Vector2.ZERO, 0.0001)
-	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(4.0, 540.0), viewport, 16.0), Vector2(-1.0, 0.0), 0.0001)
-	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(1916.0, 4.0), viewport, 16.0), Vector2(1.0, 1.0).normalized(), 0.0001)
+	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(960.0, 540.0), viewport, 6.0), Vector2.ZERO, 0.0001)
+	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(-5.0, 540.0), viewport, 6.0), Vector2.ZERO, 0.0001)
+	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(40.0, 540.0), viewport, 6.0), Vector2.ZERO, 0.0001, "30-50px from edge must not trigger pan")
+	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(4.0, 540.0), viewport, 6.0), Vector2(-1.0, 0.0), 0.0001)
+	assert_vec2_near(CameraMath.compute_edge_pan_direction(Vector2(1916.0, 4.0), viewport, 6.0), Vector2(1.0, 1.0).normalized(), 0.0001)
 
 
 func test_07_camera_local_offset_and_dpi_scale() -> void:
