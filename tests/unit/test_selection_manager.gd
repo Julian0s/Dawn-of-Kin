@@ -228,3 +228,40 @@ func test_06_tree_exit_and_invalid_unit_cleanup() -> void:
 	assert_false(unit_b.is_selected())
 
 	await _cleanup_harness(harness)
+
+
+func test_07_add_units_batch_deduplication_and_noop() -> void:
+	var harness: Dictionary = _create_test_harness()
+	var manager: SelectionManager = harness["manager"] as SelectionManager
+	var unit_a: Unit = harness["unit_a"] as Unit
+	var unit_b: Unit = harness["unit_b"] as Unit
+	await wait_process_frames(1)
+
+	var signal_counts: Array[int] = [0]
+	manager.selection_changed.connect(func(_units: Array[Unit]) -> void:
+		signal_counts[0] += 1
+	)
+
+	manager.select_single(unit_a)
+	assert_eq(signal_counts[0], 1)
+
+	# Empty batch preserves existing selection and emits no redundant signal.
+	var empty: Array[Unit] = []
+	manager.add_units(empty)
+	assert_eq(manager.get_selection_count(), 1)
+	assert_true(manager.is_selected(unit_a))
+	assert_eq(signal_counts[0], 1)
+
+	# Duplicate + new unit adds only unit_b and emits once.
+	var mixed: Array[Unit] = [unit_a, unit_b, unit_b]
+	manager.add_units(mixed)
+	assert_eq(manager.get_selection_count(), 2)
+	assert_true(manager.is_selected(unit_a))
+	assert_true(manager.is_selected(unit_b))
+	assert_eq(signal_counts[0], 2)
+
+	# Adding already-selected units emits nothing.
+	manager.add_units([unit_a, unit_b])
+	assert_eq(signal_counts[0], 2)
+
+	await _cleanup_harness(harness)

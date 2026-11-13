@@ -7,6 +7,7 @@ extends Node3D
 @onready var _units_root: Node3D = $Units
 @onready var _selection_manager: SelectionManager = $SelectionManager
 @onready var _input_controller: RtsInputController = $RtsInputController
+@onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
 
 
 func _ready() -> void:
@@ -20,7 +21,7 @@ func _ready() -> void:
 				(child as Unit).set_world_navigation(world_nav)
 
 	if _input_controller != null:
-		_input_controller.configure(_selection_manager, _camera_rig)
+		_input_controller.configure(_selection_manager, _camera_rig, _selection_box_overlay)
 
 
 func get_units() -> Array[Unit]:
@@ -39,3 +40,7 @@ func get_selection_manager() -> SelectionManager:
 
 func get_input_controller() -> RtsInputController:
 	return _input_controller
+
+
+func get_selection_box_overlay() -> SelectionBoxOverlay:
+	return _selection_box_overlay

@@ -68,6 +68,20 @@ func add_unit(unit: Unit) -> void:
 	_emit_selection_changed()
 
 
+func add_units(units: Array[Unit]) -> void:
+	var changed: bool = _prune_invalid_units(false)
+	for candidate: Unit in units:
+		if not _is_selectable_unit(candidate) or _selected_units.has(candidate):
+			continue
+		_selected_units.append(candidate)
+		_connect_unit_signal(candidate)
+		candidate.set_selected(true)
+		changed = true
+
+	if changed:
+		_emit_selection_changed()
+
+
 func remove_unit(unit: Unit) -> void:
 	var removed: bool = _prune_invalid_units(false)
 	if unit != null and _selected_units.has(unit):

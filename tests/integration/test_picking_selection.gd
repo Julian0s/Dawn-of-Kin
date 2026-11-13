@@ -366,18 +366,19 @@ func test_09_drag_threshold_suppression_hover_and_rapid_clicks() -> void:
 	var b_screen: Vector2 = _project_unit_screen_pos(cam, leader_b)
 	var ground_screen: Vector2 = cam.unproject_position(Vector3(0.0, 0.0, 6.0))
 
-	# Drag across > threshold (starts on ground, releases over LeaderA): must NOT select!
+	# Drag across > threshold over empty ground: activates drag gesture and leaves selection empty.
+	var empty_drag_end: Vector2 = ground_screen + Vector2(60.0, 40.0)
 	_simulate_mouse_move(ground_screen)
 	await wait_process_frames(1)
 	_simulate_mouse_button(MOUSE_BUTTON_LEFT, ground_screen, true)
 	await wait_process_frames(1)
-	_simulate_mouse_move(a_screen + Vector2(0.0, 0.0))
+	_simulate_mouse_move(empty_drag_end)
 	await wait_process_frames(1)
 	assert_true(controller.is_drag_gesture_active(), "Movement beyond drag threshold must mark drag gesture active")
-	_simulate_mouse_button(MOUSE_BUTTON_LEFT, a_screen, false)
+	_simulate_mouse_button(MOUSE_BUTTON_LEFT, empty_drag_end, false)
 	await wait_process_frames(2)
 
-	assert_true(manager.is_empty(), "Drag-release beyond threshold must not perform click selection")
+	assert_true(manager.is_empty(), "Empty box drag beyond threshold must leave selection empty")
 	assert_false(controller.is_drag_gesture_active(), "Drag gesture flag must reset cleanly after release")
 
 	# Hover transitions without button pressed.

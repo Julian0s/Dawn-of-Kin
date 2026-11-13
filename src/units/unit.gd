@@ -4,6 +4,8 @@ extends CharacterBody3D
 ## UnitMovement component, and an active UnitOrder lifecycle.
 ## Does not read player input or compute navigation queries directly.
 
+const GROUP_SELECTABLE_UNITS: StringName = &"selectable_units"
+
 enum State {
 	IDLE,
 	MOVING,
@@ -35,6 +37,7 @@ var _is_hovered: bool = false
 
 
 func _ready() -> void:
+	add_to_group(GROUP_SELECTABLE_UNITS)
 	collision_layer = CollisionLayers.MASK_UNITS
 	collision_mask = CollisionLayers.MASK_WORLD_SOLID
 

@@ -7,9 +7,11 @@ const BASE_DRAG_THRESHOLD_PX: float = 6.0
 
 @export var selection_manager_path: NodePath = NodePath()
 @export var camera_rig_path: NodePath = NodePath()
+@export var selection_box_overlay_path: NodePath = NodePath()
 
 var _selection_manager: SelectionManager = null
 var _camera_rig: RtsCameraRig = null
+var _selection_box_overlay: SelectionBoxOverlay = null
 var _world_picker: WorldPicker = WorldPicker.new()
 
 var _left_pressed: bool = false
@@ -28,12 +30,12 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_WINDOW_FOCUS_OUT, NOTIFICATION_WM_MOUSE_EXIT:
-			_left_pressed = false
-			_is_drag_gesture = false
+			_cancel_active_drag()
 			_set_hovered_unit(null)
 
 
 func _exit_tree() -> void:
+	_cancel_active_drag()
 	_set_hovered_unit(null)
 
 
@@ -49,6 +51,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	var viewport: Viewport = get_viewport()
 
 	if event.is_action_pressed(InputActions.CLEAR_SELECTION):
+		if _is_drag_gesture or _left_pressed:
+			_cancel_active_drag()
+			if _has_pointer_pos:
+				_update_hover_at(_last_pointer_pos)
+			if viewport != null:
+				viewport.set_input_as_handled()
+			return
 		_resolve_dependencies()
 		if _selection_manager != null:
 			_selection_manager.clear_selection()
@@ -76,14 +85,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_has_pointer_pos = true
 
 		var exceeded_threshold: bool = release_pos.distance_to(_left_press_pos) > get_drag_threshold_px()
+		var shift_held: bool = _is_shift_held(event)
 		if _is_drag_gesture or exceeded_threshold:
 			_is_drag_gesture = false
+			_clear_box_overlay()
+			_handle_box_selection(_left_press_pos, release_pos, shift_held)
 			_update_hover_at(release_pos)
 			if viewport != null:
 				viewport.set_input_as_handled()
 			return
 
-		var shift_held: bool = _is_shift_held(event)
+		_clear_box_overlay()
 		_handle_left_click(release_pos, shift_held)
 		_update_hover_at(release_pos)
 		if viewport != null:
@@ -95,18 +107,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		_last_pointer_pos = motion.position
 		_has_pointer_pos = true
 
-		if _left_pressed and not _is_drag_gesture:
-			if motion.position.distance_to(_left_press_pos) > get_drag_threshold_px():
+		if _left_pressed:
+			if not _is_drag_gesture and motion.position.distance_to(_left_press_pos) > get_drag_threshold_px():
 				_is_drag_gesture = true
 				_set_hovered_unit(null)
+			if _is_drag_gesture:
+				_update_box_overlay(_left_press_pos, motion.position)
 
 		if not _is_drag_gesture:
 			_update_hover_at(motion.position)
 
 
-func configure(selection_manager: SelectionManager, camera_rig: RtsCameraRig) -> void:
+func configure(
+	selection_manager: SelectionManager,
+	camera_rig: RtsCameraRig,
+	selection_box_overlay: SelectionBoxOverlay = null
+) -> void:
 	_selection_manager = selection_manager
 	_camera_rig = camera_rig
+	if selection_box_overlay != null:
+		_selection_box_overlay = selection_box_overlay
 
 
 func set_world_picker(picker: WorldPicker) -> void:
@@ -159,6 +179,43 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 		_selection_manager.clear_selection()
 
 
+func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: bool) -> void:
+	_resolve_dependencies()
+	if _selection_manager == null or not _can_pick():
+		return
+
+	var camera: Camera3D = _camera_rig.get_camera()
+	var viewport: Viewport = get_viewport()
+	var viewport_rect: Rect2 = viewport.get_visible_rect() if viewport != null else Rect2()
+	var tree: SceneTree = get_tree()
+	var candidates: Array = tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS) if tree != null else []
+	var box_rect: Rect2 = SelectionBoxMath.normalize_rect(start_pos, end_pos)
+	var boxed_units: Array[Unit] = SelectionBoxMath.collect_units_in_box(camera, candidates, box_rect, viewport_rect)
+
+	if shift_held:
+		_selection_manager.add_units(boxed_units)
+	else:
+		_selection_manager.set_selection(boxed_units)
+
+
+func _update_box_overlay(start_pos: Vector2, current_pos: Vector2) -> void:
+	_resolve_dependencies()
+	if _selection_box_overlay != null:
+		_selection_box_overlay.set_selection_box(start_pos, current_pos)
+
+
+func _clear_box_overlay() -> void:
+	_resolve_dependencies()
+	if _selection_box_overlay != null:
+		_selection_box_overlay.clear_selection_box()
+
+
+func _cancel_active_drag() -> void:
+	_left_pressed = false
+	_is_drag_gesture = false
+	_clear_box_overlay()
+
+
 func _update_hover_at(screen_pos: Vector2) -> void:
 	if not _can_pick():
 		_set_hovered_unit(null)
@@ -188,6 +245,8 @@ func _resolve_dependencies() -> void:
 		_selection_manager = get_node_or_null(selection_manager_path) as SelectionManager
 	if _camera_rig == null and not camera_rig_path.is_empty():
 		_camera_rig = get_node_or_null(camera_rig_path) as RtsCameraRig
+	if _selection_box_overlay == null and not selection_box_overlay_path.is_empty():
+		_selection_box_overlay = get_node_or_null(selection_box_overlay_path) as SelectionBoxOverlay
 
 
 func _can_pick() -> bool:
