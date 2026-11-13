@@ -1,9 +1,12 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
 [ext_resource type="PackedScene" path="res://src/camera/rts_camera_rig.tscn" id="3_camera_rig"]
 [ext_resource type="PackedScene" path="res://src/ui/debug_overlay.tscn" id="4_debug_overlay"]
+[ext_resource type="PackedScene" path="res://src/units/unit.tscn" id="5_unit"]
+[ext_resource type="Resource" path="res://data/characters/leader_a.tres" id="6_leader_a"]
+[ext_resource type="Resource" path="res://data/characters/leader_b.tres" id="7_leader_b"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -27,6 +30,16 @@ script = ExtResource("1_main_script")
 environment = SubResource("Environment_main")
 
 [node name="TestMap" parent="." instance=ExtResource("2_test_map")]
+
+[node name="Units" type="Node3D" parent="."]
+
+[node name="LeaderA" parent="Units" instance=ExtResource("5_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, 2.5)
+definition = ExtResource("6_leader_a")
+
+[node name="LeaderB" parent="Units" instance=ExtResource("5_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, 2.5)
+definition = ExtResource("7_leader_b")
 
 [node name="RtsCameraRig" parent="." instance=ExtResource("3_camera_rig")]
 

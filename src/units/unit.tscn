@@ -1,0 +1,145 @@
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="Script" path="res://src/units/unit.gd" id="1_unit_script"]
+[ext_resource type="Script" path="res://src/units/unit_movement.gd" id="2_movement_script"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.4
+height = 1.75
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_exp_boots"]
+top_radius = 0.24
+bottom_radius = 0.26
+height = 0.45
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_exp_torso"]
+top_radius = 0.3
+bottom_radius = 0.26
+height = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_exp_shoulders"]
+size = Vector3(0.76, 0.24, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_exp_backpack"]
+size = Vector3(0.46, 0.56, 0.28)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_exp_bedroll"]
+top_radius = 0.11
+bottom_radius = 0.11
+height = 0.52
+
+[sub_resource type="SphereMesh" id="SphereMesh_exp_head"]
+radius = 0.2
+height = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_exp_badge"]
+size = Vector3(0.24, 0.16, 0.1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_clk_skirt"]
+top_radius = 0.22
+bottom_radius = 0.44
+height = 1.15
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_clk_mantle"]
+top_radius = 0.24
+bottom_radius = 0.34
+height = 0.38
+
+[sub_resource type="SphereMesh" id="SphereMesh_clk_head"]
+radius = 0.19
+height = 0.38
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_clk_brim"]
+top_radius = 0.36
+bottom_radius = 0.36
+height = 0.06
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_clk_crown"]
+top_radius = 0.06
+bottom_radius = 0.2
+height = 0.32
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_clk_staff"]
+top_radius = 0.035
+bottom_radius = 0.035
+height = 1.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_clk_sash"]
+size = Vector3(0.18, 0.5, 0.08)
+
+[node name="Unit" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 3
+script = ExtResource("1_unit_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="ExplorerVisual" type="Node3D" parent="VisualRoot"]
+
+[node name="Boots_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.225, 0)
+mesh = SubResource("CylinderMesh_exp_boots")
+
+[node name="TorsoTunic_Primary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+mesh = SubResource("CylinderMesh_exp_torso")
+
+[node name="Shoulders_Primary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0)
+mesh = SubResource("BoxMesh_exp_shoulders")
+
+[node name="Backpack_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.96, 0.26)
+mesh = SubResource("BoxMesh_exp_backpack")
+
+[node name="Bedroll_Primary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, 1.31, 0.26)
+mesh = SubResource("CylinderMesh_exp_bedroll")
+
+[node name="Head_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.48, 0)
+mesh = SubResource("SphereMesh_exp_head")
+
+[node name="ChestBadge_Secondary" type="MeshInstance3D" parent="VisualRoot/ExplorerVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.12, -0.22)
+mesh = SubResource("BoxMesh_exp_badge")
+
+[node name="CloakVisual" type="Node3D" parent="VisualRoot"]
+visible = false
+
+[node name="CloakSkirt_Primary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.575, 0)
+mesh = SubResource("CylinderMesh_clk_skirt")
+
+[node name="UpperMantle_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.14, 0)
+mesh = SubResource("CylinderMesh_clk_mantle")
+
+[node name="Head_Primary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.46, 0)
+mesh = SubResource("SphereMesh_clk_head")
+
+[node name="HatBrim_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.58, 0)
+mesh = SubResource("CylinderMesh_clk_brim")
+
+[node name="HatCrown_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
+mesh = SubResource("CylinderMesh_clk_crown")
+
+[node name="WalkingStaff_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 0.992546, 0.121869, 0, -0.121869, 0.992546, 0.4, 0.92, -0.14)
+mesh = SubResource("CylinderMesh_clk_staff")
+
+[node name="ForwardSash_Secondary" type="MeshInstance3D" parent="VisualRoot/CloakVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, -0.28)
+mesh = SubResource("BoxMesh_clk_sash")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+
+[node name="UnitMovement" type="Node" parent="."]
+script = ExtResource("2_movement_script")
