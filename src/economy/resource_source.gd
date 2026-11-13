@@ -23,6 +23,7 @@ signal depleted(source: ResourceSource)
 
 var _remaining_amount: int = 20
 var _has_extracted: bool = false
+var _is_transferring: bool = false
 var _reserved_worker_ids: Array[int] = []
 
 
@@ -62,6 +63,7 @@ func configure(
 	max_extract_per_operation = p_max_extract_per_operation
 	max_simultaneous_workers = p_max_simultaneous_workers
 	_has_extracted = false
+	_is_transferring = false
 	initial_amount = p_initial_amount
 	_remaining_amount = maxi(0, p_initial_amount)
 	_reserved_worker_ids.clear()
@@ -122,7 +124,7 @@ func can_extract(requested_amount: int = 1) -> bool:
 
 
 func extract(requested_amount: int) -> int:
-	if requested_amount <= 0 or not is_available():
+	if _is_transferring or requested_amount <= 0 or not is_available():
 		return 0
 
 	var capped_request: int = mini(requested_amount, max_extract_per_operation)
@@ -136,9 +138,52 @@ func extract(requested_amount: int) -> int:
 	_sync_visuals()
 
 	# Emit signals strictly after final state is committed.
+	_is_transferring = true
 	amount_changed.emit(self, _remaining_amount, -extracted)
 	if became_depleted:
 		depleted.emit(self)
+	_is_transferring = false
+
+	return extracted
+
+
+func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -1) -> int:
+	## Atomically transfers up to min(requested_amount, max_extract_per_operation, carry capacity)
+	## directly from this source to carry_load without double-drain or reentrant loss.
+	if _is_transferring or carry_load == null or not is_available():
+		return 0
+	if requested_amount == 0:
+		return 0
+
+	var max_fit: int = carry_load.get_max_additional_units(definition)
+	if max_fit <= 0:
+		return 0
+
+	var op_cap: int = max_extract_per_operation
+	if requested_amount > 0:
+		op_cap = mini(requested_amount, max_extract_per_operation)
+	var extracted: int = mini(_remaining_amount, mini(op_cap, max_fit))
+	if extracted <= 0:
+		return 0
+
+	carry_load.begin_batch()
+	var added: bool = carry_load.add_units(definition, extracted)
+	if not added:
+		carry_load.end_batch(true)
+		return 0
+
+	_has_extracted = true
+	_remaining_amount = maxi(0, _remaining_amount - extracted)
+	var became_depleted: bool = (_remaining_amount == 0)
+	_sync_visuals()
+
+	# Both source and carry_load now reflect final conserved quantities before observers fire.
+	_is_transferring = true
+	carry_load.end_batch(false)
+	amount_changed.emit(self, _remaining_amount, -extracted)
+	if became_depleted:
+		depleted.emit(self)
+	_is_transferring = false
 
 	return extracted
 
@@ -184,6 +229,33 @@ func get_active_worker_count() -> int:
 
 func get_interaction_radius() -> float:
 	return interaction_radius
+
+
+func get_solid_radius() -> float:
+	var solid_body: StaticBody3D = get_node_or_null("SolidBody") as StaticBody3D
+	if solid_body == null:
+		return 0.0
+
+	var shape_node: CollisionShape3D = solid_body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null or shape_node.shape == null:
+		return 0.0
+
+	var scale_xz: float = 1.0
+	if shape_node.is_inside_tree():
+		var s: Vector3 = shape_node.global_transform.basis.get_scale()
+		scale_xz = maxf(absf(s.x), absf(s.z))
+
+	var col_shape: Shape3D = shape_node.shape
+	if col_shape is SphereShape3D:
+		return (col_shape as SphereShape3D).radius * scale_xz
+	if col_shape is CylinderShape3D:
+		return (col_shape as CylinderShape3D).radius * scale_xz
+	if col_shape is CapsuleShape3D:
+		return (col_shape as CapsuleShape3D).radius * scale_xz
+	if col_shape is BoxShape3D:
+		var box_size: Vector3 = (col_shape as BoxShape3D).size
+		return Vector2(box_size.x, box_size.z).length() * 0.5 * scale_xz
+	return 0.0
 
 
 func _prune_invalid_workers() -> void:

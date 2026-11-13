@@ -273,8 +273,8 @@ func test_04_depleted_and_available_source_command_safety_and_t1_preservation() 
 	assert_true(res_pick.is_available_resource_source())
 
 	await _simulate_right_click(tree_screen)
-	assert_eq(cmd.get_last_command_reason(), "gather_order_not_integrated")
-	assert_eq(leader_a.get_current_order(), active_order, "Right-clicking resource before T2.3 must preserve active order")
+	assert_eq(cmd.get_last_command_reason(), GatherResourceOrder.REASON_MISSING_ECONOMY)
+	assert_eq(leader_a.get_current_order(), active_order, "Right-clicking resource without configured economy must preserve active order")
 	assert_eq(leader_a.get_state(), Unit.State.MOVING)
 
 	# 3. Deplete tree, verify deterministic depleted picking & safe contextual command rejection

@@ -9,6 +9,8 @@ const GROUP_SELECTABLE_UNITS: StringName = &"selectable_units"
 enum State {
 	IDLE,
 	MOVING,
+	WORKING,
+	TRANSPORTING,
 }
 
 signal state_changed(new_state: State, previous_state: State)
@@ -17,6 +19,8 @@ signal order_finished(order: UnitOrder)
 @export var definition: CharacterDefinition = null:
 	set(value):
 		definition = value
+		if definition != null and _carry_load != null:
+			_carry_load.set_base_capacity(definition.base_carry_capacity)
 		if is_node_ready():
 			_sync_definition()
 
@@ -32,6 +36,8 @@ signal order_finished(order: UnitOrder)
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
 var _world_navigation: WorldNavigation = null
+var _carry_load: UnitCarryLoad = UnitCarryLoad.new()
+var _order_state_explicit: bool = false
 var _is_selected: bool = false
 var _is_hovered: bool = false
 
@@ -94,6 +100,8 @@ func _sync_definition() -> void:
 	if definition == null:
 		return
 
+	_carry_load.set_base_capacity(definition.base_carry_capacity)
+
 	if _movement != null:
 		_movement.set_motion_profile(definition.move_speed, definition.turn_rate)
 
@@ -127,7 +135,28 @@ func get_state() -> State:
 
 
 func get_state_name() -> String:
-	return "MOVING" if _state == State.MOVING else "IDLE"
+	match _state:
+		State.IDLE:
+			return "IDLE"
+		State.MOVING:
+			return "MOVING"
+		State.WORKING:
+			return "WORKING"
+		State.TRANSPORTING:
+			return "TRANSPORTING"
+		_:
+			return "IDLE"
+
+
+func get_carry_load() -> UnitCarryLoad:
+	return _carry_load
+
+
+func set_order_state(order: UnitOrder, new_state: State) -> void:
+	if order == null or order != _current_order or not order.is_active():
+		return
+	_order_state_explicit = true
+	_set_state(new_state)
 
 
 func get_current_order() -> UnitOrder:
@@ -187,6 +216,7 @@ func issue_order(order: UnitOrder) -> void:
 		_world_navigation = _movement.get_world_navigation()
 
 	_current_order = order
+	_order_state_explicit = false
 	order.start(self, _movement, _world_navigation)
 
 	if order.is_finished():
@@ -196,7 +226,8 @@ func issue_order(order: UnitOrder) -> void:
 		order_finished.emit(finished_order)
 		return
 
-	_set_state(State.MOVING)
+	if not _order_state_explicit:
+		_set_state(State.MOVING)
 
 
 func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:

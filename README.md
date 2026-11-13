@@ -5,19 +5,18 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco ativo:** T2 — Trabalho e Recursos (**em implementação incremental; T2 completa ainda não concluída nem aprovada**)
-  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada) e `T2.2` (fontes naturais coletáveis e picking contextual).
-  - **Não implementadas:** `T2.3` (ciclo de coleta/transporte/descarga), `T2.4` (composição jogável no `TestMap`), `T2.5` (HUD) e `T2.6` (validação global e aceite).
+  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada), `T2.2` (fontes naturais coletáveis e picking contextual) e `T2.3` (ciclo do trabalhador: coleta, transporte físico, retorno automático ao acampamento, descarga e concorrência).
+  - **Não implementadas:** `T2.4` (composição jogável no `TestMap`), `T2.5` (HUD) e `T2.6` (validação global e aceite).
   - **Não verificado / pendente:** testes visuais/manuais em janela gráfica e benchmark final da T2 na Intel UHD 620.
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 
-### Pendências conhecidas para `T2.3`–`T2.6`
+### Pendências conhecidas para `T2.4`–`T2.6`
 
-- Ativação periódica da deterioração na cena jogável.
-- Configuração de `DecayProfile` nos materiais efetivamente usados pelo jogo.
-- Integração de `ResourceSource` com as ordens dos trabalhadores (`T2.3`).
-- Transporte físico até o acampamento (`T2.3`–`T2.4`).
+- Composição jogável no `TestMap` com zona de acampamento, fontes naturais e injeção de economia na `MainScene` (`T2.4`).
+- Ativação periódica da deterioração na cena jogável (`T2.4`).
+- Configuração de `DecayProfile` nos materiais efetivamente usados pelo jogo (`T2.4`).
 - Atualização do HUD (`T2.5`).
 - Benchmark gráfico na Intel UHD 620 (`T2.6`).
 
