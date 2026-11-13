@@ -1,28 +1,36 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/economy/resource_source.gd" id="1_script"]
 [ext_resource type="Resource" path="res://data/resources/food.tres" id="2_food_def"]
-[ext_resource type="Material" path="res://assets/placeholder/mat_foliage_placeholder.tres" id="3_mat_foliage"]
+[ext_resource type="Material" path="res://assets/placeholder/mat_bush_source_foliage.tres" id="3_mat_foliage"]
 [ext_resource type="Material" path="res://assets/placeholder/mat_trunk_placeholder.tres" id="4_mat_trunk"]
+[ext_resource type="Material" path="res://assets/placeholder/mat_source_ring_subtle.tres" id="5_mat_ring"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_interaction"]
-radius = 0.75
+radius = 0.95
 
 [sub_resource type="SphereMesh" id="SphereMesh_bush"]
 material = ExtResource("3_mat_foliage")
-radius = 0.65
-height = 0.95
+radius = 0.82
+height = 1.05
+radial_segments = 8
+rings = 4
+
+[sub_resource type="SphereMesh" id="SphereMesh_bush_tuft"]
+material = ExtResource("3_mat_foliage")
+radius = 0.58
+height = 0.85
 radial_segments = 8
 rings = 4
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_berry"]
-albedo_color = Color(0.78, 0.16, 0.18, 1)
-roughness = 0.6
+albedo_color = Color(0.84, 0.16, 0.16, 1)
+roughness = 0.55
 
 [sub_resource type="SphereMesh" id="SphereMesh_berry"]
 material = SubResource("StandardMaterial3D_berry")
-radius = 0.09
-height = 0.18
+radius = 0.17
+height = 0.28
 radial_segments = 6
 rings = 3
 
@@ -32,6 +40,13 @@ radius = 0.42
 height = 0.45
 radial_segments = 6
 rings = 3
+
+[sub_resource type="TorusMesh" id="TorusMesh_marker_ring"]
+material = ExtResource("5_mat_ring")
+inner_radius = 0.84
+outer_radius = 1.0
+rings = 16
+ring_segments = 4
 
 [node name="BushSource" type="Node3D"]
 script = ExtResource("1_script")
@@ -48,30 +63,62 @@ collision_mask = 0
 monitoring = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionArea"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.52, 0)
 shape = SubResource("SphereShape3D_interaction")
 
 [node name="AvailableVisual" type="Node3D" parent="."]
 
 [node name="BushMesh" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 cast_shadow = 0
 mesh = SubResource("SphereMesh_bush")
 
+[node name="BushTuftMesh" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 0.38, 0.25)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_bush_tuft")
+
 [node name="BerryA" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.56, 0.28)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.46, 0.72, 0.42)
 cast_shadow = 0
 mesh = SubResource("SphereMesh_berry")
 
 [node name="BerryB" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0.62, 0.24)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.74, 0.36)
 cast_shadow = 0
 mesh = SubResource("SphereMesh_berry")
 
 [node name="BerryC" type="MeshInstance3D" parent="AvailableVisual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.05, 0.76, -0.28)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08, 0.96, 0.14)
 cast_shadow = 0
 mesh = SubResource("SphereMesh_berry")
+
+[node name="BerryD" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.18, 0.62, -0.44)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_berry")
+
+[node name="BerryE" type="MeshInstance3D" parent="AvailableVisual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.56, 0.55, -0.15)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_berry")
+
+[node name="DiscoverabilityBadge" type="Node3D" parent="."]
+
+[node name="RingMesh" type="MeshInstance3D" parent="DiscoverabilityBadge"]
+transform = Transform3D(1, 0, 0, 0, 0.12, 0, 0, 0, 1, 0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("TorusMesh_marker_ring")
+
+[node name="BadgeLabel" type="Label3D" parent="DiscoverabilityBadge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.05, 0)
+billboard = 1
+modulate = Color(0.96, 0.94, 0.85, 0.94)
+outline_modulate = Color(0.1, 0.12, 0.1, 0.92)
+text = "Alimento"
+font_size = 24
+outline_size = 6
+pixel_size = 0.015
 
 [node name="DepletedVisual" type="Node3D" parent="."]
 visible = false

@@ -5,9 +5,9 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco ativo:** T2 — Trabalho e Recursos (**em implementação incremental; T2 completa ainda não concluída nem aprovada**)
-  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada), `T2.2` (fontes naturais coletáveis e picking contextual), `T2.3` (ciclo do trabalhador: coleta, transporte físico, retorno automático ao acampamento, descarga e concorrência) e `T2.4` (composição jogável no `TestMap`/`MainScene`, `EconomyClockController` centralizado, `DecayProfile` provisórios e ocultação visual de ferramentas iniciais nos protagonistas).
+  - **Concluídas em código e testadas automaticamente (headless):** `T2.0` (dados econômicos, pesos, carga e atomicidade), `T2.1` (pilhas físicas no acampamento e deterioração centralizada), `T2.2` (fontes naturais coletáveis e picking contextual), `T2.3` (ciclo do trabalhador: coleta, transporte físico, retorno automático ao acampamento, descarga e concorrência) e `T2.4` / `T2.4.1` (composição jogável no `TestMap`/`MainScene`, `EconomyClockController` centralizado, `DecayProfile` provisórios, ocultação visual de ferramentas iniciais nos protagonistas, distinção visual das fontes coletáveis no enquadramento inicial e badges temporários desativáveis de descoberta).
   - **Não implementadas:** `T2.5` (HUD) e `T2.6` (validação global e aceite).
-  - **Não verificado / pendente:** testes visuais/interativos manuais em janela gráfica e benchmark final da T2 na Intel UHD 620 (`run_game.ps1` validou apenas abertura sem warnings/erros em 90 frames).
+  - **Não verificado / pendente:** testes visuais/interativos manuais de mouse e câmera pelo proprietário e benchmark final da T2 na Intel UHD 620 (`run_game.ps1` validou inicialização gráfica e captura em janela do enquadramento inicial e ciclo completo automatizado, sem substituir o playtest manual).
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`

@@ -56,8 +56,8 @@ size = Vector3(0.6, 1.6, 6.8)
 size = Vector3(0.6, 1.6, 6.8)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_camp_clearing"]
-albedo_color = Color(0.36, 0.33, 0.24, 1)
-roughness = 0.95
+albedo_color = Color(0.42, 0.36, 0.26, 1)
+roughness = 0.96
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_camp_clearing"]
 material = SubResource("StandardMaterial3D_camp_clearing")
@@ -232,6 +232,18 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
 cast_shadow = 0
 mesh = SubResource("PlaneMesh_camp_clearing")
 
+[node name="CampBadge" type="Node3D" parent="CampStorageZone"]
+
+[node name="CampLabel" type="Label3D" parent="CampStorageZone/CampBadge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, -2.15)
+billboard = 1
+modulate = Color(0.95, 0.92, 0.82, 0.92)
+outline_modulate = Color(0.1, 0.12, 0.1, 0.9)
+text = "Acampamento"
+font_size = 24
+outline_size = 6
+pixel_size = 0.015
+
 [node name="CampPiles" type="Node3D" parent="."]
 
 [node name="ResourceSources" type="Node3D" parent="."]
@@ -243,7 +255,7 @@ initial_amount = 24
 max_extract_per_operation = 2
 
 [node name="WoodTree02" parent="ResourceSources" instance=ExtResource("10_tree_source")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0, 8.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.2, 0, 5.5)
 source_id = &"wood_tree_02"
 initial_amount = 24
 max_extract_per_operation = 2
@@ -255,7 +267,7 @@ initial_amount = 18
 max_extract_per_operation = 1
 
 [node name="StoneRock02" parent="ResourceSources" instance=ExtResource("11_rock_source")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0, 12.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.5, 0, 8.5)
 source_id = &"stone_rock_02"
 initial_amount = 18
 max_extract_per_operation = 1
@@ -267,7 +279,7 @@ initial_amount = 30
 max_extract_per_operation = 2
 
 [node name="FoodBush02" parent="ResourceSources" instance=ExtResource("12_bush_source")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 10.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, 8.5)
 source_id = &"food_bush_02"
 initial_amount = 30
 max_extract_per_operation = 2

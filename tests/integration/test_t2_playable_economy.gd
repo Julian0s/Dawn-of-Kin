@@ -11,6 +11,8 @@ extends TestCase
 ## - Clean resource disposal on MainScene exit and prolonged multi-trip session convergence.
 
 const MAIN_SCENE: PackedScene = preload("res://src/main/main.tscn")
+const UNIT_SCENE: PackedScene = preload("res://src/units/unit.tscn")
+const LEADER_A_DEF: CharacterDefinition = preload("res://data/characters/leader_a.tres")
 const FOOD_RES: ResourceDefinition = preload("res://data/resources/food.tres")
 const WOOD_RES: ResourceDefinition = preload("res://data/resources/wood.tres")
 const STONE_RES: ResourceDefinition = preload("res://data/resources/stone.tres")
@@ -545,3 +547,273 @@ func test_06_prolonged_session_convergence_and_t1_compatibility() -> void:
 	selection.select_single(leader_a)
 	await _right_click_world(rig, cam, Vector3(0.0, 0.0, -3.5))
 	assert_true(leader_a.get_current_order() is MoveOrder)
+
+
+func _has_collider_descendant(root_node: Node) -> bool:
+	for child: Node in root_node.get_children():
+		if child is CollisionObject3D or child is CollisionShape3D:
+			return true
+		if _has_collider_descendant(child):
+			return true
+	return false
+
+
+func _push_mouse_click_in_viewport(vp: Viewport, button: MouseButton, screen_pos: Vector2, shift: bool = false) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = screen_pos
+	motion.global_position = screen_pos
+	vp.push_input(motion, true)
+
+	var press := InputEventMouseButton.new()
+	press.button_index = button
+	press.pressed = true
+	press.shift_pressed = shift
+	press.position = screen_pos
+	press.global_position = screen_pos
+	vp.push_input(press, true)
+
+	await wait_physics_frames(1)
+
+	var release := InputEventMouseButton.new()
+	release.button_index = button
+	release.pressed = false
+	release.shift_pressed = shift
+	release.position = screen_pos
+	release.global_position = screen_pos
+	vp.push_input(release, true)
+	await wait_physics_frames(2)
+
+
+func _assert_initial_framing_and_picking_in_viewport(
+	main_root: MainScene,
+	vp: Viewport,
+	expected_size: Vector2
+) -> void:
+	var test_map: TestMap = main_root.get_test_map()
+	var rig: RtsCameraRig = main_root.get_node("RtsCameraRig") as RtsCameraRig
+	var cam: Camera3D = rig.get_camera()
+	var vp_rect: Rect2 = vp.get_visible_rect()
+	assert_eq(vp_rect.size, expected_size, "Viewport under test must match expected resolution")
+
+	var picker := WorldPicker.new()
+	var seen_categories: Dictionary = {}
+	var expected_labels: Dictionary = {
+		ResourceDefinition.Category.WOOD: "Madeira",
+		ResourceDefinition.Category.STONE: "Pedra",
+		ResourceDefinition.Category.FOOD: "Alimento",
+	}
+
+	for src: ResourceSource in test_map.get_resource_sources():
+		seen_categories[src.get_category()] = true
+		var badge: Node3D = src.get_node_or_null("DiscoverabilityBadge") as Node3D
+		assert_not_null(badge, "Each collectable source must expose DiscoverabilityBadge")
+		assert_true(badge.visible, "DiscoverabilityBadge must be visible initially")
+		assert_false(_has_collider_descendant(badge), "DiscoverabilityBadge must not add extra colliders")
+		assert_false(src.is_processing())
+		assert_false(src.is_physics_processing())
+
+		var badge_label: Label3D = badge.get_node_or_null("BadgeLabel") as Label3D
+		assert_not_null(badge_label)
+		assert_eq(badge_label.text, expected_labels[src.get_category()])
+
+		var pick_point: Vector3 = src.global_position + Vector3(0.0, 0.8, 0.0)
+		assert_true(cam.is_position_in_frustum(pick_point), "Source %s must lie inside initial camera frustum" % str(src.source_id))
+		var screen_pos: Vector2 = cam.unproject_position(pick_point)
+		assert_true(vp_rect.has_point(screen_pos), "Source %s must project inside initial %s viewport" % [str(src.source_id), str(expected_size)])
+		var pick: PickResult = picker.pick_at_screen_pos(cam, screen_pos)
+		assert_true(
+			pick.is_available_resource_source() and pick.resource_source == src,
+			"Source %s must be unoccluded and pickable from initial framing at %s" % [str(src.source_id), str(screen_pos)]
+		)
+
+	assert_true(seen_categories.has(ResourceDefinition.Category.WOOD))
+	assert_true(seen_categories.has(ResourceDefinition.Category.STONE))
+	assert_true(seen_categories.has(ResourceDefinition.Category.FOOD))
+
+	var camp_zone: CampStorageZone = test_map.get_camp_storage_zone()
+	var camp_badge: Node3D = camp_zone.get_node_or_null("CampBadge") as Node3D
+	assert_not_null(camp_badge)
+	assert_true(camp_badge.visible)
+	assert_false(_has_collider_descendant(camp_badge))
+	assert_false(camp_zone.is_processing())
+	assert_false(camp_zone.is_physics_processing())
+
+	# Toggle discoverability badges cleanly off and back on
+	test_map.set_resource_discoverability_badges_visible(false)
+	for src: ResourceSource in test_map.get_resource_sources():
+		assert_false((src.get_node("DiscoverabilityBadge") as Node3D).visible)
+	assert_false(camp_badge.visible)
+	test_map.set_resource_discoverability_badges_visible(true)
+
+
+func _spawn_main_in_subviewport(vp_size: Vector2i) -> Dictionary:
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.size = vp_size
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_test_child(vp)
+
+	var main_root: MainScene = MAIN_SCENE.instantiate() as MainScene
+	vp.add_child(main_root)
+	var test_map: TestMap = main_root.get_test_map()
+	var nav: WorldNavigation = test_map.get_navigation()
+	var wait_f: int = 0
+	while not nav.is_navigation_ready() and wait_f < MAX_WAIT_FRAMES:
+		await wait_physics_frames(1)
+		wait_f += 1
+	await wait_process_frames(3)
+	await wait_physics_frames(2)
+
+	var rig: RtsCameraRig = main_root.get_node("RtsCameraRig") as RtsCameraRig
+	rig.edge_pan_enabled = false
+	var cam: Camera3D = rig.get_camera()
+	return {
+		"viewport": vp,
+		"main": main_root,
+		"test_map": test_map,
+		"nav": nav,
+		"rig": rig,
+		"cam": cam,
+	}
+
+
+func test_07_initial_framing_real_mouse_discoverability_and_delivery() -> void:
+	# 1. Verify 1280x720 framing, unoccluded picking, and real mouse order start via isolated SubViewport
+	var sub_ctx: Dictionary = await _spawn_main_in_subviewport(Vector2i(1280, 720))
+	var sub_vp: SubViewport = sub_ctx["viewport"] as SubViewport
+	var sub_main: MainScene = sub_ctx["main"] as MainScene
+	var sub_map: TestMap = sub_ctx["test_map"] as TestMap
+	var sub_cam: Camera3D = sub_ctx["cam"] as Camera3D
+	_assert_initial_framing_and_picking_in_viewport(sub_main, sub_vp, Vector2(1280.0, 720.0))
+
+	# Real left-click select + right-click gather on visible stone_rock_02 without moving camera
+	var sub_leader: Unit = sub_main.get_units()[0]
+	var sub_sel: SelectionManager = sub_main.get_selection_manager()
+	var sub_leader_scr: Vector2 = sub_cam.unproject_position(sub_leader.global_position + Vector3(0.0, 0.9, 0.0))
+	await _push_mouse_click_in_viewport(sub_vp, MOUSE_BUTTON_LEFT, sub_leader_scr)
+	assert_eq(sub_sel.get_selected_units(), [sub_leader])
+
+	var sub_rock: ResourceSource = _find_source(sub_map, &"stone_rock_02")
+	var sub_rock_scr: Vector2 = sub_cam.unproject_position(sub_rock.global_position + Vector3(0.0, 0.7, 0.0))
+	await _push_mouse_click_in_viewport(sub_vp, MOUSE_BUTTON_RIGHT, sub_rock_scr)
+	assert_true(sub_leader.get_current_order() is GatherResourceOrder, "1280x720 initial-view right-click must start GatherResourceOrder")
+
+	sub_vp.queue_free()
+	await wait_process_frames(2)
+
+	# 2. Verify 1920x1080 initial camera framing through full walk -> gather -> return -> camp pile -> ground MoveOrder
+	var hd_ctx: Dictionary = await _spawn_main_in_subviewport(Vector2i(1920, 1080))
+	var hd_vp: SubViewport = hd_ctx["viewport"] as SubViewport
+	var main_root: MainScene = hd_ctx["main"] as MainScene
+	var test_map: TestMap = hd_ctx["test_map"] as TestMap
+	var cam: Camera3D = hd_ctx["cam"] as Camera3D
+	var selection: SelectionManager = main_root.get_selection_manager()
+	var inventory: SettlementInventory = main_root.get_settlement_inventory()
+	var pile_manager: GroundPileManager = main_root.get_ground_pile_manager()
+	var camp_zone: CampStorageZone = main_root.get_camp_storage_zone()
+	var leader_a: Unit = main_root.get_units()[0]
+
+	_assert_initial_framing_and_picking_in_viewport(main_root, hd_vp, Vector2(1920.0, 1080.0))
+
+	# Do NOT move camera! Select LeaderA and right-click WoodTree01 directly from initial camera
+	var la_scr: Vector2 = cam.unproject_position(leader_a.global_position + Vector3(0.0, 0.9, 0.0))
+	await _push_mouse_click_in_viewport(hd_vp, MOUSE_BUTTON_LEFT, la_scr)
+	assert_eq(selection.get_selected_units(), [leader_a])
+
+	var wood_tree: ResourceSource = _find_source(test_map, &"wood_tree_01")
+	var tree_scr: Vector2 = cam.unproject_position(wood_tree.global_position + Vector3(0.0, 1.4, 0.0))
+	await _push_mouse_click_in_viewport(hd_vp, MOUSE_BUTTON_RIGHT, tree_scr)
+	assert_true(leader_a.get_current_order() is GatherResourceOrder)
+
+	var saw_moving: bool = false
+	var saw_working: bool = false
+	var saw_transporting: bool = false
+	var frames: int = 0
+	while inventory.get_amount(&"wood") == 0 and frames < MAX_CYCLE_FRAMES:
+		await wait_physics_frames(1)
+		frames += 1
+		match leader_a.get_state():
+			Unit.State.MOVING:
+				saw_moving = true
+			Unit.State.WORKING:
+				saw_working = true
+			Unit.State.TRANSPORTING:
+				saw_transporting = true
+
+	assert_true(saw_moving)
+	assert_true(saw_working)
+	assert_true(saw_transporting)
+	assert_gt(inventory.get_amount(&"wood"), 0, "Worker must unload wood into CampStorageZone")
+	var piles: Array[GroundResourcePile] = pile_manager.get_piles_for_resource(&"wood")
+	assert_eq(piles.size(), 1)
+	assert_true(piles[0].visible, "Delivered physical pile must be visible in camp")
+	_assert_all_piles_valid(camp_zone, pile_manager, test_map.get_camp_piles_root())
+
+	# Free-ground right-click from initial framing preserves MoveOrder
+	var free_ground := Vector3(-1.5, 0.0, 6.0)
+	var free_scr: Vector2 = cam.unproject_position(free_ground)
+	await _push_mouse_click_in_viewport(hd_vp, MOUSE_BUTTON_RIGHT, free_scr)
+	assert_true(leader_a.get_current_order() is MoveOrder, "Free-ground right-click must still issue MoveOrder")
+
+	hd_vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_08_t231_reclicking_busy_source_during_transport_preserves_delivery() -> void:
+	var ctx: Dictionary = await _spawn_main_scene()
+	var main_root: MainScene = ctx["main"] as MainScene
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var rig: RtsCameraRig = ctx["rig"] as RtsCameraRig
+	var cam: Camera3D = ctx["camera"] as Camera3D
+	var selection: SelectionManager = ctx["selection"] as SelectionManager
+	var cmd: CommandController = ctx["command_controller"] as CommandController
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var leader_b: Unit = ctx["leader_b"] as Unit
+
+	var unit_c: Unit = UNIT_SCENE.instantiate() as Unit
+	unit_c.definition = LEADER_A_DEF
+	unit_c.position = Vector3(5.0, 0.0, 1.0)
+	main_root.get_node("Units").add_child(unit_c)
+	unit_c.set_world_navigation(nav)
+	await wait_physics_frames(2)
+
+	var wood_tree: ResourceSource = _find_source(test_map, &"wood_tree_01")
+	assert_eq(wood_tree.max_simultaneous_workers, 2)
+
+	# LeaderA gathers until entering TRANSPORTING (which releases its source slot)
+	selection.select_single(leader_a)
+	await _right_click_world(rig, cam, wood_tree.global_position + Vector3(0.0, 1.4, 0.0))
+
+	var frames: int = 0
+	while leader_a.get_state() != Unit.State.TRANSPORTING and frames < MAX_CYCLE_FRAMES:
+		await wait_physics_frames(1)
+		frames += 1
+	assert_eq(leader_a.get_state(), Unit.State.TRANSPORTING)
+	var active_order: UnitOrder = leader_a.get_current_order()
+	var carried_wood: int = leader_a.get_carry_load().get_amount(&"wood")
+	assert_gt(carried_wood, 0)
+	assert_false(wood_tree.is_worker_reserved(leader_a))
+
+	# Occupy both source slots with LeaderB and UnitC while LeaderA is transporting
+	selection.select_single(leader_b)
+	selection.add_unit(unit_c)
+	await _right_click_world(rig, cam, wood_tree.global_position + Vector3(0.0, 1.4, 0.0))
+	assert_eq(wood_tree.get_active_worker_count(), 2, "Both worker slots should now be occupied")
+	assert_false(wood_tree.has_worker_slot(leader_a))
+
+	# Re-clicking the same busy source with LeaderA selected MUST NOT cancel its active delivery
+	selection.select_single(leader_a)
+	await _right_click_world(rig, cam, wood_tree.global_position + Vector3(0.0, 1.4, 0.0))
+	assert_eq(cmd.get_last_command_reason(), GatherResourceOrder.REASON_NO_WORKER_SLOT)
+	assert_eq(leader_a.get_current_order(), active_order, "Active delivery order must not be cancelled when clicking full source")
+	assert_true(leader_a.get_current_order().is_active())
+	assert_eq(leader_a.get_state(), Unit.State.TRANSPORTING)
+
+	# Confirm LeaderA completes delivery normally without losing carried wood
+	frames = 0
+	while inventory.get_amount(&"wood") < carried_wood and frames < MAX_CYCLE_FRAMES:
+		await wait_physics_frames(1)
+		frames += 1
+	assert_true(inventory.get_amount(&"wood") >= carried_wood, "LeaderA must finish delivering carried wood safely")

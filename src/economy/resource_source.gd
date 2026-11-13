@@ -20,6 +20,14 @@ signal depleted(source: ResourceSource)
 @export var max_extract_per_operation: int = 1
 @export var max_simultaneous_workers: int = 2
 @export var interaction_radius: float = 1.6
+@export var show_discoverability_badge: bool = true:
+	set(value):
+		show_discoverability_badge = value
+		_sync_visuals()
+@export var discoverability_label_text: String = "":
+	set(value):
+		discoverability_label_text = value
+		_sync_visuals()
 
 var _remaining_amount: int = 20
 var _has_extracted: bool = false
@@ -238,6 +246,14 @@ func get_interaction_radius() -> float:
 	return interaction_radius
 
 
+func set_discoverability_badge_visible(enabled: bool) -> void:
+	show_discoverability_badge = enabled
+
+
+func is_discoverability_badge_visible() -> bool:
+	return show_discoverability_badge
+
+
 func get_solid_radius() -> float:
 	var solid_body: StaticBody3D = get_node_or_null("SolidBody") as StaticBody3D
 	if solid_body == null:
@@ -278,8 +294,28 @@ func _prune_invalid_workers() -> void:
 func _sync_visuals() -> void:
 	var available_node: Node3D = get_node_or_null("AvailableVisual") as Node3D
 	var depleted_node: Node3D = get_node_or_null("DepletedVisual") as Node3D
+	var badge_node: Node3D = get_node_or_null("DiscoverabilityBadge") as Node3D
 	var show_available: bool = _remaining_amount > 0
 	if available_node != null:
 		available_node.visible = show_available
 	if depleted_node != null:
 		depleted_node.visible = not show_available
+	if badge_node != null:
+		badge_node.visible = show_discoverability_badge and show_available
+		var label_node: Label3D = badge_node.get_node_or_null("BadgeLabel") as Label3D
+		if label_node != null:
+			label_node.text = _resolve_discoverability_text()
+
+
+func _resolve_discoverability_text() -> String:
+	if not discoverability_label_text.strip_edges().is_empty():
+		return discoverability_label_text
+	match get_category():
+		ResourceDefinition.Category.WOOD:
+			return "Madeira"
+		ResourceDefinition.Category.STONE:
+			return "Pedra"
+		ResourceDefinition.Category.FOOD:
+			return "Alimento"
+		_:
+			return ""

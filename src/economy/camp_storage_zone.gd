@@ -10,6 +10,10 @@ extends Node3D
 @export var max_pile_amount: int = 0
 @export var decay_multiplier: float = 1.0
 @export var max_nav_snap_distance: float = 0.65
+@export var show_camp_badge: bool = true:
+	set(value):
+		show_camp_badge = value
+		_sync_camp_badge()
 
 var _world_navigation: WorldNavigation = null
 var _custom_position_validator: Callable = Callable()
@@ -18,6 +22,21 @@ var _custom_position_validator: Callable = Callable()
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
+	_sync_camp_badge()
+
+
+func set_camp_badge_visible(enabled: bool) -> void:
+	show_camp_badge = enabled
+
+
+func is_camp_badge_visible() -> bool:
+	return show_camp_badge
+
+
+func _sync_camp_badge() -> void:
+	var badge: Node3D = get_node_or_null("CampBadge") as Node3D
+	if badge != null:
+		badge.visible = show_camp_badge
 
 
 func set_world_navigation(navigation: WorldNavigation) -> void:

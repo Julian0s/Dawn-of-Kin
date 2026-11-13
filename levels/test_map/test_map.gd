@@ -40,3 +40,10 @@ func get_resource_sources() -> Array[ResourceSource]:
 		if child is ResourceSource:
 			sources.append(child as ResourceSource)
 	return sources
+
+
+func set_resource_discoverability_badges_visible(enabled: bool) -> void:
+	for src: ResourceSource in get_resource_sources():
+		src.set_discoverability_badge_visible(enabled)
+	if _camp_storage_zone != null:
+		_camp_storage_zone.set_camp_badge_visible(enabled)
