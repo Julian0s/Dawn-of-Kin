@@ -61,6 +61,10 @@ func get_delivered_trips() -> int:
 	return _delivered_trips
 
 
+func has_reservation() -> bool:
+	return _has_reservation
+
+
 func get_reserved_target() -> Vector3:
 	if not is_active():
 		return Vector3(INF, INF, INF)
@@ -114,19 +118,22 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 		_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)
 		return
 
-	if not source.reserve_worker(_unit):
-		_finish_failed(REASON_NO_WORKER_SLOT)
-		return
-	_has_reservation = true
-
-	mark_running()
-
 	# If already full or unable to fit +1 unit of this resource while carrying cargo,
-	# deliver existing cargo to camp before approaching/extracting from the source.
+	# verify the source currently allows entry and deliver existing cargo FIRST without
+	# holding a source slot during the delivery walk.
 	if not carry_load.is_empty() and not carry_load.can_fit_one(def):
+		if not source.has_worker_slot(_unit):
+			_finish_failed(REASON_NO_WORKER_SLOT)
+			return
+		mark_running()
 		_start_delivering(movement)
 		return
 
+	if not _acquire_source_reservation():
+		_finish_failed(REASON_NO_WORKER_SLOT)
+		return
+
+	mark_running()
 	_start_approaching_source(movement)
 
 
@@ -283,6 +290,8 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 
 
 func _start_delivering(movement: UnitMovement) -> void:
+	# Free the source slot while transporting so other workers can approach or gather.
+	_release_source_reservation()
 	_phase = Phase.DELIVERING_TO_CAMP
 	resolved_target = Vector3(INF, INF, INF)
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
@@ -318,6 +327,10 @@ func _handle_deliver_finished(movement: UnitMovement) -> void:
 		var carry_load: UnitCarryLoad = _unit.get_carry_load()
 		if not carry_load.can_fit_one(source.get_definition()):
 			_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)
+			return
+
+		if not _acquire_source_reservation():
+			_finish_failed(REASON_NO_WORKER_SLOT)
 			return
 
 		_start_approaching_source(movement)
@@ -394,6 +407,17 @@ func _try_step_inward_approach(movement: UnitMovement) -> bool:
 		return false
 	_phase = Phase.APPROACHING_SOURCE
 	_unit.set_order_state(self, Unit.State.MOVING)
+	return true
+
+
+func _acquire_source_reservation() -> bool:
+	if source == null or not is_instance_valid(source) or not source.is_available() or _unit == null or not is_instance_valid(_unit):
+		_has_reservation = false
+		return false
+	if not source.reserve_worker(_unit):
+		_has_reservation = false
+		return false
+	_has_reservation = true
 	return true
 
 

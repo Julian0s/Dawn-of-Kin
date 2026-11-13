@@ -322,7 +322,15 @@ func test_03_solid_obstacle_approach_clearance_and_two_concurrent_workers_no_dea
 	assert_true(checked_working_clearance)
 	assert_eq(leader_a.get_state(), Unit.State.IDLE)
 	assert_eq(leader_b.get_state(), Unit.State.IDLE)
-	assert_true(rock.is_depleted())
+	assert_true(rock.is_depleted(), "remaining=%d a_status=%d a_reason=%s a_carry=%d b_status=%d b_reason=%s b_carry=%d" % [
+		rock.get_remaining_amount(),
+		int(order_a.status),
+		order_a.failure_reason,
+		leader_a.get_carry_load().get_amount(&"stone"),
+		int(order_b.status),
+		order_b.failure_reason,
+		leader_b.get_carry_load().get_amount(&"stone"),
+	])
 	assert_eq(inventory.get_amount(&"stone"), 14, "Concurrent gather+deliver must conserve all 14 units without deadlock")
 	assert_eq(rock.get_active_worker_count(), 0)
 
@@ -557,3 +565,252 @@ func test_06_edge_failures_unreachable_low_capacity_overloaded_and_rejected_deli
 	assert_eq(leader_a.get_carry_load().get_amount(&"wood"), 3, "Rejected delivery must preserve 100% of carry load")
 	assert_eq(inventory.get_amount(&"wood"), 0)
 	assert_eq(inventory.get_amount(&"food"), 3)
+
+
+func test_07_transport_releases_slot_for_third_worker_and_handles_full_return_without_loss() -> void:
+	# Scenarios A, B, C, D, F under real physics, navigation, and RVO.
+	var ctx: Dictionary = await _spawn_economy_world(Vector3(-3.0, 0.0, 2.0))
+	var main_root: MainScene = ctx["main"] as MainScene
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var selection: SelectionManager = ctx["selection"] as SelectionManager
+	var cmd: CommandController = ctx["command_controller"] as CommandController
+	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var leader_b: Unit = ctx["leader_b"] as Unit
+
+	var unit_c: Unit = UNIT_SCENE.instantiate() as Unit
+	unit_c.definition = LEADER_A_DEF
+	unit_c.position = Vector3(2.0, 0.0, 5.2)
+	main_root_add_unit(main_root, unit_c, nav)
+
+	var initial_total: int = 18
+	var rock: ResourceSource = ROCK_SCENE.instantiate() as ResourceSource
+	rock.position = Vector3(2.5, 0.0, 2.0)
+	rock.initial_amount = initial_total
+	rock.max_extract_per_operation = 1
+	rock.max_simultaneous_workers = 2
+	test_map.add_child(rock)
+	await wait_physics_frames(2)
+	await _rebake_test_map(test_map, nav)
+
+	# Scenario A: 2 workers occupy all 2 slots; 3rd worker is rejected cleanly.
+	leader_a.global_position = Vector3(1.0, 0.0, 2.0)
+	leader_b.global_position = Vector3(4.0, 0.0, 2.0)
+	var order_a := GatherResourceOrder.new(rock, camp_zone, inventory, 0.05)
+	var order_b := GatherResourceOrder.new(rock, camp_zone, inventory, 0.35)
+	leader_a.issue_order(order_a)
+	leader_b.issue_order(order_b)
+
+	assert_eq(rock.get_active_worker_count(), 2)
+	assert_true(rock.is_worker_reserved(leader_a))
+	assert_true(rock.is_worker_reserved(leader_b))
+	assert_true(order_a.has_reservation())
+	assert_true(order_b.has_reservation())
+
+	selection.select_single(unit_c)
+	var pick := PickResult.new()
+	pick.kind = PickResult.Kind.RESOURCE_SOURCE
+	pick.resource_source = rock
+	pick.position = rock.global_position
+	assert_false(cmd.command_at(pick), "Scenario A: 3rd worker must be rejected while 2 slots are occupied")
+	assert_eq(cmd.get_last_command_reason(), GatherResourceOrder.REASON_NO_WORKER_SLOT)
+
+	# Scenario B: once leader_a finishes gathering 6 stone and switches to TRANSPORTING, its slot is freed.
+	var frames: int = 0
+	while frames < 300 and leader_a.get_state() != Unit.State.TRANSPORTING:
+		await wait_physics_frames(1)
+		frames += 1
+		assert_true(rock.get_active_worker_count() <= 2)
+
+	assert_eq(leader_a.get_state(), Unit.State.TRANSPORTING, "leader_a should begin transport back to camp")
+	assert_false(order_a.has_reservation(), "Scenario B: reservation must be released when entering delivery")
+	assert_false(rock.is_worker_reserved(leader_a))
+	assert_eq(rock.get_active_worker_count(), 1, "Scenario B: active worker count must drop from 2 to 1")
+	assert_true(rock.has_worker_slot(unit_c))
+
+	# Scenario C: 3rd worker takes the freed slot and gathers without duplicating resources.
+	assert_true(cmd.command_at(pick), "Scenario C: 3rd worker must take freed slot while leader_a transports")
+	assert_true(unit_c.get_current_order() is GatherResourceOrder)
+	var order_c: GatherResourceOrder = unit_c.get_current_order() as GatherResourceOrder
+	assert_true(order_c.has_reservation())
+	assert_true(rock.is_worker_reserved(unit_c))
+	assert_eq(rock.get_active_worker_count(), 2)
+
+	# Scenario D & F: leader_a finishes delivering at camp while leader_b & unit_c occupy both slots.
+	# Wait for order_a to complete delivery and finish cleanly, keeping exact global conservation.
+	var saw_a_return_blocked: bool = false
+	frames = 0
+	while frames < MAX_CYCLE_FRAMES and (leader_a.get_state() != Unit.State.IDLE or leader_b.get_state() != Unit.State.IDLE or unit_c.get_state() != Unit.State.IDLE):
+		await wait_physics_frames(1)
+		frames += 1
+		assert_true(rock.get_active_worker_count() <= 2, "Never exceed max_simultaneous_workers at any frame")
+		var sum_stone: int = (
+			rock.get_remaining_amount()
+			+ leader_a.get_carry_load().get_amount(&"stone")
+			+ leader_b.get_carry_load().get_amount(&"stone")
+			+ unit_c.get_carry_load().get_amount(&"stone")
+			+ inventory.get_amount(&"stone")
+		)
+		assert_eq(sum_stone, initial_total, "Scenario F: exact conservation must hold every frame")
+		if not saw_a_return_blocked and order_a.is_finished():
+			saw_a_return_blocked = true
+			assert_eq(int(order_a.status), int(UnitOrder.Status.FAILED), "Scenario D: returning with full slots should finish explicitly without infinite retry")
+			assert_eq(order_a.failure_reason, GatherResourceOrder.REASON_NO_WORKER_SLOT)
+			assert_eq(order_a.get_delivered_trips(), 1)
+			assert_eq(leader_a.get_state(), Unit.State.IDLE)
+			assert_true(leader_a.get_carry_load().is_empty())
+
+	assert_true(saw_a_return_blocked, "leader_a should have terminated cleanly after finding no free slot on return")
+	assert_true(rock.is_depleted())
+	assert_eq(rock.get_active_worker_count(), 0)
+	assert_eq(inventory.get_amount(&"stone"), initial_total, "All 18 stone conserved cleanly across 3 workers")
+	assert_true(leader_a.get_carry_load().is_empty())
+	assert_true(leader_b.get_carry_load().is_empty())
+	assert_true(unit_c.get_carry_load().is_empty())
+
+
+func test_08_slot_concurrency_preexisting_load_mid_transport_depletion_and_lifecycle_edges() -> void:
+	# Scenarios E & F + S4 edge cases: concurrent race for 1 freed slot, pre-existing full load,
+	# source depleted during transport, cancel in all phases, and tree exit (remove_child).
+	var ctx: Dictionary = await _spawn_economy_world(Vector3(-3.5, 0.0, 2.0))
+	var main_root: MainScene = ctx["main"] as MainScene
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var selection: SelectionManager = ctx["selection"] as SelectionManager
+	var cmd: CommandController = ctx["command_controller"] as CommandController
+	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var leader_b: Unit = ctx["leader_b"] as Unit
+
+	var unit_c: Unit = UNIT_SCENE.instantiate() as Unit
+	unit_c.definition = LEADER_A_DEF
+	unit_c.position = Vector3(1.5, 0.0, 5.0)
+	main_root_add_unit(main_root, unit_c, nav)
+
+	# Part 1 (Scenario E + F): Single-slot tree; leader_a carries full pre-existing wood (10)
+	# -> delivers first WITHOUT locking the tree slot, letting leader_b gather right away!
+	var tree_initial: int = 10
+	var tree: ResourceSource = TREE_SCENE.instantiate() as ResourceSource
+	tree.position = Vector3(2.5, 0.0, 2.0)
+	tree.initial_amount = tree_initial
+	tree.max_extract_per_operation = 2
+	tree.max_simultaneous_workers = 1
+	test_map.add_child(tree)
+	await wait_physics_frames(2)
+	await _rebake_test_map(test_map, nav)
+
+	assert_true(leader_a.get_carry_load().add_units(WOOD_RES, 10))
+	leader_a.global_position = Vector3(1.0, 0.0, 2.0)
+	var pre_order := GatherResourceOrder.new(tree, camp_zone, inventory, 0.15)
+	leader_a.issue_order(pre_order)
+	assert_eq(leader_a.get_state(), Unit.State.TRANSPORTING)
+	assert_false(pre_order.has_reservation(), "Pre-existing cargo delivery must not hold source slot while transporting")
+	assert_eq(tree.get_active_worker_count(), 0)
+
+	# Scenario E: leader_b and unit_c simultaneously right-click the 1-slot tree -> strictly 1 wins!
+	leader_b.global_position = Vector3(1.5, 0.0, 0.2)
+	unit_c.global_position = Vector3(3.5, 0.0, 3.8)
+	selection.set_selection([leader_b, unit_c])
+	var tree_pick := PickResult.new()
+	tree_pick.kind = PickResult.Kind.RESOURCE_SOURCE
+	tree_pick.resource_source = tree
+	tree_pick.position = tree.global_position
+	assert_true(cmd.command_at(tree_pick))
+	assert_eq(tree.get_active_worker_count(), 1, "Scenario E: concurrent multi-unit command must cap strictly at max_simultaneous_workers=1")
+	assert_true(leader_b.get_current_order() is GatherResourceOrder)
+	assert_null(unit_c.get_current_order(), "Loser of 1-slot race must not enter conflicting order")
+
+	# Wait for pre-existing wood delivery + tree depletion -> total wood = 10 pre + 10 tree = 20
+	var frames: int = 0
+	while frames < MAX_CYCLE_FRAMES and (leader_a.get_state() != Unit.State.IDLE or leader_b.get_state() != Unit.State.IDLE):
+		await wait_physics_frames(1)
+		frames += 1
+		assert_true(tree.get_active_worker_count() <= 1)
+		var wood_sum: int = (
+			tree.get_remaining_amount()
+			+ leader_a.get_carry_load().get_amount(&"wood")
+			+ leader_b.get_carry_load().get_amount(&"wood")
+			+ unit_c.get_carry_load().get_amount(&"wood")
+			+ inventory.get_amount(&"wood")
+		)
+		assert_eq(wood_sum, 20, "Wood must be strictly conserved throughout concurrent run")
+
+	assert_eq(inventory.get_amount(&"wood"), 20)
+	assert_true(tree.is_depleted())
+	assert_eq(tree.get_active_worker_count(), 0)
+	assert_eq(pre_order.get_delivered_trips(), 1)
+
+	# Part 2: Source depletes while worker is mid-transport -> finishes SUCCEEDED after depositing cargo.
+	var bush: ResourceSource = BUSH_SCENE.instantiate() as ResourceSource
+	bush.position = Vector3(2.5, 0.0, -2.0)
+	bush.initial_amount = 22
+	bush.max_extract_per_operation = 20
+	bush.max_simultaneous_workers = 1
+	test_map.add_child(bush)
+	await wait_physics_frames(2)
+
+	leader_a.global_position = Vector3(2.0, 0.0, -2.0)
+	var depleting_order := GatherResourceOrder.new(bush, camp_zone, inventory, 0.05)
+	leader_a.issue_order(depleting_order)
+	assert_true(bush.is_worker_reserved(leader_a))
+
+	frames = 0
+	while frames < 60 and leader_a.get_state() != Unit.State.TRANSPORTING:
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_eq(leader_a.get_state(), Unit.State.TRANSPORTING)
+	assert_false(depleting_order.has_reservation())
+	assert_eq(bush.get_active_worker_count(), 0)
+	assert_eq(bush.get_remaining_amount(), 2)
+	assert_eq(bush.extract(2), 2) # deplete remaining 2 food while leader_a is actively transporting!
+	assert_true(bush.is_depleted())
+
+	frames = 0
+	while frames < MAX_CYCLE_FRAMES and not depleting_order.is_finished():
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_true(depleting_order.is_succeeded(), "Source depleted during transport must still finish SUCCEEDED on deposit")
+	assert_eq(inventory.get_amount(&"food"), 20)
+	assert_eq(bush.get_active_worker_count(), 0)
+
+	# Part 3: Cancellation in APPROACHING_SOURCE, GATHERING, DELIVERING_TO_CAMP + tree exit (remove_child)
+	var bush2: ResourceSource = BUSH_SCENE.instantiate() as ResourceSource
+	bush2.position = Vector3(6.0, 0.0, -2.0)
+	bush2.initial_amount = 25
+	bush2.max_extract_per_operation = 20
+	bush2.max_simultaneous_workers = 2
+	test_map.add_child(bush2)
+	await wait_physics_frames(2)
+
+	leader_b.global_position = Vector3(2.0, 0.0, -2.0)
+	leader_b.issue_order(GatherResourceOrder.new(bush2, camp_zone, inventory, 0.25))
+	assert_eq(bush2.get_active_worker_count(), 1)
+	leader_b.cancel_current_order() # cancel during APPROACHING_SOURCE
+	assert_eq(bush2.get_active_worker_count(), 0)
+
+	# Gather into TRANSPORTING, then replace with MoveOrder during DELIVERING_TO_CAMP
+	leader_b.global_position = Vector3(5.3, 0.0, -2.0)
+	leader_b.issue_order(GatherResourceOrder.new(bush2, camp_zone, inventory, 0.05))
+	frames = 0
+	while frames < 60 and leader_b.get_state() != Unit.State.TRANSPORTING:
+		await wait_physics_frames(1)
+		frames += 1
+	assert_eq(leader_b.get_state(), Unit.State.TRANSPORTING)
+	assert_eq(bush2.get_active_worker_count(), 0)
+	leader_b.issue_order(MoveOrder.new(Vector3(4.0, 0.0, -2.0)))
+	assert_eq(leader_b.get_carry_load().get_amount(&"food"), 20, "MoveOrder during DELIVERING_TO_CAMP must preserve carry load")
+	assert_eq(bush2.get_active_worker_count(), 0)
+
+	unit_c.global_position = Vector3(5.3, 0.0, -2.0)
+	unit_c.issue_order(GatherResourceOrder.new(bush2, camp_zone, inventory, 0.25))
+	assert_eq(unit_c.get_state(), Unit.State.WORKING)
+	assert_eq(bush2.get_active_worker_count(), 1)
+	unit_c.get_parent().remove_child(unit_c) # exit tree during GATHERING!
+	await wait_physics_frames(1)
+	assert_eq(bush2.get_active_worker_count(), 0, "Removing working unit from tree must release reservation")
+	unit_c.queue_free()

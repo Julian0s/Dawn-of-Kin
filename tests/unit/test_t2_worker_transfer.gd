@@ -144,3 +144,37 @@ func test_04_resource_source_solid_radius_and_planner_guards() -> void:
 	assert_false(bool(invalid_res["valid"]))
 	var invalid_camp: Dictionary = GatherSlotPlanner.compute_camp_dropoff_slot(Vector3.ZERO, null, null)
 	assert_false(bool(invalid_camp["valid"]))
+
+
+func test_05_repeated_reserve_release_and_two_workers_single_last_slot_contract() -> void:
+	var src := ResourceSource.new()
+	src.configure(&"food_slot_test", FOOD_RES, 10, 2, 1)
+	var worker_a := Node3D.new()
+	var worker_b := Node3D.new()
+	add_test_child(src)
+	add_test_child(worker_a)
+	add_test_child(worker_b)
+
+	assert_false(src.is_worker_reserved(worker_a))
+	assert_true(src.reserve_worker(worker_a))
+	assert_true(src.reserve_worker(worker_a), "Repeated reserve for same worker must be idempotent")
+	assert_true(src.is_worker_reserved(worker_a))
+	assert_eq(src.get_active_worker_count(), 1)
+
+	# Second worker racing for occupied single slot fails cleanly without overflowing max_simultaneous_workers
+	assert_false(src.has_worker_slot(worker_b))
+	assert_false(src.reserve_worker(worker_b))
+	assert_false(src.is_worker_reserved(worker_b))
+	assert_eq(src.get_active_worker_count(), 1)
+
+	# Repeated releases are safe no-ops after count drops to 0
+	src.release_worker(worker_a)
+	src.release_worker(worker_a)
+	assert_false(src.is_worker_reserved(worker_a))
+	assert_eq(src.get_active_worker_count(), 0)
+
+	# Now worker_b acquires cleanly
+	assert_true(src.has_worker_slot(worker_b))
+	assert_true(src.reserve_worker(worker_b))
+	assert_true(src.is_worker_reserved(worker_b))
+	assert_eq(src.get_active_worker_count(), 1)

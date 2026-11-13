@@ -213,6 +213,13 @@ func clear_worker_reservations() -> void:
 	_reserved_worker_ids.clear()
 
 
+func is_worker_reserved(worker: Node) -> bool:
+	_prune_invalid_workers()
+	if worker == null or not is_instance_valid(worker):
+		return false
+	return _reserved_worker_ids.has(worker.get_instance_id())
+
+
 func has_worker_slot(worker: Node = null) -> bool:
 	_prune_invalid_workers()
 	if not is_available():

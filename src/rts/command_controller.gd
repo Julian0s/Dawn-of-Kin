@@ -168,9 +168,7 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
 
-		var existing_order: UnitOrder = unit.get_current_order()
-		var replacing_same_source: bool = (existing_order is GatherResourceOrder and (existing_order as GatherResourceOrder).source == source)
-		if not replacing_same_source and not source.has_worker_slot(unit):
+		if not source.has_worker_slot(unit):
 			if first_failure_reason.is_empty():
 				first_failure_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
 			continue
