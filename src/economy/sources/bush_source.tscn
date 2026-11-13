@@ -56,6 +56,8 @@ initial_amount = 15
 max_extract_per_operation = 1
 max_simultaneous_workers = 2
 interaction_radius = 1.4
+gather_operation_duration_sec = 1.5
+gather_prepare_duration_sec = 0.25
 
 [node name="InteractionArea" type="Area3D" parent="."]
 collision_layer = 32

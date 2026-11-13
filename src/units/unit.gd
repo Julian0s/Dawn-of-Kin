@@ -28,6 +28,7 @@ signal order_finished(order: UnitOrder)
 
 @onready var _movement: UnitMovement = $UnitMovement
 @onready var _agent: NavigationAgent3D = $NavigationAgent3D
+@onready var _visual_root: Node3D = $VisualRoot
 @onready var _explorer_visual: Node3D = $VisualRoot/ExplorerVisual
 @onready var _cloak_visual: Node3D = $VisualRoot/CloakVisual
 @onready var _selection_area: Area3D = $SelectionArea
@@ -40,12 +41,18 @@ var _carry_load: UnitCarryLoad = UnitCarryLoad.new()
 var _order_state_explicit: bool = false
 var _is_selected: bool = false
 var _is_hovered: bool = false
+var _visual_base_transform: Transform3D = Transform3D.IDENTITY
+var _has_visual_base_transform: bool = false
+var _visual_cycle_time: float = 0.0
 
 
 func _ready() -> void:
 	add_to_group(GROUP_SELECTABLE_UNITS)
 	collision_layer = CollisionLayers.MASK_UNITS
 	collision_mask = CollisionLayers.MASK_WORLD_SOLID
+	if _visual_root != null:
+		_visual_base_transform = _visual_root.transform
+		_has_visual_base_transform = true
 
 	if _selection_area != null:
 		_selection_area.collision_layer = CollisionLayers.MASK_SELECTION
@@ -59,6 +66,7 @@ func _ready() -> void:
 
 	if _movement != null:
 		_movement.configure(self, _agent)
+		_movement.set_carry_load(_carry_load)
 
 	if not world_navigation_path.is_empty():
 		var nav_node: WorldNavigation = get_node_or_null(world_navigation_path) as WorldNavigation
@@ -80,6 +88,8 @@ func _physics_process(delta: float) -> void:
 			_set_state(State.IDLE)
 			order_finished.emit(finished_order)
 
+	_update_work_and_load_visuals(delta)
+
 
 func _exit_tree() -> void:
 	if _current_order != null and _current_order.is_active():
@@ -88,6 +98,7 @@ func _exit_tree() -> void:
 		exiting_order.cancel(_movement, UnitOrder.REASON_UNIT_EXITED)
 		_set_state(State.IDLE)
 		order_finished.emit(exiting_order)
+	reset_work_visuals()
 
 
 func apply_definition(def: CharacterDefinition) -> void:
@@ -103,7 +114,13 @@ func _sync_definition() -> void:
 	_carry_load.set_base_capacity(definition.base_carry_capacity)
 
 	if _movement != null:
-		_movement.set_motion_profile(definition.move_speed, definition.turn_rate)
+		_movement.set_carry_load(_carry_load)
+		_movement.set_motion_profile(
+			definition.move_speed,
+			definition.turn_rate,
+			definition.work_approach_speed,
+			definition.max_load_speed_multiplier
+		)
 
 	_apply_visual_definition(definition)
 
@@ -215,6 +232,7 @@ func issue_order(order: UnitOrder) -> void:
 	if _world_navigation == null and _movement != null:
 		_world_navigation = _movement.get_world_navigation()
 
+	_visual_cycle_time = 0.0
 	_current_order = order
 	_order_state_explicit = false
 	order.start(self, _movement, _world_navigation)
@@ -235,21 +253,95 @@ func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
 		if _movement != null:
 			_movement.stop_movement()
 		_set_state(State.IDLE)
+		reset_work_visuals()
 		return
 
 	var cancelled_order: UnitOrder = _current_order
 	_current_order = null
 	cancelled_order.cancel(_movement, reason)
 	_set_state(State.IDLE)
+	reset_work_visuals()
 	order_finished.emit(cancelled_order)
 
 
+func reset_work_visuals() -> void:
+	_visual_cycle_time = 0.0
+	if _visual_root != null and _has_visual_base_transform:
+		_visual_root.transform = _visual_base_transform
+
+
 func _set_state(new_state: State) -> void:
+	if new_state == State.IDLE:
+		_visual_cycle_time = 0.0
+		if _current_order == null:
+			if _movement != null:
+				_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+			reset_work_visuals()
 	if new_state == _state:
 		return
 	var previous: State = _state
 	_state = new_state
 	state_changed.emit(new_state, previous)
+
+
+func _update_work_and_load_visuals(delta: float) -> void:
+	if _visual_root == null or not _has_visual_base_transform or delta <= 0.0:
+		return
+
+	var target_tf: Transform3D = _visual_base_transform
+	if _state == State.WORKING:
+		_visual_cycle_time += delta
+		var target_offset := Vector3.ZERO
+		var target_euler := Vector3.ZERO
+		if _current_order != null and _current_order.is_preparing_work():
+			target_offset = Vector3(0.0, -0.025 + 0.012 * sin(_visual_cycle_time * 4.0), 0.0)
+			target_euler = Vector3(-0.08, 0.04 * sin(_visual_cycle_time * 3.0), 0.0)
+		else:
+			var category: int = _current_order.get_work_category() if _current_order != null else -1
+			match category:
+				ResourceDefinition.Category.WOOD:
+					var phase: float = _visual_cycle_time * 3.8
+					var strike: float = pow(maxf(sin(phase), 0.0), 2.0)
+					target_offset = Vector3(0.0, -0.045 * strike, -0.03 * strike)
+					target_euler = Vector3(-0.18 * strike + 0.05 * (1.0 - strike), 0.08 * cos(phase), -0.06 * sin(phase))
+				ResourceDefinition.Category.STONE:
+					var phase: float = _visual_cycle_time * 2.6
+					var strike: float = pow(maxf(sin(phase), 0.0), 3.0)
+					target_offset = Vector3(0.0, -0.06 * strike, -0.02 * strike)
+					target_euler = Vector3(-0.22 * strike + 0.04, 0.05 * cos(phase), 0.05 * sin(phase))
+				ResourceDefinition.Category.FOOD:
+					var phase: float = _visual_cycle_time * 5.2
+					target_offset = Vector3(0.03 * cos(phase * 0.5), -0.055 + 0.025 * sin(phase), -0.02)
+					target_euler = Vector3(-0.16 + 0.05 * sin(phase), 0.07 * sin(phase * 0.5), 0.04 * cos(phase * 0.5))
+				_:
+					var phase: float = _visual_cycle_time * 3.5
+					target_offset = Vector3(0.0, -0.03 * absf(sin(phase)), 0.0)
+					target_euler = Vector3(-0.10 * absf(sin(phase)), 0.0, 0.0)
+		target_tf = Transform3D(
+			_visual_base_transform.basis * Basis.from_euler(target_euler),
+			_visual_base_transform.origin + target_offset
+		)
+	elif _state == State.TRANSPORTING or (_state == State.MOVING and _carry_load.get_current_weight() > 0):
+		var fill_ratio: float = clampf(_carry_load.get_fill_percentage() / 100.0, 0.0, 1.0)
+		if _carry_load.is_overloaded() or (_carry_load.get_effective_capacity() <= 0 and _carry_load.get_current_weight() > 0):
+			fill_ratio = 1.0
+		if fill_ratio > 0.0:
+			_visual_cycle_time += delta * (4.2 - 1.4 * fill_ratio)
+			var effort_offset := Vector3(0.0, -0.055 * fill_ratio + 0.018 * absf(sin(_visual_cycle_time)), 0.0)
+			var effort_euler := Vector3(
+				-0.15 * fill_ratio,
+				0.03 * fill_ratio * sin(_visual_cycle_time),
+				0.05 * fill_ratio * cos(_visual_cycle_time)
+			)
+			target_tf = Transform3D(
+				_visual_base_transform.basis * Basis.from_euler(effort_euler),
+				_visual_base_transform.origin + effort_offset
+			)
+	else:
+		_visual_cycle_time = 0.0
+
+	var alpha: float = clampf(1.0 - exp(-14.0 * delta), 0.0, 1.0)
+	_visual_root.transform = _visual_root.transform.interpolate_with(target_tf, alpha)
 
 
 func _apply_visual_definition(def: CharacterDefinition) -> void:

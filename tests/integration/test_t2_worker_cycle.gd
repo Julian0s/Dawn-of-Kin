@@ -24,6 +24,16 @@ const MAX_CYCLE_FRAMES: int = 1200
 var _managers_to_cleanup: Array[GroundPileManager] = []
 
 
+func _accelerate_work_walk(units: Array) -> void:
+	for u: Variant in units:
+		if u is Unit:
+			var unit_node: Unit = u as Unit
+			var fast_def: CharacterDefinition = unit_node.get_definition().duplicate() as CharacterDefinition
+			fast_def.work_approach_speed = 4.8
+			fast_def.max_load_speed_multiplier = 1.0
+			unit_node.apply_definition(fast_def)
+
+
 func after_each() -> void:
 	_release_all_inputs()
 	for manager: GroundPileManager in _managers_to_cleanup:
@@ -158,12 +168,14 @@ func test_01_full_wood_cycle_right_click_states_and_exact_conservation() -> void
 	var manager: GroundPileManager = ctx["manager"] as GroundPileManager
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
+	_accelerate_work_walk([leader_a])
 	var manager_source_total: int = 12 # 10 units on trip 1 (20/20 = 100%) + 2 remaining on trip 2
 
 	var tree: ResourceSource = TREE_SCENE.instantiate() as ResourceSource
 	tree.position = Vector3(2.0, 0.0, 2.0)
 	tree.initial_amount = manager_source_total
 	tree.max_extract_per_operation = 2
+	tree.set_gather_cycle_timings(0.15, 0.0)
 	test_map.add_child(tree)
 	await wait_physics_frames(2)
 	await _rebake_test_map(test_map, nav)
@@ -231,6 +243,7 @@ func test_02_stone_non_divisible_capacity_returns_at_90_percent_and_loops() -> v
 	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
+	_accelerate_work_walk([leader_a])
 
 	var rock: ResourceSource = ROCK_SCENE.instantiate() as ResourceSource
 	rock.position = Vector3(2.0, 0.0, 2.0)
@@ -277,12 +290,14 @@ func test_03_solid_obstacle_approach_clearance_and_two_concurrent_workers_no_dea
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	_accelerate_work_walk([leader_a, leader_b])
 
 	var rock: ResourceSource = ROCK_SCENE.instantiate() as ResourceSource
 	rock.position = Vector3(3.0, 0.0, 4.0)
 	rock.initial_amount = 14 # two workers gather & deliver concurrently across 2+ trips cleanly
 	rock.max_extract_per_operation = 2
 	rock.max_simultaneous_workers = 2
+	rock.set_gather_cycle_timings(0.15, 0.0)
 	test_map.add_child(rock)
 	await wait_physics_frames(2)
 	await _rebake_test_map(test_map, nav)
@@ -584,6 +599,7 @@ func test_07_transport_releases_slot_for_third_worker_and_handles_full_return_wi
 	unit_c.definition = LEADER_A_DEF
 	unit_c.position = Vector3(2.0, 0.0, 5.2)
 	main_root_add_unit(main_root, unit_c, nav)
+	_accelerate_work_walk([leader_a, leader_b, unit_c])
 
 	var initial_total: int = 18
 	var rock: ResourceSource = ROCK_SCENE.instantiate() as ResourceSource
@@ -689,6 +705,7 @@ func test_08_slot_concurrency_preexisting_load_mid_transport_depletion_and_lifec
 	unit_c.definition = LEADER_A_DEF
 	unit_c.position = Vector3(1.5, 0.0, 5.0)
 	main_root_add_unit(main_root, unit_c, nav)
+	_accelerate_work_walk([leader_a, leader_b, unit_c])
 
 	# Part 1 (Scenario E + F): Single-slot tree; leader_a carries full pre-existing wood (10)
 	# -> delivers first WITHOUT locking the tree slot, letting leader_b gather right away!

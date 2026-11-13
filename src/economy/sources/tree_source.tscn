@@ -57,6 +57,8 @@ initial_amount = 20
 max_extract_per_operation = 1
 max_simultaneous_workers = 2
 interaction_radius = 1.6
+gather_operation_duration_sec = 2.5
+gather_prepare_duration_sec = 0.35
 
 [node name="SolidBody" type="StaticBody3D" parent="."]
 collision_layer = 2

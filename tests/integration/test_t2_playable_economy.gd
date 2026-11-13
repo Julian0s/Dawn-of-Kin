@@ -19,6 +19,24 @@ const STONE_RES: ResourceDefinition = preload("res://data/resources/stone.tres")
 
 const MAX_WAIT_FRAMES: int = 120
 const MAX_CYCLE_FRAMES: int = 1400
+const MAX_REAL_PACE_CYCLE_FRAMES: int = 2400
+
+
+func _accelerate_sources(test_map: TestMap, op_sec: float = 0.12, prep_sec: float = 0.0) -> void:
+	if test_map == null:
+		return
+	for src: ResourceSource in test_map.get_resource_sources():
+		src.set_gather_cycle_timings(op_sec, prep_sec)
+
+
+func _accelerate_work_walk(units: Array) -> void:
+	for u: Variant in units:
+		if u is Unit:
+			var unit_node: Unit = u as Unit
+			var fast_def: CharacterDefinition = unit_node.get_definition().duplicate() as CharacterDefinition
+			fast_def.work_approach_speed = 4.8
+			fast_def.max_load_speed_multiplier = 1.0
+			unit_node.apply_definition(fast_def)
 
 
 func after_each() -> void:
@@ -251,6 +269,8 @@ func test_02_playable_right_click_wood_cycle_and_no_premature_credit() -> void:
 	var pile_manager: GroundPileManager = ctx["pile_manager"] as GroundPileManager
 	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
 	var leader_a: Unit = ctx["leader_a"] as Unit
+	_accelerate_sources(test_map)
+	_accelerate_work_walk([leader_a])
 	var wood_tree: ResourceSource = _find_source(test_map, &"wood_tree_01")
 	var initial_wood: int = wood_tree.get_remaining_amount()
 
@@ -260,10 +280,10 @@ func test_02_playable_right_click_wood_cycle_and_no_premature_credit() -> void:
 	await _right_click_world(rig, cam, wood_tree.global_position + Vector3(0.0, 1.5, 0.0))
 	assert_true(leader_a.get_current_order() is GatherResourceOrder)
 
-	# Wait until unit picks up wood and starts transporting back to camp
+	# Wait until unit picks up wood and starts transporting back to camp (real production pace)
 	var saw_transporting: bool = false
 	var frames: int = 0
-	while frames < MAX_CYCLE_FRAMES:
+	while frames < MAX_REAL_PACE_CYCLE_FRAMES:
 		await wait_physics_frames(1)
 		frames += 1
 		if leader_a.get_state() == Unit.State.TRANSPORTING:
@@ -277,8 +297,8 @@ func test_02_playable_right_click_wood_cycle_and_no_premature_credit() -> void:
 			break
 	assert_true(saw_transporting, "LeaderA must enter TRANSPORTING state with harvested wood")
 
-	# Wait for delivery into CampStorageZone
-	while inventory.get_amount(&"wood") == 0 and frames < MAX_CYCLE_FRAMES:
+	# Wait for delivery into CampStorageZone (real pace loaded return)
+	while inventory.get_amount(&"wood") == 0 and frames < MAX_REAL_PACE_CYCLE_FRAMES:
 		await wait_physics_frames(1)
 		frames += 1
 
@@ -308,6 +328,8 @@ func test_03_multi_worker_multi_resource_types_create_individual_camp_piles() ->
 	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	_accelerate_sources(test_map)
+	_accelerate_work_walk([leader_a, leader_b])
 
 	var food_bush: ResourceSource = _find_source(test_map, &"food_bush_01")
 	var stone_rock: ResourceSource = _find_source(test_map, &"stone_rock_01")
@@ -367,6 +389,8 @@ func test_04_interruption_mid_transport_preserves_load_and_depletion_behavior() 
 	var cmd: CommandController = ctx["command_controller"] as CommandController
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
+	_accelerate_sources(test_map)
+	_accelerate_work_walk([leader_a])
 	var food_bush_2: ResourceSource = _find_source(test_map, &"food_bush_02")
 	var initial_food: int = food_bush_2.get_remaining_amount()
 
@@ -500,6 +524,8 @@ func test_06_prolonged_session_convergence_and_t1_compatibility() -> void:
 	var clock: EconomyClockController = ctx["clock"] as EconomyClockController
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	_accelerate_sources(test_map)
+	_accelerate_work_walk([leader_a, leader_b])
 
 	var wood_tree: ResourceSource = _find_source(test_map, &"wood_tree_02")
 	var food_bush: ResourceSource = _find_source(test_map, &"food_bush_01")
@@ -712,6 +738,8 @@ func test_07_initial_framing_real_mouse_discoverability_and_delivery() -> void:
 	var pile_manager: GroundPileManager = main_root.get_ground_pile_manager()
 	var camp_zone: CampStorageZone = main_root.get_camp_storage_zone()
 	var leader_a: Unit = main_root.get_units()[0]
+	_accelerate_sources(test_map)
+	_accelerate_work_walk([leader_a])
 
 	_assert_initial_framing_and_picking_in_viewport(main_root, hd_vp, Vector2(1920.0, 1080.0))
 
@@ -771,12 +799,14 @@ func test_08_t231_reclicking_busy_source_during_transport_preserves_delivery() -
 	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	_accelerate_sources(test_map)
 
 	var unit_c: Unit = UNIT_SCENE.instantiate() as Unit
 	unit_c.definition = LEADER_A_DEF
 	unit_c.position = Vector3(5.0, 0.0, 1.0)
 	main_root.get_node("Units").add_child(unit_c)
 	unit_c.set_world_navigation(nav)
+	_accelerate_work_walk([leader_a, leader_b, unit_c])
 	await wait_physics_frames(2)
 
 	var wood_tree: ResourceSource = _find_source(test_map, &"wood_tree_01")

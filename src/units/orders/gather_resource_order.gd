@@ -31,6 +31,10 @@ var _unit: Unit = null
 var _world_nav: WorldNavigation = null
 var _phase: Phase = Phase.APPROACHING_SOURCE
 var _gather_elapsed: float = 0.0
+var _prepare_elapsed: float = 0.0
+var _preparing_cycle: bool = false
+var _use_explicit_interval: bool = false
+var _explicit_prepare_duration_sec: float = -1.0
 var _approach_retries: int = 0
 var _delivered_trips: int = 0
 var _has_reservation: bool = false
@@ -41,12 +45,20 @@ func _init(
 	p_source: ResourceSource = null,
 	p_camp_zone: CampStorageZone = null,
 	p_inventory: SettlementInventory = null,
-	p_gather_interval_sec: float = DEFAULT_GATHER_INTERVAL_SEC
+	p_gather_interval_sec: float = -1.0,
+	p_prepare_duration_sec: float = -1.0
 ) -> void:
 	source = p_source
 	camp_zone = p_camp_zone
 	inventory = p_inventory
-	gather_interval_sec = maxf(p_gather_interval_sec, 0.01)
+	if p_gather_interval_sec > 0.0 and is_finite(p_gather_interval_sec):
+		_use_explicit_interval = true
+		gather_interval_sec = maxf(p_gather_interval_sec, 0.01)
+		_explicit_prepare_duration_sec = maxf(p_prepare_duration_sec, 0.0) if p_prepare_duration_sec >= 0.0 else 0.0
+	else:
+		_use_explicit_interval = false
+		_explicit_prepare_duration_sec = maxf(p_prepare_duration_sec, 0.0) if p_prepare_duration_sec >= 0.0 else -1.0
+		gather_interval_sec = _resolve_operation_duration_sec()
 
 
 func get_order_name() -> String:
@@ -55,6 +67,38 @@ func get_order_name() -> String:
 
 func get_phase() -> Phase:
 	return _phase
+
+
+func is_preparing_gather() -> bool:
+	return _phase == Phase.GATHERING and _preparing_cycle
+
+
+func is_preparing_work() -> bool:
+	return is_preparing_gather()
+
+
+func get_work_category() -> int:
+	return get_source_category()
+
+
+func get_gather_prepare_duration_sec() -> float:
+	return _resolve_prepare_duration_sec()
+
+
+func get_gather_operation_duration_sec() -> float:
+	return _resolve_operation_duration_sec()
+
+
+func get_gather_progress() -> float:
+	if _phase != Phase.GATHERING or _preparing_cycle or gather_interval_sec <= 0.0:
+		return 0.0
+	return clampf(_gather_elapsed / gather_interval_sec, 0.0, 1.0)
+
+
+func get_source_category() -> int:
+	if source == null or not is_instance_valid(source):
+		return -1
+	return source.get_category()
 
 
 func get_delivered_trips() -> int:
@@ -83,6 +127,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if movement == null:
 		_finish_failed(REASON_MISSING_MOVEMENT)
 		return
+	movement.set_speed_context(UnitMovement.SpeedContext.WORK)
 
 	_unit = unit_body as Unit
 	var nav: WorldNavigation = world_nav if world_nav != null else movement.get_world_navigation()
@@ -246,7 +291,10 @@ func _update_approaching(movement: UnitMovement) -> void:
 func _enter_gathering_phase(movement: UnitMovement) -> void:
 	movement.stop_movement()
 	resolved_target = _unit.global_position
+	_refresh_cycle_timings()
 	_gather_elapsed = 0.0
+	_prepare_elapsed = 0.0
+	_preparing_cycle = (_resolve_prepare_duration_sec() > 0.0)
 	_phase = Phase.GATHERING
 	_unit.set_order_state(self, Unit.State.WORKING)
 
@@ -269,7 +317,19 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 		_start_approaching_source(movement)
 		return
 
-	_gather_elapsed += maxf(delta, 0.0)
+	var dt: float = maxf(delta, 0.0)
+	movement.face_towards(source.global_position, dt)
+
+	if _preparing_cycle:
+		var prep_sec: float = _resolve_prepare_duration_sec()
+		_prepare_elapsed += dt
+		if _prepare_elapsed < prep_sec:
+			return
+		_gather_elapsed += (_prepare_elapsed - prep_sec)
+		_preparing_cycle = false
+	else:
+		_gather_elapsed += dt
+
 	if _gather_elapsed < gather_interval_sec:
 		return
 
@@ -446,3 +506,28 @@ func _finish_cancelled(reason: String) -> void:
 	_deliver_order = null
 	_release_source_reservation()
 	mark_cancelled(reason)
+
+
+func _refresh_cycle_timings() -> void:
+	if not _use_explicit_interval:
+		gather_interval_sec = _resolve_operation_duration_sec()
+
+
+func _resolve_operation_duration_sec() -> float:
+	if _use_explicit_interval:
+		return gather_interval_sec
+	if source != null and is_instance_valid(source):
+		var duration: float = source.get_gather_operation_duration_sec()
+		if duration > 0.0 and is_finite(duration):
+			return duration
+	return DEFAULT_GATHER_INTERVAL_SEC
+
+
+func _resolve_prepare_duration_sec() -> float:
+	if _explicit_prepare_duration_sec >= 0.0:
+		return _explicit_prepare_duration_sec
+	if not _use_explicit_interval and source != null and is_instance_valid(source):
+		var prep: float = source.get_gather_prepare_duration_sec()
+		if prep >= 0.0 and is_finite(prep):
+			return prep
+	return 0.0

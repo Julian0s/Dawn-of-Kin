@@ -20,6 +20,8 @@ signal depleted(source: ResourceSource)
 @export var max_extract_per_operation: int = 1
 @export var max_simultaneous_workers: int = 2
 @export var interaction_radius: float = 1.6
+@export var gather_operation_duration_sec: float = 2.5
+@export var gather_prepare_duration_sec: float = 0.35
 @export var show_discoverability_badge: bool = true:
 	set(value):
 		show_discoverability_badge = value
@@ -33,6 +35,9 @@ var _remaining_amount: int = 20
 var _has_extracted: bool = false
 var _is_transferring: bool = false
 var _reserved_worker_ids: Array[int] = []
+var _available_base_transform: Transform3D = Transform3D.IDENTITY
+var _has_available_base_transform: bool = false
+var _feedback_tween: Tween = null
 
 
 func _init() -> void:
@@ -56,7 +61,13 @@ func _ready() -> void:
 		interaction_area.monitoring = false
 		interaction_area.monitorable = true
 
+	_cache_available_base_transform()
 	_sync_visuals()
+
+
+func _exit_tree() -> void:
+	_kill_feedback_tween()
+	_reset_feedback_visuals()
 
 
 func configure(
@@ -75,6 +86,7 @@ func configure(
 	initial_amount = p_initial_amount
 	_remaining_amount = maxi(0, p_initial_amount)
 	_reserved_worker_ids.clear()
+	_reset_feedback_visuals()
 	_sync_visuals()
 
 
@@ -86,6 +98,10 @@ func is_valid() -> bool:
 		and initial_amount > 0
 		and max_extract_per_operation > 0
 		and max_simultaneous_workers > 0
+		and gather_operation_duration_sec > 0.0
+		and is_finite(gather_operation_duration_sec)
+		and gather_prepare_duration_sec >= 0.0
+		and is_finite(gather_prepare_duration_sec)
 		and _remaining_amount >= 0
 		and _remaining_amount <= initial_amount
 	)
@@ -144,6 +160,8 @@ func extract(requested_amount: int) -> int:
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
 	var became_depleted: bool = (_remaining_amount == 0)
 	_sync_visuals()
+	if not became_depleted:
+		_trigger_gather_feedback()
 
 	# Emit signals strictly after final state is committed.
 	_is_transferring = true
@@ -184,6 +202,8 @@ func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
 	var became_depleted: bool = (_remaining_amount == 0)
 	_sync_visuals()
+	if not became_depleted:
+		_trigger_gather_feedback()
 
 	# Both source and carry_load now reflect final conserved quantities before observers fire.
 	_is_transferring = true
@@ -246,6 +266,20 @@ func get_interaction_radius() -> float:
 	return interaction_radius
 
 
+func get_gather_operation_duration_sec() -> float:
+	return gather_operation_duration_sec
+
+
+func get_gather_prepare_duration_sec() -> float:
+	return gather_prepare_duration_sec
+
+
+func set_gather_cycle_timings(p_operation_duration_sec: float, p_prepare_duration_sec: float = -1.0) -> void:
+	gather_operation_duration_sec = maxf(p_operation_duration_sec, 0.01)
+	if p_prepare_duration_sec >= 0.0:
+		gather_prepare_duration_sec = p_prepare_duration_sec
+
+
 func set_discoverability_badge_visible(enabled: bool) -> void:
 	show_discoverability_badge = enabled
 
@@ -291,11 +325,72 @@ func _prune_invalid_workers() -> void:
 	_reserved_worker_ids = kept
 
 
+func _cache_available_base_transform() -> void:
+	var available_node: Node3D = get_node_or_null("AvailableVisual") as Node3D
+	if available_node != null and not _has_available_base_transform:
+		_available_base_transform = available_node.transform
+		_has_available_base_transform = true
+
+
+func _kill_feedback_tween() -> void:
+	if _feedback_tween != null and is_instance_valid(_feedback_tween):
+		_feedback_tween.kill()
+	_feedback_tween = null
+
+
+func _reset_feedback_visuals() -> void:
+	_kill_feedback_tween()
+	var available_node: Node3D = get_node_or_null("AvailableVisual") as Node3D
+	if available_node != null and _has_available_base_transform:
+		available_node.transform = _available_base_transform
+
+
+func _trigger_gather_feedback() -> void:
+	if not is_inside_tree() or _remaining_amount <= 0:
+		return
+	var available_node: Node3D = get_node_or_null("AvailableVisual") as Node3D
+	if available_node == null:
+		return
+	_cache_available_base_transform()
+	_kill_feedback_tween()
+	available_node.transform = _available_base_transform
+
+	var pulse_transform: Transform3D = _available_base_transform
+	var out_sec: float = 0.08
+	var return_sec: float = 0.14
+	match get_category():
+		ResourceDefinition.Category.WOOD:
+			var sway_basis: Basis = Basis(Vector3(0.0, 0.0, 1.0), 0.055).scaled(Vector3(1.02, 0.97, 1.02))
+			pulse_transform = Transform3D(_available_base_transform.basis * sway_basis, _available_base_transform.origin)
+		ResourceDefinition.Category.STONE:
+			var jolt_basis: Basis = _available_base_transform.basis.scaled(Vector3(1.03, 0.94, 1.03))
+			pulse_transform = Transform3D(jolt_basis, _available_base_transform.origin + Vector3(0.0, -0.025, 0.0))
+			out_sec = 0.06
+			return_sec = 0.12
+		ResourceDefinition.Category.FOOD:
+			var rustle_basis: Basis = Basis(Vector3(1.0, 0.0, 0.0), 0.045).scaled(Vector3(1.04, 0.95, 1.04))
+			pulse_transform = Transform3D(_available_base_transform.basis * rustle_basis, _available_base_transform.origin)
+			out_sec = 0.07
+			return_sec = 0.13
+		_:
+			var default_basis: Basis = _available_base_transform.basis.scaled(Vector3(1.02, 0.97, 1.02))
+			pulse_transform = Transform3D(default_basis, _available_base_transform.origin)
+
+	var tween: Tween = create_tween()
+	if tween == null:
+		return
+	_feedback_tween = tween
+	tween.tween_property(available_node, "transform", pulse_transform, out_sec).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(available_node, "transform", _available_base_transform, return_sec).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
 func _sync_visuals() -> void:
 	var available_node: Node3D = get_node_or_null("AvailableVisual") as Node3D
 	var depleted_node: Node3D = get_node_or_null("DepletedVisual") as Node3D
 	var badge_node: Node3D = get_node_or_null("DiscoverabilityBadge") as Node3D
 	var show_available: bool = _remaining_amount > 0
+	if not show_available:
+		_reset_feedback_visuals()
 	if available_node != null:
 		available_node.visible = show_available
 	if depleted_node != null:
