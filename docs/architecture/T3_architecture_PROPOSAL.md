@@ -1,8 +1,8 @@
 # Dawn of Kin — Proposta de Arquitetura e Planejamento Incremental da T3 (Construção)
 
-**Status:** PROPOSTA TÉCNICA PARA REVISÃO (somente planejamento autorizado; nenhuma linha de código T3 implementada)  
-**Base Auditada:** Branch `main` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`), tag `t2-complete`  
-**Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md))  
+**Status:** PROPOSTA TÉCNICA PARA REVISÃO (somente planejamento autorizado; nenhuma linha de código T3 implementada)<br>
+**Base Auditada:** Branch `main` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`), tag `t2-complete`<br>
+**Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md))<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta `p95 <= 16,7 ms` em tomada CA)
 
 ---
