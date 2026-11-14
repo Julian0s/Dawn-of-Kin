@@ -45,7 +45,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if movement == null:
 		mark_failed(REASON_MISSING_MOVEMENT)
 		return
-	movement.set_speed_context(UnitMovement.SpeedContext.WORK)
+	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 
 	_unit = unit_body as Unit
 	var nav: WorldNavigation = world_nav if world_nav != null else movement.get_world_navigation()
@@ -118,6 +118,8 @@ func physics_update(movement: UnitMovement, _delta: float) -> void:
 
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	resolved_target = Vector3(INF, INF, INF)
+	if movement != null:
+		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	super.cancel(movement, reason)
 
 

@@ -343,7 +343,7 @@ func test_07_real_pace_full_cycle_approach_work_slow_loaded_return_and_unload_re
 	tree.max_extract_per_operation = 5 # 2 ops at real 2.5s = 5.35s working to hit 100% load cleanly
 	var initial_wood: int = tree.get_remaining_amount()
 
-	leader_a.global_position = tree.global_position + Vector3(-2.8, 0.0, 0.0)
+	leader_a.global_position = tree.global_position + Vector3(-4.5, 0.0, 0.0)
 	await wait_physics_frames(2)
 
 	var order: GatherResourceOrder = _issue_gather(cmd, selection, [leader_a], tree)
@@ -374,14 +374,14 @@ func test_07_real_pace_full_cycle_approach_work_slow_loaded_return_and_unload_re
 
 	var avg_approach: float = _avg_float(approach_speeds)
 	var avg_transport: float = _avg_float(transport_speeds)
-	assert_near(avg_approach, 2.5, 0.25, "Work approach pace must stay around 2.5 m/s")
-	assert_lt(avg_transport, avg_approach - 0.5, "Loaded return must be distinctly slower than empty approach")
-	assert_near(avg_transport, 1.5, 0.25, "Fully loaded wood return must be around 1.5 m/s")
+	assert_near(avg_approach, 4.8, 0.65, "Work approach pace without load must match normal travel at ~4.8 m/s")
+	assert_lt(avg_transport, avg_approach - 0.8, "Loaded return must be distinctly slower than empty approach")
+	assert_near(avg_transport, 2.88, 0.40, "Fully loaded wood return must be around 2.88 m/s")
 
-	# Step a few frames on next unloaded trip to confirm speed restored to 2.5 m/s after camp unload
+	# Step a few frames on next unloaded trip to confirm speed restored to 4.8 m/s after camp unload
 	await wait_physics_frames(10)
 	returned_unloaded_speed = movement.get_effective_move_speed()
-	assert_near(returned_unloaded_speed, 2.5, 0.15, "Unloaded speed must recover cleanly after delivery")
+	assert_near(returned_unloaded_speed, 4.8, 0.20, "Unloaded speed must recover cleanly to 4.8 m/s after delivery")
 	assert_eq(
 		tree.get_remaining_amount() + leader_a.get_carry_load().get_amount(&"wood") + inventory.get_amount(&"wood"),
 		initial_wood
@@ -524,6 +524,148 @@ func test_11_cancel_replace_depletion_and_exit_tree_leave_zero_residual_transfor
 		await wait_physics_frames(1)
 	main_root.queue_free()
 	await wait_process_frames(2)
+
+
+func test_12_gather_and_deliver_travel_speeds_at_various_load_tiers() -> void:
+	var ctx: Dictionary = await _spawn_main_scene()
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var movement: UnitMovement = leader_a.get_movement()
+	var carry: UnitCarryLoad = leader_a.get_carry_load()
+	var food_def: ResourceDefinition = load("res://data/resources/food.tres") as ResourceDefinition
+	var stone_def: ResourceDefinition = load("res://data/resources/stone.tres") as ResourceDefinition
+	var bush: ResourceSource = _find_source(test_map, &"food_bush_01")
+
+	# 1. Empty approach to source via GatherResourceOrder uses normal travel speed (4.8 m/s)
+	leader_a.global_position = bush.global_position + Vector3(-5.0, 0.0, 0.0)
+	await wait_physics_frames(2)
+	var gather_order := GatherResourceOrder.new(bush, camp_zone, inventory)
+	leader_a.issue_order(gather_order)
+	assert_eq(movement.get_speed_context(), UnitMovement.SpeedContext.NORMAL)
+	assert_near(movement.get_target_move_speed(), 4.80, 0.01, "Empty gather approach must target 4.8 m/s")
+	leader_a.cancel_current_order()
+
+	# 2. DeliverToCampOrder target speeds at 25%, 50%, 75%, 100% food and 90% stone
+	var tiers: Array[Dictionary] = [
+		{"res": food_def, "units": 5, "expected": 4.32, "desc": "25% load"},
+		{"res": food_def, "units": 10, "expected": 3.84, "desc": "50% load"},
+		{"res": food_def, "units": 15, "expected": 3.36, "desc": "75% load"},
+		{"res": food_def, "units": 20, "expected": 2.88, "desc": "100% load"},
+		{"res": stone_def, "units": 6, "expected": 3.072, "desc": "90% load (stone 18/20)"},
+	]
+
+	for tier: Dictionary in tiers:
+		carry.take_all()
+		assert_true(carry.add_units(tier["res"] as ResourceDefinition, int(tier["units"])))
+		var deliver_order := DeliverToCampOrder.new(camp_zone, inventory)
+		leader_a.issue_order(deliver_order)
+		assert_eq(movement.get_speed_context(), UnitMovement.SpeedContext.NORMAL)
+		assert_near(
+			movement.get_target_move_speed(),
+			float(tier["expected"]),
+			0.02,
+			"%s target speed must match weight-scaled normal speed" % str(tier["desc"])
+		)
+		leader_a.cancel_current_order()
+
+	# 3. Full execution of stone delivery at 90% capacity:
+	# Verifies arrival at camp, delivery into inventory, and clean recovery to 4.8 m/s
+	carry.take_all()
+	assert_true(carry.add_units(stone_def, 6))
+	leader_a.global_position = Vector3(5.0, 0.0, -3.5)
+	await wait_physics_frames(2)
+	var active_delivery := DeliverToCampOrder.new(camp_zone, inventory)
+	leader_a.issue_order(active_delivery)
+	assert_near(movement.get_target_move_speed(), 3.072, 0.02)
+
+	var frames: int = 0
+	while active_delivery.is_active() and frames < 300:
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_true(active_delivery.is_succeeded(), "Stone delivery must succeed")
+	assert_true(carry.is_empty(), "Carry load must be empty after camp deposit")
+	assert_eq(inventory.get_amount(&"stone"), 6, "Inventory must receive all 6 stone")
+	assert_near(movement.get_target_move_speed(), 4.80, 0.01, "Speed must immediately recover to 4.8 m/s after unload")
+
+
+func test_13_second_cycle_and_interrupted_manual_move_with_preserved_load() -> void:
+	var ctx: Dictionary = await _spawn_main_scene()
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var cmd: CommandController = ctx["cmd"] as CommandController
+	var selection: SelectionManager = ctx["selection"] as SelectionManager
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var camp_zone: CampStorageZone = ctx["camp_zone"] as CampStorageZone
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var movement: UnitMovement = leader_a.get_movement()
+	var carry: UnitCarryLoad = leader_a.get_carry_load()
+	var wood_def: ResourceDefinition = load("res://data/resources/wood.tres") as ResourceDefinition
+	var tree: ResourceSource = _find_source(test_map, &"wood_tree_01")
+	tree.initial_amount = 30
+	tree.max_extract_per_operation = 5
+
+	# 1. Run first trip to camp, let it deliver and begin second approach cycle
+	leader_a.global_position = tree.global_position + Vector3(-3.5, 0.0, 0.0)
+	await wait_physics_frames(2)
+	var gather_order: GatherResourceOrder = _issue_gather(cmd, selection, [leader_a], tree)
+	assert_not_null(gather_order)
+
+	# Wait until first delivery trip completes
+	var frames: int = 0
+	while gather_order.get_delivered_trips() == 0 and frames < 1200:
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_eq(gather_order.get_delivered_trips(), 1, "First delivery trip must complete")
+	assert_eq(inventory.get_amount(&"wood"), 10)
+	assert_true(carry.is_empty())
+
+	# Now wait a few frames for the second approach to establish
+	await wait_physics_frames(5)
+	assert_eq(gather_order.get_phase(), GatherResourceOrder.Phase.APPROACHING_SOURCE)
+	assert_eq(movement.get_speed_context(), UnitMovement.SpeedContext.NORMAL, "Second cycle approach must use NORMAL speed context")
+	assert_near(movement.get_target_move_speed(), 4.80, 0.01, "Second cycle approach must target 4.8 m/s")
+	assert_near(movement.get_effective_move_speed(), 4.80, 0.25, "Second cycle effective speed must be 4.8 m/s")
+
+	# 2. Interrupted task with preserved load:
+	# Add 10 wood (100% capacity) and issue manual MoveOrder
+	assert_true(carry.add_units(wood_def, 10))
+	var manual_target := Vector3(-2.0, 0.0, -3.5)
+	var manual_move := MoveOrder.new(manual_target)
+	leader_a.issue_order(manual_move)
+
+	assert_true(leader_a.get_current_order() is MoveOrder)
+	assert_eq(carry.get_amount(&"wood"), 10, "Manual order must not wipe carried load")
+	assert_eq(movement.get_speed_context(), UnitMovement.SpeedContext.NORMAL)
+	assert_near(movement.get_target_move_speed(), 2.88, 0.02, "Manual move with 100% load must target 2.88 m/s")
+
+	frames = 0
+	while manual_move.is_active() and frames < 300:
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_true(manual_move.is_succeeded())
+	assert_eq(carry.get_amount(&"wood"), 10, "Carried load must remain intact upon arrival")
+
+	# 3. New gather order after manual move: with existing full load, worker immediately delivers at 2.88 m/s
+	var new_gather := GatherResourceOrder.new(tree, camp_zone, inventory)
+	leader_a.issue_order(new_gather)
+	assert_eq(new_gather.get_phase(), GatherResourceOrder.Phase.DELIVERING_TO_CAMP)
+	assert_near(movement.get_target_move_speed(), 2.88, 0.02, "Initial delivery of preserved load must move at 2.88 m/s")
+
+	frames = 0
+	while new_gather.get_delivered_trips() == 0 and frames < 300:
+		await wait_physics_frames(1)
+		frames += 1
+
+	assert_eq(new_gather.get_delivered_trips(), 1)
+	assert_eq(inventory.get_amount(&"wood"), 20, "Total wood delivered must now be 20")
+	assert_true(carry.is_empty())
+	await wait_physics_frames(5)
+	assert_near(movement.get_target_move_speed(), 4.80, 0.01, "Speed must recover to 4.8 m/s after delivering preserved load")
 
 
 func _avg_float(values: Array[float]) -> float:

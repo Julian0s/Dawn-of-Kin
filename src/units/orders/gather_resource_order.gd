@@ -128,7 +128,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if movement == null:
 		_finish_failed(REASON_MISSING_MOVEMENT)
 		return
-	movement.set_speed_context(UnitMovement.SpeedContext.WORK)
+	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 
 	_unit = unit_body as Unit
 	var nav: WorldNavigation = world_nav if world_nav != null else movement.get_world_navigation()
@@ -212,11 +212,15 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	_awaiting_felling_before_delivery = false
 	resolved_target = Vector3(INF, INF, INF)
 	_release_source_reservation()
+	if movement != null:
+		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	super.cancel(movement, reason)
 
 
 func _start_approaching_source(movement: UnitMovement) -> void:
 	_awaiting_felling_before_delivery = false
+	if movement != null:
+		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	if not _is_source_usable():
 		_handle_source_unavailable(movement)
 		return
