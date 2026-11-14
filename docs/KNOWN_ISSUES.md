@@ -66,7 +66,7 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
     - **CA:** `p95 = 9,757 ms` — critério atendido na bateria B1.1.
     - **DC:** `p95 = 33,038 ms` — critério de `p95 <= 16,7 ms` não atendido na bateria B1.
     - **Critério de spikes:** zero quadros acima de 100 ms nas duas baterias (CA e DC).
-  - A aprovação em CA aplica-se estritamente às condições de tomada CA; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 **ainda depende de decisão expressa do proprietário**.
+  - A aprovação em CA aplica-se estritamente às condições de tomada CA. Em 14/11/2026, o proprietário aprovou expressamente o resultado em bateria DC (`p95 = 33,038 ms`, não conforme à meta de `16,7 ms`) como uma limitação conhecida não bloqueante para o fechamento da fase T2, mantendo o registro para investigações futuras caso perfis adicionais de energia móvel venham a ser otimizados, sem afirmar causalidade física específica sem telemetria direta suficiente.
 
 ---
 

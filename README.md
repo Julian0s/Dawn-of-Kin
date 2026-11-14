@@ -4,8 +4,9 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ## Estado atual
 
-- **Marco ativo:** T2 — Trabalho e Recursos (**Candidata a Encerramento na branch `review/t2-closeout-candidate`**; implementada, validada automaticamente, com testes manuais A1–F2 relatados como aprovados pelo proprietário e aguardando aceite formal definitivo)
-  - **Implementado e aprovado manualmente em etapas parciais (`T2.0`–`T2.5.1`):**
+- **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
+- **Próximo marco:** **T3 — Construção** (próxima fase **de planejamento técnico**; implementação ainda não iniciada e dependente de autorização prévia).
+  - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
     - `T2.2` / `T2.2.1`: fontes coletáveis (`wood_tree`, `stone_rock`, `food_bush`), `WorldPicker`/`PickResult` com oclusão e rebake de `WorldNavigation`.
@@ -23,16 +24,16 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
   - **Testes manuais (informados pelo proprietário em 14/11/2026):**
     - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
     - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
-  - **Situação para encerramento:** Branch candidata `review/t2-closeout-candidate` consolidada; aguardando autorização expressa do proprietário para o aceite formal definitivo da T2.
+  - **Situação de encerramento:** Fase T2 oficialmente concluída, integrada na branch `main` e marcada com a tag `t2-complete`.
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 
 ### Pendências conhecidas e limites provisórios
 
-- Desempenho em bateria DC na Intel UHD 620 (`p95 = 33,038 ms` na bateria B1, não atendendo `p95 <= 16,7 ms`, vs. `9,757 ms` em CA na bateria B1.1; `0` quadros `> 100 ms` em ambas; aceitação da limitação em DC pendente de decisão do proprietário em `docs/KNOWN_ISSUES.md`).
+- Desempenho em bateria DC na Intel UHD 620 (`p95 = 33,038 ms` na bateria B1, não atendendo `p95 <= 16,7 ms`, vs. `9,757 ms` em CA na bateria B1.1; `0` quadros `> 100 ms` em ambas; aceito expressamente pelo proprietário em 14/11/2026 como limitação conhecida não bloqueante da T2, detalhado em `docs/KNOWN_ISSUES.md`).
 - Itens visuais provisórios declarados em T2.4.3 (oscilação simples no feedback de coleta e pilhas geométricas provisórias; sem bloqueio funcional para a T2).
-- Decisão de arquitetura para a T3 sobre o conceito de "abrigo concluído e persistido" antes do save/load em disco na T4.
+- Decisão de arquitetura para a T3 sobre o conceito de "abrigo concluído e persistido" antes do save/load em disco na T4 (a ser avaliada no planejamento técnico da T3).
 
 ## Requisitos de ambiente
 
