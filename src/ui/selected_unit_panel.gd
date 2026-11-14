@@ -247,8 +247,8 @@ func _build_render_key() -> Dictionary:
 			"wood": 0,
 			"stone": 0,
 			"food": 0,
-			"pct_text": "0%",
-			"weight_text": "Carga: 0 / 0",
+			"percentage_text": "0%",
+			"weight_text": "Peso transportado: 0 / 0",
 		}
 
 	if _mode == SelectionMode.MULTI:
@@ -285,7 +285,7 @@ func _build_render_key() -> Dictionary:
 		"stone": int(carry.get("stone", 0)),
 		"food": int(carry.get("food", 0)),
 		"pct_text": str(carry.get("percentage_text", "0%")),
-		"weight_text": str(carry.get("weight_text", "Carga: 0 / 0")),
+		"weight_text": str(carry.get("weight_text", "Peso transportado: 0 / 0")),
 	}
 
 
@@ -359,7 +359,7 @@ func _apply_render_key(key: Dictionary) -> void:
 		)
 
 	if _weight_label != null:
-		_weight_label.text = str(key.get("weight_text", "Carga: 0 / 0"))
+		_weight_label.text = str(key.get("weight_text", "Peso transportado: 0 / 0"))
 		_weight_label.add_theme_color_override(
 			&"font_color",
 			HudStyle.EXPOSURE_ACTIVE_COLOR if overloaded else HudStyle.TEXT_SECONDARY_COLOR
@@ -376,7 +376,7 @@ func _apply_render_key(key: Dictionary) -> void:
 func _apply_carried_label(label: Label, label_name: String, amount: int) -> void:
 	if label == null:
 		return
-	label.text = "%s: %d" % [label_name, amount]
+	label.text = "%s: %d un" % [label_name, amount]
 	label.add_theme_color_override(
 		&"font_color",
 		HudStyle.TEXT_PRIMARY_COLOR if amount > 0 else HudStyle.TEXT_MUTED_COLOR

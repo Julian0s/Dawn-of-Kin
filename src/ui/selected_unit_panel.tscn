@@ -83,7 +83,7 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.75, 0.74, 0.67, 1)
 theme_override_font_sizes/font_size = 14
-text = "Carga: 0 / 0"
+text = "Peso transportado: 0 / 0"
 
 [node name="CarriedRow" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent"]
 layout_mode = 2
@@ -107,7 +107,7 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
 theme_override_font_sizes/font_size = 14
-text = "Madeira: 0"
+text = "Madeira: 0 un"
 
 [node name="StoneItem" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent/CarriedRow"]
 layout_mode = 2
@@ -126,7 +126,7 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
 theme_override_font_sizes/font_size = 14
-text = "Pedra: 0"
+text = "Pedra: 0 un"
 
 [node name="FoodItem" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent/CarriedRow"]
 layout_mode = 2
@@ -145,4 +145,4 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
 theme_override_font_sizes/font_size = 14
-text = "Alimentos: 0"
+text = "Alimentos: 0 un"

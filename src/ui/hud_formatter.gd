@@ -56,7 +56,7 @@ static func build_carry_snapshot(carry_load: UnitCarryLoad) -> Dictionary:
 			"stone": 0,
 			"food": 0,
 			"percentage_text": "0%",
-			"weight_text": "Carga: 0 / 0",
+			"weight_text": "Peso transportado: 0 / 0",
 		}
 
 	var current_weight: int = carry_load.get_current_weight()
@@ -68,7 +68,7 @@ static func build_carry_snapshot(carry_load: UnitCarryLoad) -> Dictionary:
 	var stone: int = carry_load.get_amount(&"stone")
 	var food: int = carry_load.get_amount(&"food")
 
-	var weight_text: String = "Carga: %d / %d" % [current_weight, effective_capacity]
+	var weight_text: String = "Peso transportado: %d / %d" % [current_weight, effective_capacity]
 	if is_overloaded:
 		weight_text = "%s (sobrecarga)" % weight_text
 

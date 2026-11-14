@@ -116,7 +116,7 @@ func test_02_carry_load_percentage_partial_full_and_overload() -> void:
 	assert_eq(unit_panel.get_state_text(), "Ocioso")
 	assert_eq(unit_panel.get_percentage_text(), "0%")
 	assert_near(unit_panel.get_bar_value(), 0.0, 0.01)
-	assert_eq(unit_panel.get_weight_text(), "Carga: 0 / 20")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 0 / 20")
 
 	# 6 stones = 18 / 20 = 90%, even though 7th stone (+3) cannot fit
 	var load: UnitCarryLoad = unit.get_carry_load()
@@ -124,15 +124,15 @@ func test_02_carry_load_percentage_partial_full_and_overload() -> void:
 	assert_false(load.can_fit_one(STONE_RES))
 	assert_eq(unit_panel.get_percentage_text(), "90%")
 	assert_near(unit_panel.get_bar_value(), 90.0, 0.01)
-	assert_eq(unit_panel.get_weight_text(), "Carga: 18 / 20")
-	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 6")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 18 / 20")
+	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 6 un")
 
 	# Fill to 100% with 2 food (weight 20 / 20)
 	assert_true(load.add_units(FOOD_RES, 2))
 	assert_eq(unit_panel.get_percentage_text(), "100%")
 	assert_near(unit_panel.get_bar_value(), 100.0, 0.01)
-	assert_eq(unit_panel.get_weight_text(), "Carga: 20 / 20")
-	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 2")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 20 / 20")
+	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 2 un")
 
 	# Overload via capacity modifier removal: 26 / 20 -> bar stays <= 100, real weight visible
 	assert_true(load.set_capacity_modifier(&"pack", 10))
@@ -142,9 +142,85 @@ func test_02_carry_load_percentage_partial_full_and_overload() -> void:
 	assert_eq(unit_panel.get_percentage_text(), "100%")
 	assert_true(unit_panel.get_bar_value() <= 100.0, "Overload progress bar must never exceed 100")
 	assert_near(unit_panel.get_bar_value(), 100.0, 0.01)
-	assert_eq(unit_panel.get_weight_text(), "Carga: 26 / 20 (sobrecarga)")
-	assert_eq(unit_panel.get_carried_text(&"wood"), "Madeira: 3")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 26 / 20 (sobrecarga)")
+	assert_eq(unit_panel.get_carried_text(&"wood"), "Madeira: 3 un")
 	(ctx["pile_manager"] as GroundPileManager).cleanup()
+
+
+func test_02b_resource_units_versus_load_weight_conservation() -> void:
+	# Explicit verification of T2.5.1 requirements:
+	# - 6 stones (unit_weight 3) = 18 load weight -> delivers exactly 6 stones to camp
+	# - 10 wood (unit_weight 2) = 20 load weight -> delivers exactly 10 wood to camp
+	# - 20 food (unit_weight 1) = 20 load weight -> delivers exactly 20 food to camp
+	# - HUD distinguishes item quantity ("X un") from weight ("Peso transportado: X / Y")
+	# - No resources duplicated or lost during atomic transfer
+	var ctx: Dictionary = _create_hud_stack()
+	var selection: SelectionManager = ctx["selection"] as SelectionManager
+	var unit_panel: SelectedUnitPanel = ctx["unit_panel"] as SelectedUnitPanel
+	var stockpile: SettlementStockpilePanel = ctx["stockpile"] as SettlementStockpilePanel
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var pile_manager: GroundPileManager = ctx["pile_manager"] as GroundPileManager
+	var unit: Unit = _create_unit(LEADER_A_DEF, "LeaderA")
+	var load: UnitCarryLoad = unit.get_carry_load()
+	await wait_process_frames(1)
+
+	selection.select_single(unit)
+
+	# 1. Stone test: 6 items * weight 3 = 18 load
+	assert_eq(STONE_RES.unit_weight, 3)
+	assert_true(load.add_units(STONE_RES, 6))
+	assert_eq(load.get_amount(&"stone"), 6)
+	assert_eq(load.get_current_weight(), 18)
+	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 6 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 18 / 20")
+	assert_eq(unit_panel.get_percentage_text(), "90%")
+	assert_eq(stockpile.get_displayed_amount(&"stone"), 0)
+	var report_stone: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(report_stone.get(&"stone", 0)), 6)
+	assert_eq(load.get_amount(&"stone"), 0)
+	assert_eq(load.get_current_weight(), 0)
+	assert_eq(inventory.get_amount(&"stone"), 6)
+	assert_eq(stockpile.get_displayed_amount(&"stone"), 6)
+	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 0 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 0 / 20")
+
+	# 2. Wood test: 10 items * weight 2 = 20 load
+	assert_eq(WOOD_RES.unit_weight, 2)
+	assert_true(load.add_units(WOOD_RES, 10))
+	assert_eq(load.get_amount(&"wood"), 10)
+	assert_eq(load.get_current_weight(), 20)
+	assert_eq(unit_panel.get_carried_text(&"wood"), "Madeira: 10 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 20 / 20")
+	assert_eq(unit_panel.get_percentage_text(), "100%")
+	assert_eq(stockpile.get_displayed_amount(&"wood"), 0)
+	var report_wood: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(report_wood.get(&"wood", 0)), 10)
+	assert_eq(load.get_amount(&"wood"), 0)
+	assert_eq(load.get_current_weight(), 0)
+	assert_eq(inventory.get_amount(&"wood"), 10)
+	assert_eq(stockpile.get_displayed_amount(&"wood"), 10)
+	assert_eq(unit_panel.get_carried_text(&"wood"), "Madeira: 0 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 0 / 20")
+
+	# 3. Food test: 20 items * weight 1 = 20 load
+	assert_eq(FOOD_RES.unit_weight, 1)
+	assert_true(load.add_units(FOOD_RES, 20))
+	assert_eq(load.get_amount(&"food"), 20)
+	assert_eq(load.get_current_weight(), 20)
+	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 20 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 20 / 20")
+	assert_eq(unit_panel.get_percentage_text(), "100%")
+	assert_eq(stockpile.get_displayed_amount(&"food"), 0)
+	var report_food: Dictionary = inventory.deliver_from_carry_load(load)
+	assert_eq(int(report_food.get(&"food", 0)), 20)
+	assert_eq(load.get_amount(&"food"), 0)
+	assert_eq(load.get_current_weight(), 0)
+	assert_eq(inventory.get_amount(&"food"), 20)
+	assert_eq(stockpile.get_displayed_amount(&"food"), 20)
+	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 0 un")
+	assert_eq(unit_panel.get_weight_text(), "Peso transportado: 0 / 20")
+
+	pile_manager.cleanup()
 
 
 func test_03_unit_states_and_selection_modes_empty_single_multi() -> void:
@@ -216,12 +292,12 @@ func test_04_rapid_switch_unit_removal_no_redundant_updates_and_clean_unbind() -
 	# Rapid selection switches disconnect old unit signals cleanly
 	selection.select_single(unit_a)
 	assert_eq(unit_panel.get_header_text(), "Leader A")
-	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 3")
+	assert_eq(unit_panel.get_carried_text(&"food"), "Alimentos: 3 un")
 	assert_true(unit_panel.is_bound_to_unit(unit_a))
 
 	selection.select_single(unit_b)
 	assert_eq(unit_panel.get_header_text(), "Leader B")
-	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 2")
+	assert_eq(unit_panel.get_carried_text(&"stone"), "Pedra: 2 un")
 	assert_false(unit_panel.is_bound_to_unit(unit_a))
 	assert_true(unit_panel.is_bound_to_unit(unit_b))
 
