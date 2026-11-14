@@ -1,8 +1,8 @@
 # T2 — Plano de Implementação Revisado: Somente Pilhas Individuais no Acampamento
 
-> **STATUS: RASCUNHO — NÃO APROVADO**
+> **STATUS: CONSOLIDADO PARA ACEITE FINAL (CANDIDATO T2-CLOSEOUT)**
 >
-> Este documento consolida a ordem de execução incremental da **T2 — Trabalho e Recursos** para auditoria na branch `docs/t2-review`. **Não iniciar `T2.0` nem alterar código do jogo sem aprovação explícita do proprietário.**
+> Este documento registra o plano de execução incremental da **T2 — Trabalho e Recursos**, cujas etapas `T2.0` a `T2.6` e o polimento `B1` foram integralmente implementadas, testadas e consolidadas na branch `review/t2-closeout-candidate`. Preservado como histórico do planejamento técnico aprovado.
 
 ---
 

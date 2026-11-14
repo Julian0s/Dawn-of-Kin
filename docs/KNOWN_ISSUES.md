@@ -1,6 +1,6 @@
-# Dawn of Kin — Problemas Conhecidos e Observações Reais (T1)
+# Dawn of Kin — Problemas Conhecidos e Observações Reais (T1 e T2)
 
-Registro objetivo de limitações medidas e observações técnicas do marco **T1 — Fundação RTS**.
+Registro objetivo de limitações medidas e observações técnicas dos marcos **T1 — Fundação RTS** e **T2 — Trabalho e Recursos**.
 
 ---
 
@@ -34,35 +34,38 @@ Registro objetivo de limitações medidas e observações técnicas do marco **T
 
 ---
 
-## 3. Execução da suíte automatizada combinada acima de 240 s (T2.6)
+## 3. Execução da suíte automatizada combinada acima de 240 s (T2.6 / B1)
 
-- **Observação medida:** A suíte total (`27` suítes, `180` testes, `6.423` asserções) divide-se em `12` suítes unitárias (`85` testes, `~7,2 s` internos) e `15` suítes de integração (`95` testes, `~239 s` internos em processo único), de modo que a execução integral em um único processo Godot ultrapassa o limite de `240 s` porque testes de integração simulam tempos reais de coleta (`1,5 s` / `2,5 s` / `3,5 s`), movimento e rebakes de NavMesh em tempo real de 60 Hz (`~15–46 s` por suíte pesada).
+- **Observação medida:** A suíte total consolidada (**27 suítes, 182 testes, 6.469 asserções**) divide-se em 12 suítes unitárias (85 testes) e 15 suítes de integração (97 testes), de modo que a execução integral em um único processo Godot ultrapassa o limite de `240 s` porque testes de integração simulam tempos reais de coleta (`1,5 s` / `2,5 s` / `3,5 s`), movimento físico e rebakes de NavMesh em tempo real de 60 Hz (`~15–46 s` por suíte pesada).
 - **Mitigação implementada em `T2.6`:** `tools/run_tests.ps1 -Segmented` executa descoberta automática (`--discovery-only`), particiona os lotes em grupos menores (`unit` + `integration-01`..`05` com até `3` suítes por lote e limite individual de `120 s`), verifica bijeção exata (`Discovered == ExecutedUnique`, `0` duplicatas, `0` omissões), preserva avisos/erros e agrega os totais. Execução segmentada **não** é apresentada como execução integral em processo único.
-- **Correções associadas de estabilidade descobertas durante `T2.6`:**
+- **Correções associadas de estabilidade descobertas durante `T2.6` e `B1`:**
   - `src/navigation/world_navigation.gd`: `request_rebake()` passa a registrar as revisões mínimas de mapa e região para `_check_navigation_server_ready()`, evitando falso pronto ao reaproveitar a `World3D` entre múltiplas cenas no mesmo processo.
-  - `tests/integration/test_t2_pace_and_load.gd`: `test_02` agora descarrega frames residuais de limpeza antes de acionar a extração e amostra todos os frames desde o frame 1, evitando que pausas de teardown pulem o pulso de `0,22 s` do `Tween` sob espera fixa de 2 frames.
+  - `tests/integration/test_t2_pace_and_load.gd`: `test_02` agora descarrega frames residuais de limpeza antes de acionar a extração e amostra todos os frames desde o frame 1. Os testes `test_12` e `test_13` foram adicionados em B1 para garantir que viagens subsequentes e interrupções manuais com carga preservem a velocidade unificada e o inventário sem regressões.
 
 ---
 
-## 4. Benchmark representativo T2 vs referência T1 na Intel UHD 620 (T2.6)
+## 4. Benchmarks de Desempenho T2 vs Referência T1 na Intel UHD 620 (T2.6, D2, B1 e B1.1)
 
-- **Condições medidas em `2026-11-14` (`tests/perf/t2_perf_benchmark.gd` e `tests/perf/perf_benchmark.gd`, `gl_compatibility`, `VSYNC_DISABLED`, sem `--fixed-fps`, esquema `Equilibrado`, bateria em carga `37–38%`, Intel Core i7-8650U + Intel UHD Graphics 620):**
-  - **Referência T1 na cena atual (`1920x1080`, mediana de 3×30s após 5s aquecimento):**
-    - FPS médio: `54,78` | `p50 = 13,113 ms` | `p95 = 35,435 ms` | `p99 = 46,020 ms` | `max = 70,691 ms` (pior `79,916 ms`) | `0` quadros `> 100 ms`.
-    - Run 1: `p95 = 35,705 ms` (`53,96 FPS`) | Run 2: `p95 = 35,435 ms` (`54,78 FPS`) | Run 3: `p95 = 33,699 ms` (`55,25 FPS`).
-  - **Cenário representativo T2 (`1280x720`, mediana de 3×30s, coleta simultânea + pilhas físicas + HUD + clock econômico acelerado em `35x` para exercer deterioração real):**
-    - FPS médio: `78,32` | `p50 = 9,514 ms` | `p95 = 24,503 ms` | `p99 = 42,348 ms` | `max = 53,764 ms` (pior `56,850 ms`) | `0` quadros `> 100 ms`.
-    - Run 1: `p95 = 24,503 ms` (`78,32 FPS`) | Run 2: `p95 = 24,618 ms` (`78,28 FPS`) | Run 3: `p95 = 24,408 ms` (`79,92 FPS`).
-  - **Cenário representativo T2 (`1920x1080`, mediana de 3×30s):**
-    - FPS médio: `53,96` | `p50 = 14,910 ms` | **`p95 = 33,766 ms`** | `p99 = 40,180 ms` | `max = 59,068 ms` (pior `60,826 ms`) | `0` quadros `> 100 ms`.
-    - Run 1: `p95 = 33,681 ms` (`54,23 FPS`) | Run 2: `p95 = 33,766 ms` (`53,92 FPS`) | Run 3: `p95 = 33,793 ms` (`53,96 FPS`).
-    - Eventos reais por execução (`30 s`): `2` entregas em acampamento, `11` passos de deterioração (`12` unidades decaídas), `2` pilhas físicas ativas ao final, `13` atualizações do painel de estoque e `16` do painel de unidade (`< 1%` dos quadros).
-- **Diagnóstico honesto e pendência:**
-  - A lógica da economia T2, pilhas físicas, deterioração centralizada e HUD por sinais **não** introduziu degradação perceptível (`53,96 FPS` T2 vs `54,78 FPS` referência T1 em `1920x1080`; `0` quadros `> 100 ms`).
-  - Contudo, sob energia `Equilibrado` em bateria em carga (`37–38%`), **tanto a referência T1 quanto o cenário T2 ultrapassaram a meta formal `p95 <= 16,7 ms` em `1920x1080`** (`35,435 ms` e `33,766 ms`, contrastando com `16,586 ms` medidos na T1.10 antes da composição de T2 e em estado térmico/energia diferente). Requer medição adicional com energia CA plena / perfil gráfico futuro de sombras e escala 3D.
+- **Resolução de teste:** 1920×1080 (Full HD, janela de 1920×1080)
+- **Engine e Hardware:** Godot 4.7.2, `gl_compatibility`, `VSYNC_DISABLED`, Intel Core i7-8650U + Intel UHD Graphics 620.
+- **Histórico comparativo de medições:**
+  1. **Medição T2.6 Inicial em Bateria DC (`37–38%` de carga):**
+     - Referência T1: FPS médio `54,78` | $p95 = 35,435\text{ ms}$ | $0$ quadros $> 100\text{ ms}$.
+     - Cenário T2: FPS médio `53,96` | $p95 = 33,766\text{ ms}$ | $0$ quadros $> 100\text{ ms}$.
+     - Observação: Ambos os cenários operaram muito próximos, demonstrando que a lógica da economia T2 não adicionou custo perceptível, porém o clock reduzido da GPU na bateria manteve o $p95$ acima de $16,7\text{ ms}$.
+  2. **Auditoria D2 em Tomada CA (Bateria ~95–100%):**
+     - Referência T1: FPS médio `125,19` | $p95 = 12,141\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (**APROVADO**).
+     - Cenário T2: FPS médio `125,42` | $p95 = 13,487\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (**APROVADO**).
+  3. **Pós-Correção B1 em Bateria DC (Bateria ~50–79%):**
+     - Cenário T2: FPS médio `55,80` | $p95 = 33,038\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (acima da meta de 16,7 ms).
+  4. **Pós-Correção B1.1 em Tomada CA (Bateria 42%–79% em recarga):**
+     - Cenário T2: FPS médio `147,33` | **$p95 = 9,757\text{ ms}$** | $p99 = 11,679\text{ ms}$ | Máximo absoluto `25,258 ms` | **$0$ quadros $> 100\text{ ms}$** (**APROVADO com folga de 6,943 ms**).
+- **Ressalvas metodológicas de integridade:**
+  - A diferença substancial de FPS e tempo de quadro decorre da política do hardware/firmware móvel que restringe os clocks da GPU Intel UHD 620 quando operando desconectado da tomada (modo bateria DC). Embora a correlação física seja evidente nos dados, não se afirma causalidade física comprovada sem sensores síncronos por frame.
+  - A aprovação formal do critério de $p95 \le 16,7\text{ ms}$ aplica-se estritamente às **condições de tomada CA**. O comportamento sob bateria DC é mantido registrado como limitação física do ambiente móvel, destacando-se que em **todas** as baterias registrou-se **zero quadros acima de 100 ms**.
 
 ---
 
 ## 5. Limites visuais provisórios aceitos até T2.6
 
-- Assets geométricos provisórios para pilhas no chão (`GroundResourcePile`) e fontes (`wood_tree`, `stone_rock`, `food_bush`), feedback corporal simples durante coleta e ausência de efeitos sonoros permanecem intencionalmente fora do escopo T2 conforme [Dawn_of_Kin_GDD_v1.0.md](file:///c:/Projetos/Dawn%20of%20Kin/docs/Dawn_of_Kin_GDD_v1.0.md) e aceite da etapa T2.4.3.
+- Assets geométricos provisórios para pilhas no chão (`GroundResourcePile`) e fontes (`wood_tree`, `stone_rock`, `food_bush`), feedback corporal simples durante coleta e ausência de efeitos sonoros permanecem intencionalmente fora do escopo T2 conforme [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) e aceite da etapa T2.4.3.

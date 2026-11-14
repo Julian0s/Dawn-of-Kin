@@ -2,7 +2,7 @@
 
 **Documento mestre de design (GDD) — versão 1.1 (MINUTA AGUARDANDO APROVAÇÃO)**  
 **Data:** 14 de novembro de 2026  
-**Base documental:** [Dawn_of_Kin_GDD_v1.0.md](file:///c:/Projetos/Dawn%20of%20Kin/docs/Dawn_of_Kin_GDD_v1.0.md) + Adendo de Design aprovado conceitualmente em 14/11/2026 (Personagens Modulares, Herança Visual, Vestuário e Identidade)  
+**Base documental:** [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) + Adendo de Design aprovado conceitualmente em 14/11/2026 (Personagens Modulares, Herança Visual, Vestuário e Identidade)<br>
 **Uso:** minuta de referência de produto para revisão do proprietário antes de substituir a v1.0 em `AGENTS.md`  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
@@ -12,11 +12,14 @@
 >
 > **Estado real observado do projeto em 14/11/2026:**
 > - **T1 — Fundação RTS:** **concluída e aprovada** (`t1-complete`, commit `2808799`, 90 testes automatizados e 1.607 asserções).
-> - **T2 — Trabalho e Recursos (`T2.0`–`T2.6`) — NÃO CONCLUÍDA:**
->   - `T2.0`–`T2.5.1`: implementadas, testadas automaticamente e **aprovadas pelo proprietário em testes manuais parciais** (com `T2.5.1` aprovando 6/6 critérios manuais).
->   - `T2.6` (commit `3ba3255` na branch `feat/t2-final-validation`): implementada; o relatório técnico registra validação estática (`86` scripts, `0` erros/avisos) e aprovação de **180/180 testes automatizados em execução segmentada** (`6` lotes disjuntos, pois a execução em processo único ultrapassa `240 s`).
->   - **Medição real de desempenho em `1920×1080`** (`gl_compatibility`, `VSYNC_DISABLED`, Intel UHD Graphics 620, plano `Equilibrado`, bateria em carga `37–38%`): cenário representativo T2 registrou **`p95 = 33,766 ms`** (`53,96 FPS`, `0` quadros `> 100 ms`), e a referência T1 na mesma sessão registrou `p95 = 35,435 ms` (`54,78 FPS`, `0` quadros `> 100 ms`) — portanto **acima da meta formal `p95 <= 16,7 ms`**.
->   - **Pendências obrigatórias para encerrar a T2:** execução e assinatura pelo proprietário do protocolo manual final (`docs/testing/T2_manual_test_protocol.md`) e resolução/decisão sobre a pendência de desempenho (`p95 <= 16,7 ms`).
+> - **T2 — Trabalho e Recursos (`T2.0`–`T2.6` + `B1`):**
+>   - `T2.0`–`T2.6` e ajuste `B1`: implementadas, validadas e testadas automaticamente (**182/182 testes em 27 suítes, 6.469 asserções em execução segmentada** com 0 erros/avisos).
+>   - `B1`: velocidade de deslocamento sem carga unificada em 4,8 m/s em ordens de movimento e de coleta, com desaceleração decorrendo estritamente da carga física transportada.
+>   - **Testes manuais:** Todos os 21 itens do protocolo manual (`docs/testing/T2_manual_test_protocol.md`) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto").
+>   - **Medição de desempenho em 1920×1080 (Intel UHD 620, `gl_compatibility`):**
+>     - **Tomada CA (B1.1):** `p95 = 9,757 ms` (mediana de 147,33 FPS), zero quadros > 100 ms — **APROVADO**.
+>     - **Bateria DC:** `p95 = 33,038 ms` (mediana de 55,80 FPS), zero quadros > 100 ms — registrado como limitação operacional em economia de energia.
+>   - **Situação da T2:** Aguardando aceite formal de encerramento do marco pelo proprietário.
 
 ---
 
@@ -363,7 +366,7 @@
 
 ## 15. Riscos e pendências reais
 
-- **Pendente na T2.6 (bloqueante para encerrar T2):** aceite manual final de [T2_manual_test_protocol.md](file:///c:/Projetos/Dawn%20of%20Kin/docs/testing/T2_manual_test_protocol.md) e resolução/decisão sobre a meta formal `p95 <= 16,7 ms` em `1920×1080` na Intel UHD 620 (mediana medida em bateria `33,766 ms` na T2 e `35,435 ms` na T1 de referência).
+- **Validação da T2:** os 21 itens do protocolo manual [T2_manual_test_protocol.md](testing/T2_manual_test_protocol.md) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto"). O benchmark em tomada CA (B1.1) registrou `p95 = 9,757 ms` (aprovado), enquanto em bateria DC registrou `p95 = 33,038 ms` (limitação física de economia de energia, com 0 quadros > 100 ms). Aguardando autorização expressa para aceite formal de encerramento do marco T2.
 - **ABERTO (marca):** nome comercial *Dawn of Kin* exige pesquisa de disponibilidade e marca antes de lançamento.
 - **ABERTO (família):** taxa de envelhecimento e nascimento, lógica de afinidade, casamentos autônomos e viuvez, e integração de parceiros vindos de outras comunidades.
 - **ABERTO (herança visual e corpos):** intensidade das variações hereditárias, eventual influência de avós/gerações anteriores e limites numéricos de altura e constituição física.
@@ -377,11 +380,11 @@
 
 ## 16. Instrução de handoff e governança da minuta v1.1
 
-**Situação documental:** esta **v1.1** consolida o GDD v1.0 com o adendo de 14/11/2026 sobre personagens modulares, personalização, herança visual, nomes persistentes, vestuário e equipamentos, mantendo-se como **minuta aguardando aprovação** na branch `docs/gdd-v1.1-characters`.
+**Situação documental:** esta **v1.1** consolida o GDD v1.0 com o adendo de 14/11/2026 sobre personagens modulares, personalização, herança visual, nomes persistentes, vestuário e equipamentos, mantendo-se como **minuta aguardando aprovação** consolidada na branch `review/t2-closeout-candidate`.
 
 **Regras de execução:**
 
-1. Enquanto a v1.1 não for formalmente aceita pelo proprietário, [AGENTS.md](file:///c:/Projetos/Dawn%20of%20Kin/AGENTS.md) permanece apontando para [Dawn_of_Kin_GDD_v1.0.md](file:///c:/Projetos/Dawn%20of%20Kin/docs/Dawn_of_Kin_GDD_v1.0.md), e nenhuma implementação de `T3`–`T8` está autorizada.
-2. Trabalhar em passos pequenos, testáveis e reversíveis; não modificar `T2.6` nem antecipar sistemas descritos nesta minuta.
+1. Enquanto a v1.1 não for formalmente aceita pelo proprietário, [AGENTS.md](../AGENTS.md) permanece apontando para [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md), e nenhuma implementação de `T3`–`T8` está autorizada.
+2. Trabalhar em passos pequenos, testáveis e reversíveis; não modificar código nem antecipar sistemas descritos nesta minuta.
 3. Separar rigorosamente marcadores **DECIDIDO**, **PROPOSTA** e **ABERTO**, preservando todas as questões abertas sem suposições silenciosas na futura fase de planejamento técnico de `T4`, `T5` e `T6`.
 4. Toda afirmação sobre testes, benchmarks e aprovações deve distinguir explicitamente: implementado, testado automaticamente (processo único vs segmentado), medido em benchmark e aprovado manualmente pelo proprietário.

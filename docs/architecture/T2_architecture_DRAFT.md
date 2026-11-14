@@ -1,19 +1,19 @@
 # T2 — Arquitetura Técnica: Trabalho, Transporte Físico e Pilhas Individuais no Acampamento
 
-> **STATUS: RASCUNHO — NÃO APROVADO**
+> **STATUS: CONSOLIDADO PARA ACEITE FINAL (CANDIDATO T2-CLOSEOUT)**
 >
-> Documento de planejamento e revisão técnica em `docs/t2-review`. **Nenhuma linha de código da T2 deve ser implementada antes da aprovação expressa do proprietário**, conforme `AGENTS.md`.
+> Documento de planejamento e arquitetura técnica consolidado na branch `review/t2-closeout-candidate`. A implementação técnica cobriu integralmente as etapas `T2.0` a `T2.6` e o ajuste `B1` (velocidade unificada). Preservado como registro histórico da arquitetura implementada.
 
 ---
 
 ## 1. Linha de base e invariantes da T1
 
 - **Engine e alvo:** Godot `4.7.2`, GDScript tipado, renderer `Compatibility / OpenGL 3.3`, hardware de referência **Intel UHD 620 (16 GB RAM)**.
-- **Base Git herdada:** marco **T1 — Fundação RTS** encerrado na tag `t1-complete` (commit `2808799`, `90` testes e `1.607` asserções), mantendo `MainScene` ([main.gd](file:///c:/Projetos/Dawn%20of%20Kin/src/main/main.gd)) por composição modular explícita, **zero autoloads globais obrigatórios**.
+- **Base Git herdada:** marco **T1 — Fundação RTS** encerrado na tag `t1-complete` (commit `2808799`, `90` testes e `1.607` asserções), mantendo `MainScene` ([main.gd](../../src/main/main.gd)) por composição modular explícita, **zero autoloads globais obrigatórios**.
 - **Orçamento de desempenho (`KNOWN_ISSUES.md`):** em `1920×1080`, a mediana medida pós-T1.10 foi `p95 = 16,586 ms` para teto obrigatório de `16,7 ms` (**margem de apenas `0,114 ms`**), e o custo RVO cresce com a contagem de unidades (`2 → 10 → 25 → 50`). Pilhas no acampamento e deterioração devem ter custo por frame próximo de zero.
 - **Contratos reais da T1 que a T2 preserva sem regressão:**
-  - `CollisionLayers` ([collision_layers.gd](file:///c:/Projetos/Dawn%20of%20Kin/src/core/collision_layers.gd)): `LAYER_RESOURCES` (`6`) já reservada para a T2 (`MASK_RESOURCES`), mantendo `LAYER_OBSTACLES` (`2`) e `LAYER_BUILDINGS` (`5`) intactas.
-  - `PickResult` ([pick_result.gd](file:///c:/Projetos/Dawn%20of%20Kin/src/rts/pick_result.gd)) e `CommandController` ([command_controller.gd](file:///c:/Projetos/Dawn%20of%20Kin/src/rts/command_controller.gd)): `PickResult.Kind.GROUND` continua disparando estritamente `MoveOrder` via `GroupMovePlanner`. Não haverá comando nem modo de soltar materiais em terreno livre na T2.
+  - `CollisionLayers` ([collision_layers.gd](../../src/core/collision_layers.gd)): `LAYER_RESOURCES` (`6`) já reservada para a T2 (`MASK_RESOURCES`), mantendo `LAYER_OBSTACLES` (`2`) e `LAYER_BUILDINGS` (`5`) intactas.
+  - `PickResult` ([pick_result.gd](../../src/rts/pick_result.gd)) e `CommandController` ([command_controller.gd](../../src/rts/command_controller.gd)): `PickResult.Kind.GROUND` continua disparando estritamente `MoveOrder` via `GroupMovePlanner`. Não haverá comando nem modo de soltar materiais em terreno livre na T2.
   - Corredores livres de `test_commands.gd` (`(0, 0, -2.5..+5)` e `WallWithGap` em `x ∈ [-2, 2], z = -6`) e contagem/máscara de `TestMap/Obstacles` em `test_test_map.gd` (`> 10` `StaticBody3D` estritamente em `MASK_OBSTACLES`).
   - RVO na `Unit`: prioridade `1.0` parada vs `0.5` em movimento e `_clamp_avoidance_to_navmesh`.
 

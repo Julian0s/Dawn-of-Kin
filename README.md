@@ -4,7 +4,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ## Estado atual
 
-- **Marco ativo:** T2 — Trabalho e Recursos (**preparada tecnicamente para encerramento em T2.6; aguardando aceite manual final do proprietário antes de declarar T2 concluída**)
+- **Marco ativo:** T2 — Trabalho e Recursos (**Candidata a Encerramento na branch `review/t2-closeout-candidate`**; implementada, validada automaticamente, com testes manuais A1–F2 relatados como aprovados pelo proprietário e aguardando aceite formal definitivo)
   - **Implementado e aprovado manualmente em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
@@ -12,18 +12,27 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
     - `T2.3` / `T2.3.1`: `GatherResourceOrder`, `DeliverToCampOrder`, retorno automático com carga cheia ou esgotamento, liberação de vaga durante transporte e concorrência simultânea dos dois trabalhadores.
     - `T2.4` / `T2.4.1` / `T2.4.2` / `T2.4.3`: composição jogável no `TestMap`/`MainScene`, tempos distintos de coleta (`1,5 s` alimentos, `2,5 s` madeira, `3,5 s` pedra), redução progressiva de velocidade proporcional ao peso e estados naturais das fontes.
     - `T2.5` / `T2.5.1`: HUD não bloqueante (`ResourceHud`, `SettlementStockpilePanel`, `SelectedUnitPanel`) distinguindo `Peso transportado: X / Y`, porcentagem por peso e quantidades individuais (`Madeira: X un`, `Pedra: X un`, `Alimentos: X un`).
-  - **Implementado na `T2.6` (validação global e benchmark):** correção de corrida de sincronização de `WorldNavigation` pós-rebake entre cenas no mesmo processo, correção da janela de amostragem do tween em `test_t2_pace_and_load.gd`, executor segmentado verificável (`.\tools\run_tests.ps1 -Segmented`), benchmark representativo (`tests/perf/t2_perf_benchmark.gd` / `.\tools\perf.ps1 -Mode t2`), cenário dedicado de deterioração (`tests/visual/scenario_t2_decay.gd`) e protocolo manual (`docs/testing/T2_manual_test_protocol.md`).
-  - **Medido em benchmark (`gl_compatibility`, `VSYNC_DISABLED`, Intel UHD Graphics 620, plano `Equilibrado`, bateria 37–38% em carga):** `0` quadros `> 100 ms`; `1920x1080` T2 obteve mediana `53,96 FPS` (`p50 = 14,910 ms`, `p95 = 33,766 ms`), praticamente idêntica à referência T1 medida na mesma sessão (`54,78 FPS`, `p50 = 13,113 ms`, `p95 = 35,435 ms`), portanto **acima da meta formal `p95 <= 16,7 ms`** nessas condições de energia/hardware (detalhes em `docs/KNOWN_ISSUES.md`).
-  - **Pendente para encerramento da T2:** execução e assinatura manual completa do protocolo `docs/testing/T2_manual_test_protocol.md` pelo proprietário.
+  - **Implementado na `T2.6` e ajuste `B1`:**
+    - Correção de corrida de sincronização de `WorldNavigation` pós-rebake entre cenas no mesmo processo e ajuste de amostragem de tween em testes.
+    - **Ajuste B1:** velocidade-base de deslocamento sem carga unificada em `4,8 m/s` tanto na marcha livre quanto na aproximação para coletar recursos (`GatherResourceOrder`), com a redução de velocidade incidindo estritamente sobre a carga física transportada (`2,88 m/s` a 100% de carga; recuperação imediata a `4,8 m/s` pós-descarga no acampamento).
+    - Suíte automatizada validada: **182/182 testes verdes em 27 suítes (6.469 asserções) com zero erros e zero avisos** via `.\tools\run_tests.ps1 -Segmented`.
+  - **Desempenho medido em `1920x1080` (Intel UHD Graphics 620, `gl_compatibility`, VSync OFF):**
+    - **Tomada CA (B1.1):** mediana de `147,33 FPS` (`p50 = 6,608 ms`, `p95 = 9,757 ms`, `p99 = 11,679 ms`, pior max `25,258 ms`, `0` quadros `> 100 ms`) — **APROVADO com folga de 6,943 ms**.
+    - **Bateria DC (B1):** mediana de `55,80 FPS` (`p50 = 14,872 ms`, `p95 = 33,038 ms`, `0` quadros `> 100 ms`) — registrado como limitação física de consumo energético do hardware sob bateria, com `0` travamentos.
+    - *Nota de integridade:* A diferença de energia não possui comprovação física definitiva sem amostragem síncrona de temperatura/clock; a aprovação em CA não atesta conformidade universal em qualquer modo de bateria DC.
+  - **Testes manuais (informados pelo proprietário em 14/11/2026):**
+    - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
+    - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
+  - **Situação para encerramento:** Branch candidata `review/t2-closeout-candidate` consolidada; aguardando autorização expressa do proprietário para o aceite formal definitivo da T2.
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 
-### Pendências conhecidas pós-T2.6
+### Pendências conhecidas e limites provisórios
 
-- Execução manual integral de `docs/testing/T2_manual_test_protocol.md` em `1280x720` e `1920x1080` (incluindo `tests/visual/scenario_t2_decay.gd`).
-- Investigação da folga de `p95 <= 16,7 ms` em `1920x1080` na Intel UHD 620 / perfil de energia em bateria (`docs/KNOWN_ISSUES.md`).
-- Itens visuais provisórios declarados em T2.4.3 (oscilação simples na coleta e pilhas geométricas provisórias; sem bloqueio funcional para T2).
+- Limitação de desempenho da Intel UHD 620 operando sob bateria DC (`p95 = 33,038 ms` vs meta formal `p95 <= 16,7 ms` atendida em CA com `9,757 ms`; `docs/KNOWN_ISSUES.md`).
+- Itens visuais provisórios declarados em T2.4.3 (oscilação simples no feedback de coleta e pilhas geométricas provisórias; sem bloqueio funcional para a T2).
+- Decisão de arquitetura para a T3 sobre o conceito de "abrigo concluído e persistido" antes do save/load em disco na T4.
 
 ## Requisitos de ambiente
 
