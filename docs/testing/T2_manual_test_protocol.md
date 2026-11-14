@@ -70,7 +70,7 @@ Capacidade efetiva padrão de carga de cada protagonista: **20** (sem bônus de 
 - [x] **E2:** Quando uma pilha física atinge `0`, a instância da pilha desaparece do chão e o contador do HUD acompanha exatamente a perda até `0`, sem erros ou avisos no console.
 
 ### F. Regressão T1 & Limites Visuais Conhecidos
-- [x] **F1:** Câmera isométrica (`WASD`/setas, bordas se ativo, zoom por scroll e rotação controlada) e comandos da T1 permanecem fluidos durante coleta e transporte simultâneos.
+- [x] **F1:** Câmera isométrica (`WASD` e setas, Edge Scrolling na borda real do viewport, arraste pelo botão do meio do mouse e zoom por scroll) e seleção/ordens RTS da T1 permanecem fluidos durante coleta e transporte simultâneos.
 - [x] **F2:** Avaliador ciente dos itens visuais provisórios já registrados da T2.4.3 (oscilação corporal simples no feedback de trabalho, pilhas geométricas provisórias no chão e ausência de feedback sonoro ou animação dedicada de coleta).
 
 ---

@@ -9,9 +9,9 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
 - **Critério relacionado:** `AC-13` / Seção 10.6 (`p95 <= 16,7 ms` em `1920x1080` na Intel UHD Graphics 620 e nenhum quadro `> 100 ms` pós-aquecimento).
 - **Status:** **Aprovado segundo o critério formal (mediana de três execuções), com margem estreita sob bateria.**
 - **Correção aplicada na T1.10:**
-  - `Terrain/Ground/MeshInstance3D.cast_shadow = 0` (`OFF` no piso plano inferior em [test_map.tscn](file:///c:/Projetos/Dawn%20of%20Kin/levels/test_map/test_map.tscn), mantendo sombras em `Plateau`, `Ramp`, paredes, rochas, árvores e unidades).
-  - `DirectionalLight3D` configurado com `directional_shadow_mode = SHADOW_ORTHOGONAL` (`0`) e `directional_shadow_max_distance = 75.0` em [test_map.tscn](file:///c:/Projetos/Dawn%20of%20Kin/levels/test_map/test_map.tscn).
-  - `lights_and_shadows/directional_shadow/size = 2048` em [project.godot](file:///c:/Projetos/Dawn%20of%20Kin/project.godot), preservando filtro `SOFT_LOW` e textura triplanar do terreno.
+  - `Terrain/Ground/MeshInstance3D.cast_shadow = 0` (`OFF` no piso plano inferior em [test_map.tscn](../levels/test_map/test_map.tscn), mantendo sombras em `Plateau`, `Ramp`, paredes, rochas, árvores e unidades).
+  - `DirectionalLight3D` configurado com `directional_shadow_mode = SHADOW_ORTHOGONAL` (`0`) e `directional_shadow_max_distance = 75.0` em [test_map.tscn](../levels/test_map/test_map.tscn).
+  - `lights_and_shadows/directional_shadow/size = 2048` em [project.godot](../project.godot), preservando filtro `SOFT_LOW` e textura triplanar do terreno.
 - **Medições pós-correção (`gl_compatibility`, `VSYNC_DISABLED`, bateria / plano `Equilibrado`, i7-8650U + Intel UHD Graphics 620):**
   - `1280x720` (mediana de 3×30s): FPS médio `185,86`, `p50 = 5,173 ms`, `p95 = 8,223 ms`, `p99 = 9,757 ms`, `max = 22,878 ms` (pior `26,830 ms`), `0` quadros `> 100 ms`.
   - `1920x1080` (mediana de 3×30s): FPS médio `94,24` (anterior: `37,97`), `p50 = 10,236 ms` (anterior: `26,414 ms`), **`p95 = 16,586 ms`** (anterior: `39,568 ms`, meta: `≤ 16,7 ms`), `p99 = 19,562 ms`, `max = 33,465 ms` (pior `47,300 ms`), `0` quadros `> 100 ms` (Run 1: `14,055 ms`; Run 2: `16,586 ms`; Run 3: `17,016 ms`).
@@ -40,7 +40,7 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
 - **Mitigação implementada em `T2.6`:** `tools/run_tests.ps1 -Segmented` executa descoberta automática (`--discovery-only`), particiona os lotes em grupos menores (`unit` + `integration-01`..`05` com até `3` suítes por lote e limite individual de `120 s`), verifica bijeção exata (`Discovered == ExecutedUnique`, `0` duplicatas, `0` omissões), preserva avisos/erros e agrega os totais. Execução segmentada **não** é apresentada como execução integral em processo único.
 - **Correções associadas de estabilidade descobertas durante `T2.6` e `B1`:**
   - `src/navigation/world_navigation.gd`: `request_rebake()` passa a registrar as revisões mínimas de mapa e região para `_check_navigation_server_ready()`, evitando falso pronto ao reaproveitar a `World3D` entre múltiplas cenas no mesmo processo.
-  - `tests/integration/test_t2_pace_and_load.gd`: `test_02` agora descarrega frames residuais de limpeza antes de acionar a extração e amostra todos os frames desde o frame 1. Os testes `test_12` e `test_13` foram adicionados em B1 para garantir que viagens subsequentes e interrupções manuais com carga preservem a velocidade unificada e o inventário sem regressões.
+  - `tests/integration/test_t2_pace_and_load.gd`: `test_02` agora descarrega frames residuais de limpeza antes de acionar a extração e amostra todos os frames desde o frame 1. Os testes `test_12` e `test_13` foram adicionados em B1 para verificar que viagens subsequentes e interrupções manuais com carga preservam a velocidade unificada e o inventário.
 
 ---
 
@@ -52,17 +52,21 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
   1. **Medição T2.6 Inicial em Bateria DC (`37–38%` de carga):**
      - Referência T1: FPS médio `54,78` | $p95 = 35,435\text{ ms}$ | $0$ quadros $> 100\text{ ms}$.
      - Cenário T2: FPS médio `53,96` | $p95 = 33,766\text{ ms}$ | $0$ quadros $> 100\text{ ms}$.
-     - Observação: Ambos os cenários operaram muito próximos, demonstrando que a lógica da economia T2 não adicionou custo perceptível, porém o clock reduzido da GPU na bateria manteve o $p95$ acima de $16,7\text{ ms}$.
+     - Observação: Ambos os cenários operaram muito próximos, indicando que a lógica da economia T2 não adicionou custo perceptível, porém sob bateria DC o $p95$ manteve-se acima de $16,7\text{ ms}$.
   2. **Auditoria D2 em Tomada CA (Bateria ~95–100%):**
      - Referência T1: FPS médio `125,19` | $p95 = 12,141\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (**APROVADO**).
      - Cenário T2: FPS médio `125,42` | $p95 = 13,487\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (**APROVADO**).
   3. **Pós-Correção B1 em Bateria DC (Bateria ~50–79%):**
-     - Cenário T2: FPS médio `55,80` | $p95 = 33,038\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (acima da meta de 16,7 ms).
+     - Cenário T2: FPS médio `55,80` | $p95 = 33,038\text{ ms}$ | $0$ quadros $> 100\text{ ms}$ (**critério de `p95 <= 16,7 ms` não atendido na bateria B1**).
   4. **Pós-Correção B1.1 em Tomada CA (Bateria 42%–79% em recarga):**
-     - Cenário T2: FPS médio `147,33` | **$p95 = 9,757\text{ ms}$** | $p99 = 11,679\text{ ms}$ | Máximo absoluto `25,258 ms` | **$0$ quadros $> 100\text{ ms}$** (**APROVADO com folga de 6,943 ms**).
+     - Cenário T2: FPS médio `147,33` | **$p95 = 9,757\text{ ms}$** | $p99 = 11,679\text{ ms}$ | Máximo absoluto `25,258 ms` | **$0$ quadros $> 100\text{ ms}$** (**critério atendido com folga de 6,943 ms**).
 - **Ressalvas metodológicas de integridade:**
-  - A diferença substancial de FPS e tempo de quadro decorre da política do hardware/firmware móvel que restringe os clocks da GPU Intel UHD 620 quando operando desconectado da tomada (modo bateria DC). Embora a correlação física seja evidente nos dados, não se afirma causalidade física comprovada sem sensores síncronos por frame.
-  - A aprovação formal do critério de $p95 \le 16,7\text{ ms}$ aplica-se estritamente às **condições de tomada CA**. O comportamento sob bateria DC é mantido registrado como limitação física do ambiente móvel, destacando-se que em **todas** as baterias registrou-se **zero quadros acima de 100 ms**.
+  - Os resultados sustentam uma associação entre condições de alimentação (tomada CA vs. bateria DC) e o desempenho medido, porém não há telemetria síncrona direta (clock, temperatura ou potência por quadro) suficiente para comprovar de forma definitiva o mecanismo físico específico.
+  - **Estado por critério:**
+    - **CA:** `p95 = 9,757 ms` — critério atendido na bateria B1.1.
+    - **DC:** `p95 = 33,038 ms` — critério de `p95 <= 16,7 ms` não atendido na bateria B1.
+    - **Critério de spikes:** zero quadros acima de 100 ms nas duas baterias (CA e DC).
+  - A aprovação em CA aplica-se estritamente às condições de tomada CA; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 **ainda depende de decisão expressa do proprietário**.
 
 ---
 

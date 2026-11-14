@@ -17,9 +17,9 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
     - **Ajuste B1:** velocidade-base de deslocamento sem carga unificada em `4,8 m/s` tanto na marcha livre quanto na aproximação para coletar recursos (`GatherResourceOrder`), com a redução de velocidade incidindo estritamente sobre a carga física transportada (`2,88 m/s` a 100% de carga; recuperação imediata a `4,8 m/s` pós-descarga no acampamento).
     - Suíte automatizada validada: **182/182 testes verdes em 27 suítes (6.469 asserções) com zero erros e zero avisos** via `.\tools\run_tests.ps1 -Segmented`.
   - **Desempenho medido em `1920x1080` (Intel UHD Graphics 620, `gl_compatibility`, VSync OFF):**
-    - **Tomada CA (B1.1):** mediana de `147,33 FPS` (`p50 = 6,608 ms`, `p95 = 9,757 ms`, `p99 = 11,679 ms`, pior max `25,258 ms`, `0` quadros `> 100 ms`) — **APROVADO com folga de 6,943 ms**.
-    - **Bateria DC (B1):** mediana de `55,80 FPS` (`p50 = 14,872 ms`, `p95 = 33,038 ms`, `0` quadros `> 100 ms`) — registrado como limitação física de consumo energético do hardware sob bateria, com `0` travamentos.
-    - *Nota de integridade:* A diferença de energia não possui comprovação física definitiva sem amostragem síncrona de temperatura/clock; a aprovação em CA não atesta conformidade universal em qualquer modo de bateria DC.
+    - **Tomada CA (B1.1):** mediana de `147,33 FPS` (`p50 = 6,608 ms`, `p95 = 9,757 ms`, `p99 = 11,679 ms`, pior max `25,258 ms`, `0` quadros `> 100 ms`) — **critério atendido com folga de 6,943 ms**.
+    - **Bateria DC (B1):** mediana de `55,80 FPS` (`p50 = 14,872 ms`, `p95 = 33,038 ms`, `0` quadros `> 100 ms`) — **critério de `p95 <= 16,7 ms` não atendido na bateria B1** (critério de spikes cumprido em ambas as condições).
+    - *Nota de integridade:* Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a aprovação em CA não atesta conformidade universal em DC, e a classificação do desempenho em DC como limitação aceitável para encerrar a T2 depende de decisão expressa do proprietário.
   - **Testes manuais (informados pelo proprietário em 14/11/2026):**
     - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
     - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
@@ -30,7 +30,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ### Pendências conhecidas e limites provisórios
 
-- Limitação de desempenho da Intel UHD 620 operando sob bateria DC (`p95 = 33,038 ms` vs meta formal `p95 <= 16,7 ms` atendida em CA com `9,757 ms`; `docs/KNOWN_ISSUES.md`).
+- Desempenho em bateria DC na Intel UHD 620 (`p95 = 33,038 ms` na bateria B1, não atendendo `p95 <= 16,7 ms`, vs. `9,757 ms` em CA na bateria B1.1; `0` quadros `> 100 ms` em ambas; aceitação da limitação em DC pendente de decisão do proprietário em `docs/KNOWN_ISSUES.md`).
 - Itens visuais provisórios declarados em T2.4.3 (oscilação simples no feedback de coleta e pilhas geométricas provisórias; sem bloqueio funcional para a T2).
 - Decisão de arquitetura para a T3 sobre o conceito de "abrigo concluído e persistido" antes do save/load em disco na T4.
 

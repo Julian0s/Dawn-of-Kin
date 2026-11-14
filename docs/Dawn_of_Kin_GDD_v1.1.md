@@ -17,8 +17,8 @@
 >   - `B1`: velocidade de deslocamento sem carga unificada em 4,8 m/s em ordens de movimento e de coleta, com desaceleração decorrendo estritamente da carga física transportada.
 >   - **Testes manuais:** Todos os 21 itens do protocolo manual (`docs/testing/T2_manual_test_protocol.md`) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto").
 >   - **Medição de desempenho em 1920×1080 (Intel UHD 620, `gl_compatibility`):**
->     - **Tomada CA (B1.1):** `p95 = 9,757 ms` (mediana de 147,33 FPS), zero quadros > 100 ms — **APROVADO**.
->     - **Bateria DC:** `p95 = 33,038 ms` (mediana de 55,80 FPS), zero quadros > 100 ms — registrado como limitação operacional em economia de energia.
+>     - **Tomada CA (B1.1):** `p95 = 9,757 ms` (mediana de 147,33 FPS), zero quadros > 100 ms — **critério atendido**.
+>     - **Bateria DC (B1):** `p95 = 33,038 ms` (mediana de 55,80 FPS), zero quadros > 100 ms — **critério de `p95` não atendido em bateria**; classificação como limitação aceitável para encerrar a T2 depende de decisão expressa do proprietário.
 >   - **Situação da T2:** Aguardando aceite formal de encerramento do marco pelo proprietário.
 
 ---
@@ -328,7 +328,7 @@
 - `Narrative/ChapterState`: requisitos narrativos (sem aparições humanas antes de jovens) e eventos misteriosos.
 - `Save/SaveManager`: serialização estável de IDs, nomes, parâmetros de aparência, construções e migração de saves.
 
-**Desempenho e orçamento visual:** testar em hardware modesto (referência de desenvolvimento: **Intel UHD Graphics 620**, 16 GB RAM, `gl_compatibility`). A adoção de personagens modulares e múltiplas peças exige controle rigoroso de *draw calls*, materiais/shaders compartilhados, LODs, vegetação animada por shaders leves, chuva controlada e simplificação distante. A pendência atual de `p95` em `1920×1080` registrada na `T2.6` (`33,766 ms` na T2 vs meta de `16,7 ms`) deve ser resolvida antes de ampliar o orçamento geométrico das futuras fases.
+**Desempenho e orçamento visual:** testar em hardware modesto (referência de desenvolvimento: **Intel UHD Graphics 620**, 16 GB RAM, `gl_compatibility`). A adoção de personagens modulares e múltiplas peças exige controle rigoroso de *draw calls*, materiais/shaders compartilhados, LODs, vegetação animada por shaders leves, chuva controlada e simplificação distante. Na T2 pós-correção `B1`, o benchmark em `1920×1080` atendeu ao critério de `p95 ≤ 16,7 ms` em tomada CA (`p95 = 9,757 ms`, `0` quadros `> 100 ms`), enquanto em bateria DC registrou `p95 = 33,038 ms` (`0` quadros `> 100 ms`, critério de `p95` não atendido em bateria). O orçamento geométrico das futuras fases deverá manter margem segura na Intel UHD 620 em tomada CA e respeitar a decisão do proprietário sobre o comportamento em bateria DC.
 
 ---
 
@@ -339,7 +339,7 @@
 | Marco | Escopo | Evidência mínima de conclusão / notas de coordenação |
 |---|---|---|
 | T1 — Fundação RTS | Câmera, terreno demonstrativo, casal selecionável, clique para mover | **Concluída e aprovada** (`t1-complete`, commit `2808799`) |
-| T2 — Trabalho e recursos | Recursos coletáveis com peso, capacidade individual (`0%`–`100%`), transporte físico, pilhas individuais no acampamento com exposição/deterioração configurável, HUD de carga/estoque e sincronia exata | **Não concluída:** `T2.0`–`T2.5.1` aprovadas parcialmente; `T2.6` (`3ba3255`) com 180/180 testes aprovados em lotes segmentados; aguardando aceite manual final e solução da pendência de `p95 = 33,766 ms` > `16,7 ms` em `1920×1080` |
+| T2 — Trabalho e recursos | Recursos coletáveis com peso, capacidade individual (`0%`–`100%`), transporte físico, pilhas individuais no acampamento com exposição/deterioração configurável, HUD de carga/estoque e sincronia exata | **Candidata a encerramento (`review/t2-closeout-candidate`):** `T2.0`–`T2.6` + correção `B1` (`8f53a3f`) implementadas; 182/182 testes e 6.469 asserções reportadas (execução segmentada); 21/21 testes manuais aprovados pelo proprietário e `B1` confirmada visualmente ("testei esta correto"); benchmark `B1.1` em tomada CA com `p95 = 9,757 ms` e `0` quadros `> 100 ms` (critério atendido); benchmark `B1` em bateria DC com `p95 = 33,038 ms` e `0` quadros `> 100 ms` (critério de `p95` não atendido em bateria); aceite formal do marco (incluindo decisão sobre DC) ainda pendente |
 | T3 — Construção | Posicionar obra, descontar recursos, designar construtor, armazéns protetores iniciais | Abrigo/casa completado e persistido; redução de exposição quando aplicável |
 | T4 — Mundo e calendário | Ciclo dia/noite, tempo, região inicial, salvar/carregar; **preparar persistência de identidade, nomes e parâmetros de aparência** | Estado, construções, IDs estáveis, nomes e parâmetros visuais persistem após reiniciar |
 | T5 — Família | Entidades familiares, fases (`Bebê → Criança → Jovem → Adulto`), residência, nascimentos em modo teste; **implementação proposta do criador inicial do casal, personagens modulares, herança visual, crescimento e nomeação automática (sujeita a planejamento próprio antes da implementação)** | Vínculos, aparência hereditária consistente, nomes persistentes e progressão sobrevivem ao save/load |
@@ -348,7 +348,7 @@
 | T8 — Primeiro contato | Regras de capítulo 2, 1–2 encontros, comunidades simuladas (com nomes próprios pré-gerados e persistentes) | Encontros só são possíveis após filho jovem |
 | **Economia salarial / pessoal (futura)** | Remuneração de moradores/famílias e compra de roupas/produtos comunitários | **Marco ABERTO** (`PROPOSTA FUTURA`; não iniciar nem alocar sem aprovação própria) |
 
-**Prioridade absoluta:** concluir formalmente o aceite da **T2** (incluindo pendência de desempenho) e entregar **T3** antes de implementar nascimento, diplomacia ou mundo grande.
+**Prioridade absoluta:** concluir formalmente o aceite da **T2** (incluindo decisão do proprietário sobre o comportamento em bateria DC) e entregar **T3** antes de implementar nascimento, diplomacia ou mundo grande.
 
 ---
 
@@ -366,7 +366,7 @@
 
 ## 15. Riscos e pendências reais
 
-- **Validação da T2:** os 21 itens do protocolo manual [T2_manual_test_protocol.md](testing/T2_manual_test_protocol.md) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto"). O benchmark em tomada CA (B1.1) registrou `p95 = 9,757 ms` (aprovado), enquanto em bateria DC registrou `p95 = 33,038 ms` (limitação física de economia de energia, com 0 quadros > 100 ms). Aguardando autorização expressa para aceite formal de encerramento do marco T2.
+- **Validação da T2:** os 21 itens do protocolo manual [T2_manual_test_protocol.md](testing/T2_manual_test_protocol.md) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto"). O benchmark em tomada CA (B1.1) registrou `p95 = 9,757 ms` e `0` quadros `> 100 ms` (critério atendido), enquanto em bateria DC (B1) registrou `p95 = 33,038 ms` e `0` quadros `> 100 ms` (critério de `p95` não atendido em bateria). Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 e a autorização de aceite formal do marco permanecem pendentes de decisão expressa do proprietário.
 - **ABERTO (marca):** nome comercial *Dawn of Kin* exige pesquisa de disponibilidade e marca antes de lançamento.
 - **ABERTO (família):** taxa de envelhecimento e nascimento, lógica de afinidade, casamentos autônomos e viuvez, e integração de parceiros vindos de outras comunidades.
 - **ABERTO (herança visual e corpos):** intensidade das variações hereditárias, eventual influência de avós/gerações anteriores e limites numéricos de altura e constituição física.

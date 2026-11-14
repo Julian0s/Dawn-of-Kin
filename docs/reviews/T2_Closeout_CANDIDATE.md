@@ -22,8 +22,8 @@
 > - **Protocolo de Testes Manuais (A1 a F2):** Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` foram executados interativamente e relatados como aprovados pelo proprietário em 14/11/2026.
 > - **Correção de Velocidade B1:** O apontamento manual sobre a velocidade ao ir coletar foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado: *"testei esta correto"*.
 >
-> ### LIMITAÇÃO CONHECIDA
-> - **Desempenho em Bateria DC:** Quando desconectado da tomada (modo bateria DC), a GPU Intel UHD Graphics 620 opera com restrição de frequência de clock imposta pelo hardware/firmware para economia energética, registrando mediana de 55,80 FPS e **$p95 = 33,038\text{ ms}$** (acima da meta formal de 16,7 ms). Em ambas as condições (CA e DC), foram registrados **zero travamentos acima de 100 ms**.
+> ### LIMITAÇÃO CONHECIDA / PENDÊNCIA DE DECISÃO
+> - **Desempenho em Bateria DC:** Quando desconectado da tomada (bateria DC, bateria B1), registrou-se mediana de 55,80 FPS e **$p95 = 33,038\text{ ms}$** — **critério de `p95 <= 16,7 ms` não atendido nessa bateria** (enquanto na tomada CA, bateria B1.1, o critério foi atendido com **$p95 = 9,757\text{ ms}$**). Em ambas as baterias (CA e DC), o critério de spikes foi cumprido com **zero quadros acima de 100 ms**. A classificação do desempenho em DC como limitação aceitável para encerrar a T2 **ainda depende de decisão expressa do proprietário**.
 > - **Limites Visuais Provisórios Aceitos (T2.4.3):** Assets geométricos simples para pilhas e fontes, feedback de trabalho provisório e ausência de efeitos sonoros permanecem intencionais nesta fase de protótipo greybox.
 >
 > ### AGUARDANDO ACEITE FORMAL DO MARCO
@@ -100,13 +100,13 @@ A suíte completa de testes automatizados do Dawn of Kin foi executada via `.\to
 - **Avisos (Warnings):** 0 (validado sob proteção estrita de interrupção por avisos).
 - **Tempo Acumulado de Simulação:** 262,4 segundos.
 
-### Distribuição dos Lotes de Teste
-1. **Lote `unit` (12 suítes, 85 testes, 1.258 asserções):** Cálculos de câmera, matemática de seleção, planejamento de grupos, matemática de colisão, economia T2, pilhas, HUD e fontes.
-2. **Lote `integration-01` (3 suítes, 16 testes, 167 asserções):** Caixa de seleção, câmera RTS e comandos por clique direito.
-3. **Lote `integration-02` (3 suítes, 26 testes, 786 asserções):** Navegação, picking de unidades e separação física/RVO.
-4. **Lote `integration-03` (3 suítes, 22 testes, 366 asserções):** Pilhas no NavMesh, estados naturais de fontes e ritmo/carga (incluindo testes `test_12` e `test_13` de B1).
-5. **Lote `integration-04` (3 suítes, 15 testes, 823 asserções):** Economia jogável, HUD ao vivo e picking de fontes.
-6. **Lote `integration-05` (3 suítes, 20 testes, 3.069 asserções):** Ciclo completo do trabalhador, integridade do TestMap e movimentação de unidades.
+### Composição Consolidada da Suíte e Limitação de Verificação por Lote
+- **Origem do total consolidado:** Os totais consolidados acima (**27 suítes, 182 testes, 182 aprovados, 0 falhas, 0 erros/avisos, 6.469 asserções, 262,4 s em 6 lotes disjuntos**) provêm do relatório de execução da suíte segmentada em [T2_6_B1_speed_alignment_DRAFT.md](T2_6_B1_speed_alignment_DRAFT.md) (seção 4.B).
+- **Composição estática verificável no código-fonte (`tests/`):**
+  - **Suítes unitárias (`tests/unit/`):** 12 arquivos de suíte contendo **85** funções `test_*` (cálculos de câmera, matemática de seleção, planejamento de grupos, matemática de colisão, economia T2, pilhas, HUD e fontes).
+  - **Suítes de integração (`tests/integration/`):** 15 arquivos de suíte contendo **97** funções `test_*` (caixa de seleção, câmera RTS, comandos, navegação, picking, RVO, pilhas no NavMesh, estados de fontes, ritmo/carga inclusive `test_12` e `test_13` de B1, economia jogável, HUD e ciclo de trabalhador).
+  - **Total estático verificado:** `12 + 15 = 27` suítes e `85 + 97 = 182` funções de teste.
+- **Limitação de verificação independente por lote:** Os logs brutos individuais de cada um dos 6 lotes (`unit` e `integration-01`..`05`) da última execução segmentada não foram persistidos no repositório; portanto, os subtotais de asserções por lote individual não são verificáveis de forma independente a partir do histórico versionado (motivo pelo qual os subtotais por lote foram retirados desta versão revisada, mantendo-se apenas os totais consolidados reportados e a contagem estática verificável por categoria).
 
 ---
 
@@ -128,8 +128,12 @@ Medições representativas de 3 corridas de 30 segundos com 5 segundos de aqueci
 | **Critério Formal (p95 ≤ 16,7 ms)** | **APROVADO** | Reprovado (DC) | **APROVADO (CA)** | **Aprovado em CA** |
 
 ### Ressalvas de Causalidade e Metodologia
-- A divergência entre tomada CA e bateria DC é uma característica de hardware/firmware móvel decorrente do controle de potência da GPU Intel UHD 620.
-- Não há comprovação física definitiva de causalidade sem telemetria síncrona de temperatura/clock. A aprovação da bateria CA atesta conformidade em rede elétrica contínua, não autorizando declaração de aprovação universal sob qualquer condição de bateria DC.
+- Os resultados sustentam uma **associação observada** entre as condições de alimentação (tomada CA vs bateria DC) e o desempenho medido, porém não há telemetria síncrona direta (de clock, temperatura ou energia) suficiente para comprovar de forma definitiva o mecanismo físico específico.
+- **Estado objetivo por critério:**
+  - **CA:** `p95 = 9,757 ms` — critério de `p95 <= 16,7 ms` **atendido** na bateria B1.1.
+  - **DC:** `p95 = 33,038 ms` — critério de `p95 <= 16,7 ms` **não atendido** na bateria B1.
+  - **Critério de spikes:** **zero quadros acima de 100 ms** em ambas as baterias (CA e DC).
+- A aprovação em CA atesta conformidade apenas nessa condição de alimentação; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 **ainda depende de decisão expressa do proprietário**.
 
 ---
 
@@ -149,13 +153,13 @@ A auditoria confrontou o código implementado com os marcadores de design do GDD
 
 | Pilar de Engenharia | Contrato Previsto no GDD / Arquitetura | Implementação Real no Código | Classificação de Conformidade |
 | :--- | :--- | :--- | :--- |
-| **Preservação RTS T1** | Comandos de movimento no chão via clique direito, câmera isométrica e seleção múltipla sem regressão. | `MoveOrder`, `RtsCameraRig` e `SelectionManager` 100% preservados e validados nas suítes de integração. | **VALIDADO TECNICAMENTE** |
+| **Preservação RTS T1** | Comandos de movimento no chão via clique direito, câmera isométrica e seleção múltipla sem regressões. | `MoveOrder`, `RtsCameraRig` e `SelectionManager` preservados e validados nas suítes de integração executadas (sem regressões detectadas). | **VALIDADO TECNICAMENTE** |
 | **Fontes Naturais** | Três categorias (Madeira, Pedra, Alimentos) com tempos de extração distintos e feedback visual. | `tree_source.tscn` (2,5s), `rock_source.tscn` (3,5s), `bush_source.tscn` (1,5s), pausas de preparação e feedback corporal. | **VALIDADO TECNICAMENTE** |
 | **Capacidade e Pesos** | Mochila física com pesos unitários (madeira 2, pedra 3, alimento 1), capacidade 20 e redução contínua de velocidade. | `UnitCarryLoad` atômico; multiplicador de velocidade interpolado de 1,00 a 0,60; teto de 20 de carga sem estouro. | **VALIDADO TECNICAMENTE** |
 | **Transporte e Descarga** | Retorno automático ao acampamento quando cheia ou no esgotamento da fonte; descarga somente no acampamento. | `GatherResourceOrder` comuta para `DeliverToCampOrder`; descarrega em `CampStorageZone` sem entrega prematura. | **VALIDADO TECNICAMENTE** |
-| **Conservação e Não Duplicação** | Recursos nunca são perdidos nem duplicados entre extração, transporte e armazenamento coletivo. | Invariante matemática estrita: $Q_{\text{fonte}} + Q_{\text{mochila}} + Q_{\text{estoque}} = \text{constante}$. Testado com múltiplos trabalhadores. | **VALIDADO TECNICAMENTE** |
+| **Conservação e Não Duplicação** | Recursos não são perdidos nem duplicados nas operações de transporte; perda ocorre apenas por deterioração intencional. | Invariante nas operações de extração/transporte/descarga ($Q_{\text{fonte}} + Q_{\text{mochila}} + Q_{\text{estoque}} = \text{constante}$ na ausência de deterioração), distinguindo-se da perda intencional por deterioração temporal. | **VALIDADO TECNICAMENTE** |
 | **Autoridade Única de Pilhas** | Pilhas individuais no chão do acampamento como única autoridade de estoque coletivo, sem armazéns construíveis. | `GroundPileManager` posiciona pilhas determinísticas em slots; `SettlementInventory` reflete rigorosamente as pilhas. | **VALIDADO TECNICAMENTE** |
-| **Deterioração Centralizada** | Alimentos (180s) e madeira (420s) expostos decaem com o tempo; pedra não deteriora. Custo de frame nulo. | `EconomyClockController` atualiza pilhas por intervalo discreto (zero `_process` por pilha); perda refletida no HUD. | **VALIDADO TECNICAMENTE** |
+| **Deterioração Centralizada** | Alimentos (180s) e madeira (420s) expostos decaem com o tempo; pedra não deteriora. Sem processamento por frame individual de cada pilha, com processamento centralizado periódico. | `EconomyClockController` atualiza pilhas por intervalo discreto periódico (zero `_process` por pilha); perda refletida no HUD. | **VALIDADO TECNICAMENTE** |
 | **Concorrência de Trabalhadores** | Trabalhadores compartilham a mesma fonte em vagas distintas sem deadlock ou sobreposição. | `GatherSlotPlanner` aloca slots circulares no NavMesh; liberação de vaga durante o transporte para outro trabalhador. | **VALIDADO TECNICAMENTE** |
 | **HUD de Recursos e Carga** | Exibição de estoque coletivo e painel inferior distinguindo claramente peso transportado de contagem de unidades. | `ResourceHud` exibe `Peso transportado: X / 20` com barra proporcional e contagem individual em unidades. | **VALIDADO TECNICAMENTE** |
 | **Velocidade Unificada (B1)** | Marcha sem carga uniforme (4,8 m/s) em todas as ordens; redução decorrendo estritamente do peso transportado. | `SpeedContext.NORMAL` em ordens de coleta e entrega; velocidade-alvo de 4,8 m/s sem carga e 2,88 m/s com 100% de carga. | **VALIDADO TECNICAMENTE** |
@@ -166,18 +170,20 @@ A auditoria confrontou o código implementado com os marcadores de design do GDD
 
 Para governança transparente do projeto, todas as questões foram categorizadas:
 
-### A. Correções Necessárias antes de Encerrar a T2
-- **Nenhuma correção técnica impeditiva restante.** Todas as discrepâncias funcionais (inclusive a observação de velocidade B1) foram corrigidas, testadas automaticamente e aprovadas manualmente.
+### A. Decisões e Correções antes de Encerrar a T2
+- **Discrepâncias funcionais relatadas:** As divergências funcionais observadas (inclusive a observação de velocidade B1) foram corrigidas, testadas automaticamente e aprovadas manualmente nos testes realizados.
+- **Decisão pendente do proprietário sobre bateria DC:** A aceitação do desempenho em bateria DC ($p95 = 33,038\text{ ms}$, critério de $p95$ não atendido na bateria B1, com zero quadros $> 100\text{ ms}$) como limitação aceitável para o encerramento do marco T2 depende de decisão expressa do proprietário.
 
-### B. Limitações Conhecidas Não Bloqueantes
-1. **Desempenho em Bateria DC:** Throttling físico de hardware móvel na Intel UHD 620 desconectada da tomada ($p95 = 33,038\text{ ms}$). Atendida com folga em tomada CA ($p95 = 9,757\text{ ms}$). Zero quadros $> 100\text{ ms}$ em ambas as condições.
+### B. Limitações Conhecidas e Pontos de Atenção
+1. **Desempenho em Bateria DC vs Tomada CA:** Na bateria B1 em modo DC registrou-se $p95 = 33,038\text{ ms}$ (critério de $p95 \le 16,7\text{ ms}$ não atendido), enquanto na bateria B1.1 em tomada CA registrou-se $p95 = 9,757\text{ ms}$ (critério atendido). Em ambas as baterias registrou-se zero quadros $> 100\text{ ms}$. Os dados sustentam associação entre condição de alimentação e desempenho, sem telemetria síncrona suficiente para comprovar o mecanismo físico específico.
 2. **Representação Visual Provisória:** Malhas greybox para pilhas no chão e feedback corporal provisório na coleta (declarados e aceitos na etapa T2.4.3).
 
-### C. Funcionalidades Corretamente Adiada para Etapas Futuras
-1. **Armazéns Construíveis com Proteção contra Deterioração:** Adiado para a etapa **T3 — Construção**.
-2. **Ciclo Dia/Noite, Calendário e Save/Load em Disco:** Adiado para a etapa **T4 — Persistência e Ciclos**.
-3. **Criação de Filhos, Herança Genética e Casamentos:** Adiado para a etapa **T5 — Linhagem e Família**.
-4. **Economia Salarial, Profissões Avançadas e Outras Comunidades:** Adiado para as etapas **T6 a T8**.
+### C. Funcionalidades Corretamente Adiadas para Etapas Futuras
+1. **Armazéns Construíveis com Proteção contra Deterioração:** Previsto para a etapa **T3 — Construção**.
+2. **Ciclo Dia/Noite, Calendário e Save/Load em Disco:** Previsto para a etapa **T4 — Mundo e Calendário**.
+3. **Criação de Filhos, Herança Genética e Casamentos:** Previsto para a etapa **T5 — Família**.
+4. **Economia Salarial / Pessoal:** **ABERTO / PROPOSTA FUTURA** — sem marco de implementação atribuído (não vinculada a T6–T8).
+5. **Combate, Arsenal e Outras Comunidades:** Previsto para as etapas **T6 a T8** conforme o roadmap do GDD.
 
 ### D. Questões de Design em Aberto (Sem Impacto na T2)
 1. Nome comercial final do jogo (*Dawn of Kin* requer checagem prévia de marca antes da publicação).
@@ -219,9 +225,9 @@ A etapa **T3 — Construção** está planejada para introduzir:
 4. Conclusão de uma cabana/abrigo inicial.
 5. Construção de armazéns/depósitos capazes de proteger materiais contra a deterioração (`decay_multiplier = 0.0`).
 
-### Ponto de Decisão Arquitetural para o Planejamento T3
-> **Conceito de "Abrigo Completado e Persistido":**<br>
-> O roadmap histórico cita para o primeiro protótipo jogável a conclusão de um abrigo persistido. Como o sistema definitivo de serialização e carregamento em disco (Save/Load) está formalmente alocado para a **etapa T4**, propõe-se para a T3 que a "persistência" signifique a manutenção do estado da obra terminada na memória da sessão (`MainScene`), permitindo que moradores utilizem a estrutura como ponto de referência, sem implementar prematuramente a arquitetura de arquivos `.save` antes do marco T4. Essa definição deverá ser confirmada pelo proprietário no momento da elaboração do plano da T3.
+### Ponto de Decisão Arquitetural para o Planejamento T3 (`PROPOSTA`)
+> **PROPOSTA — Conceito de "Abrigo Completado e Persistido":**<br>
+> O roadmap histórico cita para o primeiro protótipo jogável a conclusão de um abrigo persistido. Como o sistema definitivo de serialização e carregamento em disco (Save/Load) está planejado para a **etapa T4**, **propõe-se** (como `PROPOSTA`, não `DECIDIDO`) para a T3 que a "persistência" signifique a manutenção do estado da obra terminada na memória da sessão (`MainScene`), permitindo que moradores utilizem a estrutura como ponto de referência, sem implementar prematuramente a arquitetura de arquivos `.save` antes do marco T4. Essa definição permanece em aberto e dependerá de confirmação expressa do proprietário no momento do planejamento da T3.
 
 ---
 

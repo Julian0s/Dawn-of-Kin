@@ -128,8 +128,10 @@ Para viabilizar testes unitários e calibração inicial na T2 sem travar o dese
 
 ---
 
-## 9. Decisões restantes antes da `T2.0`
+## 9. [HISTÓRICO — Já resolvido antes da `T2.0`] Decisões que condicionavam o início da `T2.0`
 
-Para iniciar a `T2.0` (dados econômicos, pesos, capacidade e estoque), basta o proprietário confirmar:
+> **Nota histórica:** Os dois pontos abaixo referiam-se ao pré-requisito para iniciar `T2.0` quando esta arquitetura estava em rascunho. Ambos foram atendidos antes e durante a execução de `T2.0`–`T2.6`, **não constituindo bloqueios atuais**.
+
+Para iniciar a `T2.0` (dados econômicos, pesos, capacidade e estoque), bastava o proprietário confirmar:
 1. Aprovação desta arquitetura simplificada (`RASCUNHO` → aprovada) e do plano `T2.0`–`T2.6`;
 2. Autorização explícita para usar os **defaults provisórios parametrizáveis** na `T2.0` enquanto os valores definitivos de peso, capacidade e deterioração seguem em `ABERTO` para calibração na `T2.1`–`T2.6`.

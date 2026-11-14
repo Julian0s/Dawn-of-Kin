@@ -144,8 +144,10 @@ Em alinhamento com a decisão de restringir a T2 a **somente pilhas individuais 
 
 ---
 
-## 5. Decisões restantes que realmente bloqueiam a `T2.0`
+## 5. [HISTÓRICO — Já resolvido antes da `T2.0`] Decisões que condicionavam o início da `T2.0`
 
-Para iniciar a **`T2.0`** com segurança, apenas dois pontos exigem resposta do proprietário:
+> **Nota histórica:** Os dois pontos abaixo referiam-se ao pré-requisito para iniciar `T2.0` no momento da elaboração deste plano. Ambos já foram resolvidos e executados ao longo de `T2.0`–`T2.6`, **não constituindo bloqueios atuais**.
+
+Para iniciar a **`T2.0`** com segurança, apenas dois pontos exigiam resposta do proprietário:
 1. **Aprovação formal** dos rascunhos revisados (`T2_architecture_DRAFT.md` e `T2_Implementation_Plan_DRAFT.md`).
 2. **Autorização para uso dos defaults provisórios parametrizáveis** na `T2.0` (pesos e capacidade inicial em arquivo de dados), ficando os detalhes finais de deterioração (duração exata, perda gradual vs integral, política de `merge` de exposição e diferenças por categoria) em **`ABERTO`** para decisão/calibração antes da `T2.1`–`T2.6`.
