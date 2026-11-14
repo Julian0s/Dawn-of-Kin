@@ -92,7 +92,7 @@ Executado via `.\tools\perf.ps1 -Mode t2 -ProfileFilter "1920x1080" -Runs 3 -War
   - **p95 mediano:** 33,038 ms (compatível com a baseline de bateria T2.6 de 33,766 ms)
   - **p99 mediano:** 41,797 ms
   - **Quadros > 100 ms:** **0** (0,00%)
-- **Nota metodológica:** Conforme detalhado em `T2_6_D2_performance_DRAFT.md`, a medição em bateria (DC) sofre estrangulamento da GPU integrada Intel UHD 620 para economia energética (p95 ~33 ms). Em alimentação AC sem recarga agressiva, a GPU atinge ~145 FPS com p95 de ~9,5 ms. Em ambas as condições, o critério de **zero travamentos acima de 100 ms** foi mantido com perfeição.
+- **Nota metodológica:** Conforme detalhado em `T2_6_D2_performance_DRAFT.md`, a medição em bateria (DC) tem o clock da GPU integrada Intel UHD 620 reduzido para conservação de energia (resultando em p95 mediano de 33,038 ms, acima do teto de 16,7 ms). Na bateria de referência D2 em tomada CA com bateria estabilizada, T2 atingiu FPS médio mediano de 125,42 com p95 mediano de 13,487 ms. O teste pós-correção B1 em tomada CA foi consolidado separadamente no documento complementar `docs/reviews/T2_6_B1_1_performance_DRAFT.md`. Em ambas as baterias (DC e CA), o critério de **zero travamentos acima de 100 ms** foi mantido com perfeição.
 
 ---
 

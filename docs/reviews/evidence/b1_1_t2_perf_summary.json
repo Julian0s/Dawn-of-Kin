@@ -1,0 +1,167 @@
+﻿{
+    "timestamp":  "2026-11-14T18:39:39.5976887-03:00",
+    "power_plan":  "GUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado)",
+    "benchmarks":  [
+
+                   ],
+    "t2_benchmarks":  [
+                          {
+                              "profile":  "1920x1080",
+                              "runs":  3,
+                              "window_size":  [
+                                                  1920,
+                                                  1080
+                                              ],
+                              "vsync_mode":  0,
+                              "vsync_disabled":  true,
+                              "gpu_adapter":  "Intel(R) UHD Graphics 620",
+                              "renderer":  "gl_compatibility",
+                              "median_avg_fps":  147.33,
+                              "median_p50_ms":  6.608,
+                              "median_p95_ms":  9.757,
+                              "median_p99_ms":  11.679,
+                              "median_max_ms":  23.197,
+                              "worst_max_ms":  25.258,
+                              "total_frames_gt_16_7ms":  14,
+                              "total_frames_gt_33_3ms":  0,
+                              "total_frames_gt_100ms":  0,
+                              "median_passed_p95":  true,
+                              "raw_runs":  [
+                                               {
+                                                   "avg_fps":  147.33,
+                                                   "avg_frame_ms":  6.788,
+                                                   "benchmark":  "t2_representative",
+                                                   "decay_time_scale":  35.0,
+                                                   "duration_sec":  30.001,
+                                                   "economy_metrics":  {
+                                                                           "active_pile_count":  2,
+                                                                           "decay_steps":  11,
+                                                                           "decay_units_total":  12,
+                                                                           "delivery_events":  3,
+                                                                           "final_stock":  {
+                                                                                               "food":  0,
+                                                                                               "stone":  9,
+                                                                                               "wood":  22
+                                                                                           },
+                                                                           "hud_selected_unit_applies":  20,
+                                                                           "hud_stockpile_applies":  14
+                                                                       },
+                                                   "frame_count":  4420,
+                                                   "frames_gt_100ms":  0,
+                                                   "frames_gt_16_7ms":  4,
+                                                   "frames_gt_33_3ms":  0,
+                                                   "godot_version":  "4.7.2",
+                                                   "gpu_adapter":  "Intel(R) UHD Graphics 620",
+                                                   "gpu_vendor":  "Intel",
+                                                   "max_frame_ms":  25.258,
+                                                   "min_frame_ms":  2.383,
+                                                   "os":  "Windows",
+                                                   "p50_ms":  6.582,
+                                                   "p95_ms":  10.076,
+                                                   "p99_ms":  11.828,
+                                                   "passed_p95":  true,
+                                                   "renderer":  "gl_compatibility",
+                                                   "resolution_label":  "1920x1080",
+                                                   "run_index":  1,
+                                                   "vsync_disabled":  true,
+                                                   "vsync_mode":  0,
+                                                   "warmup_sec":  5.0,
+                                                   "window_size":  [
+                                                                       1920,
+                                                                       1080
+                                                                   ]
+                                               },
+                                               {
+                                                   "avg_fps":  149.76,
+                                                   "avg_frame_ms":  6.678,
+                                                   "benchmark":  "t2_representative",
+                                                   "decay_time_scale":  35.0,
+                                                   "duration_sec":  30.002,
+                                                   "economy_metrics":  {
+                                                                           "active_pile_count":  2,
+                                                                           "decay_steps":  11,
+                                                                           "decay_units_total":  12,
+                                                                           "delivery_events":  3,
+                                                                           "final_stock":  {
+                                                                                               "food":  0,
+                                                                                               "stone":  9,
+                                                                                               "wood":  22
+                                                                                           },
+                                                                           "hud_selected_unit_applies":  20,
+                                                                           "hud_stockpile_applies":  14
+                                                                       },
+                                                   "frame_count":  4493,
+                                                   "frames_gt_100ms":  0,
+                                                   "frames_gt_16_7ms":  3,
+                                                   "frames_gt_33_3ms":  0,
+                                                   "godot_version":  "4.7.2",
+                                                   "gpu_adapter":  "Intel(R) UHD Graphics 620",
+                                                   "gpu_vendor":  "Intel",
+                                                   "max_frame_ms":  19.074,
+                                                   "min_frame_ms":  2.625,
+                                                   "os":  "Windows",
+                                                   "p50_ms":  6.608,
+                                                   "p95_ms":  8.933,
+                                                   "p99_ms":  11.067,
+                                                   "passed_p95":  true,
+                                                   "renderer":  "gl_compatibility",
+                                                   "resolution_label":  "1920x1080",
+                                                   "run_index":  2,
+                                                   "vsync_disabled":  true,
+                                                   "vsync_mode":  0,
+                                                   "warmup_sec":  5.0,
+                                                   "window_size":  [
+                                                                       1920,
+                                                                       1080
+                                                                   ]
+                                               },
+                                               {
+                                                   "avg_fps":  145.48,
+                                                   "avg_frame_ms":  6.874,
+                                                   "benchmark":  "t2_representative",
+                                                   "decay_time_scale":  35.0,
+                                                   "duration_sec":  30.004,
+                                                   "economy_metrics":  {
+                                                                           "active_pile_count":  2,
+                                                                           "decay_steps":  11,
+                                                                           "decay_units_total":  12,
+                                                                           "delivery_events":  3,
+                                                                           "final_stock":  {
+                                                                                               "food":  0,
+                                                                                               "stone":  9,
+                                                                                               "wood":  22
+                                                                                           },
+                                                                           "hud_selected_unit_applies":  20,
+                                                                           "hud_stockpile_applies":  14
+                                                                       },
+                                                   "frame_count":  4365,
+                                                   "frames_gt_100ms":  0,
+                                                   "frames_gt_16_7ms":  7,
+                                                   "frames_gt_33_3ms":  0,
+                                                   "godot_version":  "4.7.2",
+                                                   "gpu_adapter":  "Intel(R) UHD Graphics 620",
+                                                   "gpu_vendor":  "Intel",
+                                                   "max_frame_ms":  23.197,
+                                                   "min_frame_ms":  2.461,
+                                                   "os":  "Windows",
+                                                   "p50_ms":  6.751,
+                                                   "p95_ms":  9.757,
+                                                   "p99_ms":  11.679,
+                                                   "passed_p95":  true,
+                                                   "renderer":  "gl_compatibility",
+                                                   "resolution_label":  "1920x1080",
+                                                   "run_index":  3,
+                                                   "vsync_disabled":  true,
+                                                   "vsync_mode":  0,
+                                                   "warmup_sec":  5.0,
+                                                   "window_size":  [
+                                                                       1920,
+                                                                       1080
+                                                                   ]
+                                               }
+                                           ]
+                          }
+                      ],
+    "rvo_breakdown":  null,
+    "stress_test":  null
+}
