@@ -154,7 +154,9 @@ func test_02_source_feedback_tween_pulses_on_extract_with_zero_process_and_reset
 	unit.definition = LEADER_A_DEF
 	add_test_child(tree)
 	add_test_child(unit)
-	await wait_process_frames(1)
+	# Flush teardown frame spikes from prior test before sampling a short 0.22s Tween pulse.
+	await wait_process_frames(3)
+	await wait_physics_frames(2)
 
 	var visual: Node3D = tree.get_node("AvailableVisual") as Node3D
 	var rest_tf: Transform3D = visual.transform
@@ -167,15 +169,17 @@ func test_02_source_feedback_tween_pulses_on_extract_with_zero_process_and_reset
 	assert_false(tree.is_processing())
 	assert_false(tree.is_physics_processing())
 
-	# Tween should perturb AvailableVisual during pulse then return smoothly to rest
-	await wait_process_frames(2)
-	var saw_pulse: bool = not visual.transform.is_equal_approx(rest_tf)
+	# Tween should perturb AvailableVisual during pulse then return smoothly to rest.
+	# Sample every process frame from frame 1 so a slow host frame cannot skip past the 0.08s peak.
+	var saw_pulse: bool = false
 	var wait_f: int = 0
-	while not visual.transform.is_equal_approx(rest_tf) and wait_f < 40:
+	while wait_f < 40:
 		await wait_process_frames(1)
+		wait_f += 1
 		if not visual.transform.is_equal_approx(rest_tf):
 			saw_pulse = true
-		wait_f += 1
+		elif saw_pulse:
+			break
 	assert_true(saw_pulse, "Extraction must trigger visible zero-_process Tween feedback on source")
 	assert_true(visual.transform.is_equal_approx(rest_tf), "Source visual must return to exact rest transform")
 

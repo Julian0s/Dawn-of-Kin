@@ -3,11 +3,12 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("all", "benchmark", "rvo", "stress")]
+    [ValidateSet("all", "benchmark", "t2", "rvo", "stress")]
     [string]$Mode = "all",
     [int]$Runs = 3,
     [double]$WarmupSec = 5.0,
-    [double]$DurationSec = 30.0
+    [double]$DurationSec = 30.0,
+    [string[]]$ProfileFilter = @()
 )
 
 Set-StrictMode -Version Latest
@@ -34,6 +35,7 @@ $summary = [ordered]@{
     timestamp = (Get-Date).ToString("o")
     power_plan = (powercfg /getactivescheme | Out-String).Trim()
     benchmarks = @()
+    t2_benchmarks = @()
     rvo_breakdown = $null
     stress_test = $null
 }
@@ -44,6 +46,9 @@ if ($Mode -eq "all" -or $Mode -eq "benchmark") {
         @{ label = "1920x1080"; args = @("--resolution", "1920x1080"); user = @("--resolution=1920x1080") },
         @{ label = "native"; args = @("--fullscreen"); user = @("--fullscreen") }
     )
+    if ($ProfileFilter.Count -gt 0) {
+        $profiles = @($profiles | Where-Object { $ProfileFilter -contains $_.label })
+    }
 
     foreach ($prof in $profiles) {
         $runResults = @()
@@ -98,6 +103,71 @@ if ($Mode -eq "all" -or $Mode -eq "benchmark") {
         $summary.benchmarks += $consolidated
         Write-Host ("  -> Median [$($prof.label)]: FPS=$($consolidated.median_avg_fps) | p50=$($consolidated.median_p50_ms)ms | p95=$($consolidated.median_p95_ms)ms | p99=$($consolidated.median_p99_ms)ms | max=$($consolidated.median_max_ms)ms (worst=$($consolidated.worst_max_ms)ms) | >100ms=$($consolidated.total_frames_over_100ms)")
     }
+}
+
+if ($Mode -eq "all" -or $Mode -eq "t2") {
+    $t2Profiles = @(
+        @{ label = "1280x720"; args = @("--resolution", "1280x720") },
+        @{ label = "1920x1080"; args = @("--resolution", "1920x1080") }
+    )
+    if ($ProfileFilter.Count -gt 0) {
+        $t2Profiles = @($t2Profiles | Where-Object { $ProfileFilter -contains $_.label })
+    }
+
+    foreach ($prof in $t2Profiles) {
+        $runResults = @()
+        for ($r = 1; $r -le $Runs; $r++) {
+            $jsonRel = "test_output/perf/t2_bench_$($prof.label)_run$r.json"
+            $jsonAbs = Join-Path $root $jsonRel
+            if (Test-Path $jsonAbs) { Remove-Item $jsonAbs -Force }
+
+            Write-Host "=== T2 Benchmark [$($prof.label)] Run $r/$Runs (warmup=${WarmupSec}s, record=${DurationSec}s) ==="
+            $godotArgs = @("--path", $root) + $prof.args + @(
+                "--script", "res://tests/perf/t2_perf_benchmark.gd",
+                "--",
+                "--resolution-label=$($prof.label)",
+                "--run-index=$r",
+                "--warmup-sec=$WarmupSec",
+                "--duration-sec=$DurationSec",
+                "--output-json=$jsonRel"
+            )
+
+            $res = Invoke-Godot -Arguments $godotArgs -FailOnWarnings
+            if (-not $res.Success) {
+                $res.AllLines | ForEach-Object { Write-Host $_ }
+                throw "T2 Benchmark failed on $($prof.label) run $r"
+            }
+
+            $runResults += (Get-Content $jsonAbs -Raw | ConvertFrom-Json)
+        }
+
+        $consolidated = [ordered]@{
+            profile = $prof.label
+            runs = $Runs
+            window_size = $runResults[0].window_size
+            vsync_mode = $runResults[0].vsync_mode
+            vsync_disabled = $runResults[0].vsync_disabled
+            gpu_adapter = $runResults[0].gpu_adapter
+            renderer = $runResults[0].renderer
+            median_avg_fps = [Math]::Round((Get-Median ($runResults | ForEach-Object { [double]$_.avg_fps })), 2)
+            median_p50_ms = [Math]::Round((Get-Median ($runResults | ForEach-Object { [double]$_.p50_ms })), 3)
+            median_p95_ms = [Math]::Round((Get-Median ($runResults | ForEach-Object { [double]$_.p95_ms })), 3)
+            median_p99_ms = [Math]::Round((Get-Median ($runResults | ForEach-Object { [double]$_.p99_ms })), 3)
+            median_max_ms = [Math]::Round((Get-Median ($runResults | ForEach-Object { [double]$_.max_frame_ms })), 3)
+            worst_max_ms = [Math]::Round((($runResults | ForEach-Object { [double]$_.max_frame_ms } | Measure-Object -Maximum).Maximum), 3)
+            total_frames_gt_16_7ms = (($runResults | ForEach-Object { [int]$_.frames_gt_16_7ms } | Measure-Object -Sum).Sum)
+            total_frames_gt_33_3ms = (($runResults | ForEach-Object { [int]$_.frames_gt_33_3ms } | Measure-Object -Sum).Sum)
+            total_frames_gt_100ms = (($runResults | ForEach-Object { [int]$_.frames_gt_100ms } | Measure-Object -Sum).Sum)
+            median_passed_p95 = ([double](Get-Median ($runResults | ForEach-Object { [double]$_.p95_ms })) -le 16.7 -and (($runResults | ForEach-Object { [int]$_.frames_gt_100ms } | Measure-Object -Sum).Sum -eq 0))
+            raw_runs = $runResults
+        }
+        $summary.t2_benchmarks += $consolidated
+        Write-Host ("  -> T2 Median [$($prof.label)]: FPS=$($consolidated.median_avg_fps) | p50=$($consolidated.median_p50_ms)ms | p95=$($consolidated.median_p95_ms)ms | p99=$($consolidated.median_p99_ms)ms | max=$($consolidated.median_max_ms)ms (worst=$($consolidated.worst_max_ms)ms) | >100ms=$($consolidated.total_frames_gt_100ms)")
+    }
+
+    $t2SummaryPath = Join-Path $outDir "t2_perf_summary.json"
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -Path $t2SummaryPath -Encoding UTF8
+    Write-Host "T2 Perf summary saved to $t2SummaryPath"
 }
 
 if ($Mode -eq "all" -or $Mode -eq "rvo") {

@@ -9,6 +9,8 @@ const SEARCH_ROOTS: Array[String] = [
 ]
 
 var _filter: String = ""
+var _exact_suites: PackedStringArray = PackedStringArray()
+var _discovery_only: bool = false
 
 
 func _initialize() -> void:
@@ -20,6 +22,16 @@ func _parse_args() -> void:
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--filter="):
 			_filter = arg.substr("--filter=".length()).strip_edges()
+		elif arg.begins_with("--suites="):
+			var raw: String = arg.substr("--suites=".length()).strip_edges()
+			if not raw.is_empty():
+				var parts: PackedStringArray = raw.split(",", false)
+				for part: String in parts:
+					var cleaned: String = part.strip_edges()
+					if not cleaned.is_empty() and not _exact_suites.has(cleaned):
+						_exact_suites.append(cleaned)
+		elif arg == "--discovery-only":
+			_discovery_only = true
 
 
 func _run_all() -> void:
@@ -28,6 +40,24 @@ func _run_all() -> void:
 
 	var started_usec: int = Time.get_ticks_usec()
 	var suite_paths: PackedStringArray = _discover_suites()
+
+	if _discovery_only:
+		for path: String in suite_paths:
+			print("DISCOVERED_SUITE %s" % path)
+		print("DISCOVERED_COUNT %d" % suite_paths.size())
+		quit(0)
+		return
+
+	if not _exact_suites.is_empty():
+		var filtered_paths: Array[String] = []
+		for requested_path: String in _exact_suites:
+			if suite_paths.has(requested_path):
+				filtered_paths.append(requested_path)
+			else:
+				push_error("Requested suite not discovered: %s" % requested_path)
+				quit(1)
+				return
+		suite_paths = PackedStringArray(filtered_paths)
 
 	var total_suites: int = 0
 	var total_tests: int = 0
@@ -65,6 +95,10 @@ func _run_all() -> void:
 			continue
 
 		total_suites += 1
+		var suite_started_usec: int = Time.get_ticks_usec()
+		var suite_passed: int = 0
+		var suite_failed: int = 0
+		var suite_assertions: int = 0
 		print("[SUITE] %s (%d tests)" % [suite_path, methods.size()])
 
 		root.add_child(suite)
@@ -84,12 +118,15 @@ func _run_all() -> void:
 			var failures: PackedStringArray = suite.get_failures()
 			var assertions: int = suite.get_assertion_count()
 			total_assertions += assertions
+			suite_assertions += assertions
 
 			if failures.is_empty():
 				passed_tests += 1
+				suite_passed += 1
 				print("  PASS %s (%d assertions)" % [method_name, assertions])
 			else:
 				failed_tests += 1
+				suite_failed += 1
 				print("  FAIL %s (%d assertions, %d failures)" % [method_name, assertions, failures.size()])
 				for msg: String in failures:
 					print("       -> %s" % msg)
@@ -98,6 +135,15 @@ func _run_all() -> void:
 		await suite.after_all()
 		suite.queue_free()
 		await process_frame
+		var suite_elapsed_ms: float = (Time.get_ticks_usec() - suite_started_usec) / 1000.0
+		print("[SUITE_DONE] %s | tests=%d | passed=%d | failed=%d | assertions=%d | elapsed_ms=%.1f" % [
+			suite_path,
+			methods.size(),
+			suite_passed,
+			suite_failed,
+			suite_assertions,
+			suite_elapsed_ms,
+		])
 
 	var elapsed_ms: float = (Time.get_ticks_usec() - started_usec) / 1000.0
 	print("")
