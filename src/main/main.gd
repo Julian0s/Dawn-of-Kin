@@ -16,6 +16,7 @@ const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone
 @onready var _destination_marker: DestinationMarker = $DestinationMarker
 @onready var _economy_clock: EconomyClockController = get_node_or_null("EconomyClockController") as EconomyClockController
 @onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
+@onready var _resource_hud: ResourceHud = get_node_or_null("UiLayer/ResourceHud") as ResourceHud
 
 var _time_provider: SimulatedWorldTimeProvider = null
 var _camp_storage_zone: CampStorageZone = null
@@ -43,8 +44,13 @@ func _ready() -> void:
 	if _input_controller != null:
 		_input_controller.configure(_selection_manager, _camera_rig, _selection_box_overlay, _command_controller)
 
+	if _resource_hud != null:
+		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
+
 
 func _exit_tree() -> void:
+	if _resource_hud != null:
+		_resource_hud.unbind()
 	if _ground_pile_manager != null:
 		_ground_pile_manager.cleanup()
 		_ground_pile_manager = null
@@ -106,6 +112,10 @@ func get_input_controller() -> RtsInputController:
 
 func get_selection_box_overlay() -> SelectionBoxOverlay:
 	return _selection_box_overlay
+
+
+func get_resource_hud() -> ResourceHud:
+	return _resource_hud
 
 
 func get_command_controller() -> CommandController:
