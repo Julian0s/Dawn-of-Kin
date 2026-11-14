@@ -31,6 +31,14 @@ func get_order_name() -> String:
 	return "UnitOrder"
 
 
+func is_preparing_work() -> bool:
+	return false
+
+
+func get_work_category() -> int:
+	return -1
+
+
 func is_active() -> bool:
 	return status == Status.PENDING or status == Status.RUNNING
 

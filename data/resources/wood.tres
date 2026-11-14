@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/economy/resource_definition.gd" id="1_res_def"]
+[ext_resource type="Resource" path="res://data/resources/decay_wood_provisional.tres" id="2_decay"]
+
+[resource]
+script = ExtResource("1_res_def")
+resource_id = &"wood"
+display_name = "Wood"
+category = 1
+unit_weight = 2
+decay_profile = ExtResource("2_decay")

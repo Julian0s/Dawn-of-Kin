@@ -12,17 +12,28 @@ enum MoveState {
 	FAILED_INVALID,
 }
 
+enum SpeedContext {
+	NORMAL,
+	WORK,
+}
+
 const ARRIVAL_TOLERANCE_XZ: float = 0.25
 const ARRIVAL_TOLERANCE_Y: float = 1.0
 const WAYPOINT_ARRIVAL_XZ: float = 0.20
-const AGENT_PATH_DESIRED_DISTANCE: float = 0.85
-const AGENT_TARGET_DESIRED_DISTANCE: float = 0.85
+const AGENT_PATH_DESIRED_DISTANCE: float = 0.45
+const AGENT_TARGET_DESIRED_DISTANCE: float = 0.25
 const AGENT_PATH_MAX_DISTANCE: float = 2.0
 const FLOOR_SNAP_LENGTH_METERS: float = 0.3
 const MAX_TERRAIN_STEP_UP_HEIGHT: float = 0.42
 const STEP_UP_FORWARD_PROBE: float = 0.14
 const STUCK_WINDOW_SEC: float = 1.5
 const STUCK_MIN_PROGRESS_XZ: float = 0.25
+const STUCK_SPEED_REFERENCE: float = 2.5
+const STUCK_WINDOW_MAX_SCALE: float = 2.5
+const STUCK_MIN_EFFECTIVE_SPEED: float = 0.4
+const DEFAULT_WORK_APPROACH_SPEED: float = 2.5
+const DEFAULT_MAX_LOAD_SPEED_MULTIPLIER: float = 0.60
+const SPEED_TRANSITION_RATE: float = 8.0
 const MAX_REPATH_ATTEMPTS: int = 1
 const AVOIDANCE_RADIUS: float = 0.5
 const AVOIDANCE_NEIGHBOR_DISTANCE: float = 3.5
@@ -39,8 +50,14 @@ const AVOIDANCE_MIN_ROTATION_SPEED: float = 0.2
 var _body: CharacterBody3D = null
 var _agent: NavigationAgent3D = null
 var _world_navigation: WorldNavigation = null
+var _carry_load: UnitCarryLoad = null
 
 var _move_speed: float = 4.8
+var _work_approach_speed: float = DEFAULT_WORK_APPROACH_SPEED
+var _max_load_speed_multiplier: float = DEFAULT_MAX_LOAD_SPEED_MULTIPLIER
+var _speed_context: SpeedContext = SpeedContext.NORMAL
+var _target_move_speed: float = 4.8
+var _effective_move_speed: float = 4.8
 var _turn_rate: float = 10.0
 var _gravity: float = 9.8
 
@@ -59,10 +76,12 @@ func _ready() -> void:
 	_gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	_resolve_nodes()
 	_configure_body_and_agent()
+	_recompute_target_speed(true)
 
 
 func _exit_tree() -> void:
 	_disconnect_agent_signals()
+	_disconnect_carry_load_signals()
 
 
 func configure(body: CharacterBody3D, agent: NavigationAgent3D = null) -> void:
@@ -84,11 +103,70 @@ func get_world_navigation() -> WorldNavigation:
 	return _world_navigation
 
 
-func set_motion_profile(move_speed: float, turn_rate: float) -> void:
+func set_carry_load(carry_load: UnitCarryLoad) -> void:
+	if _carry_load == carry_load:
+		_recompute_target_speed(_move_state != MoveState.MOVING)
+		return
+	_disconnect_carry_load_signals()
+	_carry_load = carry_load
+	_connect_carry_load_signals()
+	_recompute_target_speed(_move_state != MoveState.MOVING)
+
+
+func set_motion_profile(
+	move_speed: float,
+	turn_rate: float,
+	work_approach_speed: float = -1.0,
+	max_load_speed_multiplier: float = -1.0
+) -> void:
 	_move_speed = maxf(move_speed, 0.1)
 	_turn_rate = maxf(turn_rate, 0.1)
-	if _agent != null:
-		_agent.max_speed = _move_speed
+	if work_approach_speed > 0.0 and is_finite(work_approach_speed):
+		_work_approach_speed = maxf(work_approach_speed, 0.1)
+	if max_load_speed_multiplier > 0.0 and is_finite(max_load_speed_multiplier):
+		_max_load_speed_multiplier = clampf(max_load_speed_multiplier, 0.1, 1.0)
+	_recompute_target_speed(_move_state != MoveState.MOVING)
+
+
+func set_speed_context(context: SpeedContext) -> void:
+	if _speed_context == context:
+		return
+	_speed_context = context
+	_recompute_target_speed(_move_state != MoveState.MOVING)
+
+
+func get_speed_context() -> SpeedContext:
+	return _speed_context
+
+
+func get_target_move_speed() -> float:
+	return _target_move_speed
+
+
+func get_effective_move_speed() -> float:
+	return _effective_move_speed
+
+
+func get_current_load_multiplier() -> float:
+	return compute_load_speed_multiplier(_get_load_fill_ratio(), _max_load_speed_multiplier)
+
+
+static func compute_load_speed_multiplier(
+	fill_ratio: float,
+	max_load_multiplier: float = DEFAULT_MAX_LOAD_SPEED_MULTIPLIER
+) -> float:
+	if not is_finite(fill_ratio) or fill_ratio <= 0.0:
+		return 1.0
+	var clamped_ratio: float = clampf(fill_ratio, 0.0, 1.0)
+	var min_mult: float = clampf(max_load_multiplier, 0.1, 1.0) if is_finite(max_load_multiplier) else DEFAULT_MAX_LOAD_SPEED_MULTIPLIER
+	return lerpf(1.0, min_mult, clamped_ratio)
+
+
+static func compute_stuck_window_sec(effective_speed: float) -> float:
+	var safe_speed: float = effective_speed if is_finite(effective_speed) else STUCK_MIN_EFFECTIVE_SPEED
+	var ref_speed: float = clampf(safe_speed, STUCK_MIN_EFFECTIVE_SPEED, STUCK_SPEED_REFERENCE)
+	var scale: float = clampf(STUCK_SPEED_REFERENCE / ref_speed, 1.0, STUCK_WINDOW_MAX_SCALE)
+	return STUCK_WINDOW_SEC * scale
 
 
 func get_move_state() -> MoveState:
@@ -123,6 +201,7 @@ func begin_move_to(target: Vector3) -> bool:
 		return false
 
 	_bind_agent_map()
+	_recompute_target_speed(_move_state != MoveState.MOVING)
 	_target_position = target
 	_repath_attempts = 0
 	_no_progress_timer = 0.0
@@ -136,7 +215,7 @@ func begin_move_to(target: Vector3) -> bool:
 		_agent.set_velocity(Vector3.ZERO)
 		return true
 
-	_agent.max_speed = _move_speed
+	_agent.max_speed = _effective_move_speed
 	_agent.avoidance_priority = AVOIDANCE_PRIORITY_MOVING
 	_agent.target_position = _target_position
 	_agent.get_next_path_position()
@@ -161,6 +240,19 @@ func stop_movement() -> void:
 		_agent.set_velocity(Vector3.ZERO)
 		if _body != null:
 			_agent.target_position = _body.global_position
+
+
+func face_towards(world_point: Vector3, delta: float) -> void:
+	_resolve_nodes()
+	if _body == null or not world_point.is_finite():
+		return
+	var dir_xz := Vector2(world_point.x - _body.global_position.x, world_point.z - _body.global_position.z)
+	if dir_xz.length_squared() <= 0.0001:
+		return
+	var move_dir: Vector2 = dir_xz.normalized()
+	var target_yaw: float = atan2(-move_dir.x, -move_dir.y)
+	var rot_alpha: float = 1.0 - exp(-_turn_rate * maxf(delta, 0.0))
+	_body.rotation.y = lerp_angle(_body.rotation.y, target_yaw, rot_alpha)
 
 
 func step_movement(delta: float) -> void:
@@ -196,6 +288,8 @@ func step_movement(delta: float) -> void:
 		_body.move_and_slide()
 		return
 
+	_advance_effective_speed(delta)
+
 	var steer_point: Vector3 = _resolve_steer_point()
 	var body_pos: Vector3 = _body.global_position
 	var delta_xz: Vector2 = Vector2(steer_point.x - body_pos.x, steer_point.z - body_pos.z)
@@ -204,23 +298,23 @@ func step_movement(delta: float) -> void:
 	var desired_xz: Vector2 = Vector2.ZERO
 	if dist_xz > 0.001:
 		var dir_xz: Vector2 = delta_xz / dist_xz
-		var step_speed: float = _move_speed
+		var step_speed: float = _effective_move_speed
 		var on_final_segment: bool = _active_path.is_empty() or _active_path_index >= _active_path.size() - 1
 		if on_final_segment and delta > 0.0:
 			var dist_to_final_xz: float = _distance_xz(body_pos, _target_position)
-			step_speed = minf(_move_speed, dist_to_final_xz / delta)
+			step_speed = minf(_effective_move_speed, dist_to_final_xz / delta)
 		desired_xz = dir_xz * step_speed
 
 	if _agent.avoidance_enabled:
-		_agent.max_speed = _move_speed
+		_agent.max_speed = _effective_move_speed
 		_agent.avoidance_priority = AVOIDANCE_PRIORITY_MOVING
 		_agent.set_velocity(Vector3(desired_xz.x, 0.0, desired_xz.y))
 
 	var applied_xz: Vector2 = desired_xz
 	if _agent.avoidance_enabled and _has_safe_velocity:
 		var safe_xz := Vector2(_safe_velocity.x, _safe_velocity.z)
-		if safe_xz.length() > _move_speed:
-			safe_xz = safe_xz.normalized() * _move_speed
+		if safe_xz.length() > _effective_move_speed:
+			safe_xz = safe_xz.normalized() * _effective_move_speed
 		applied_xz = _clamp_avoidance_to_navmesh(body_pos, safe_xz, desired_xz, delta)
 
 	vel.x = applied_xz.x
@@ -304,7 +398,8 @@ func _update_stuck_detection(delta: float) -> void:
 		return
 
 	_no_progress_timer += delta
-	if _no_progress_timer < STUCK_WINDOW_SEC:
+	var stuck_window: float = compute_stuck_window_sec(_effective_move_speed)
+	if _no_progress_timer < stuck_window:
 		return
 
 	if _repath_attempts < MAX_REPATH_ATTEMPTS:
@@ -407,13 +502,68 @@ func _configure_body_and_agent() -> void:
 		_agent.max_neighbors = AVOIDANCE_MAX_NEIGHBORS
 		_agent.time_horizon_agents = AVOIDANCE_TIME_HORIZON_AGENTS
 		_agent.time_horizon_obstacles = 0.0
-		_agent.max_speed = _move_speed
+		_agent.max_speed = _effective_move_speed
 		_agent.avoidance_layers = 1
 		_agent.avoidance_mask = 1
 		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
 		_agent.avoidance_enabled = true
 		_connect_agent_signals()
 		_bind_agent_map()
+
+
+func _recompute_target_speed(snap_effective: bool = false) -> void:
+	var base_speed: float = _work_approach_speed if _speed_context == SpeedContext.WORK else _move_speed
+	var load_mult: float = compute_load_speed_multiplier(_get_load_fill_ratio(), _max_load_speed_multiplier)
+	_target_move_speed = maxf(base_speed * load_mult, 0.1)
+	if snap_effective or _effective_move_speed <= 0.01:
+		_effective_move_speed = _target_move_speed
+	if _agent != null:
+		_agent.max_speed = _effective_move_speed
+
+
+func _advance_effective_speed(delta: float) -> void:
+	_recompute_target_speed(false)
+	if absf(_effective_move_speed - _target_move_speed) <= 0.005:
+		_effective_move_speed = _target_move_speed
+		return
+	var alpha: float = clampf(1.0 - exp(-SPEED_TRANSITION_RATE * maxf(delta, 0.0)), 0.0, 1.0)
+	_effective_move_speed = lerpf(_effective_move_speed, _target_move_speed, alpha)
+	if _agent != null:
+		_agent.max_speed = _effective_move_speed
+
+
+func _get_load_fill_ratio() -> float:
+	if _carry_load == null or _carry_load.is_empty():
+		return 0.0
+	var weight: int = _carry_load.get_current_weight()
+	if weight <= 0:
+		return 0.0
+	var cap: int = _carry_load.get_effective_capacity()
+	if cap <= 0 or _carry_load.is_overloaded():
+		return 1.0
+	return clampf(float(weight) / float(cap), 0.0, 1.0)
+
+
+func _connect_carry_load_signals() -> void:
+	if _carry_load == null:
+		return
+	if not _carry_load.load_changed.is_connected(_on_carry_load_changed):
+		_carry_load.load_changed.connect(_on_carry_load_changed)
+	if not _carry_load.capacity_changed.is_connected(_on_carry_load_changed):
+		_carry_load.capacity_changed.connect(_on_carry_load_changed)
+
+
+func _disconnect_carry_load_signals() -> void:
+	if _carry_load == null:
+		return
+	if _carry_load.load_changed.is_connected(_on_carry_load_changed):
+		_carry_load.load_changed.disconnect(_on_carry_load_changed)
+	if _carry_load.capacity_changed.is_connected(_on_carry_load_changed):
+		_carry_load.capacity_changed.disconnect(_on_carry_load_changed)
+
+
+func _on_carry_load_changed() -> void:
+	_recompute_target_speed(_move_state != MoveState.MOVING)
 
 
 func _connect_agent_signals() -> void:

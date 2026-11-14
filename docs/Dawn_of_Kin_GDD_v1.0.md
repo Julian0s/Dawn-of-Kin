@@ -5,7 +5,7 @@
 **Uso:** referência de produto e handoff de desenvolvimento para Antigravity + Godot  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
-> **Regra de leitura:** **DECIDIDO** = aprovado na conversa; **PROPOSTA** = sugestão para testar, não compromisso; **ABERTO** = depende de definição futura. Nenhum sistema foi implementado neste projeto até o momento.
+> **Regra de leitura:** **DECIDIDO** = aprovado na conversa; **PROPOSTA** = sugestão para testar, não compromisso; **ABERTO** = depende de definição futura. O marco **T1 — Fundação RTS** foi concluído e aprovado (`t1-complete`, commit `2808799`). A fase **T2 — Trabalho e Recursos** está em implementação incremental (ainda não concluída nem aprovada globalmente): `T2.0`, `T2.1`, `T2.2`, `T2.3` e `T2.4` encontram-se implementadas e testadas automaticamente em headless; `T2.5` e `T2.6` ainda não foram implementadas, permanecendo pendentes testes gráficos interativos manuais e o benchmark final na Intel UHD 620. Os documentos técnicos em `docs/architecture/T2_architecture_DRAFT.md` e `docs/T2_Implementation_Plan_DRAFT.md` permanecem como rascunhos até consolidação formal.
 
 ## 1. Visão do jogo
 
@@ -50,39 +50,54 @@
 
 ## 4. Loop central e controles RTS
 
-**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → recursos entram no estoque → construir e melhorar → sustentar famílias → explorar e lidar com ameaças ocasionais.
+**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → coletar e transportar recursos até o acampamento → descarregar em pilhas físicas no acampamento → proteger e evoluir o armazenamento conforme a comunidade cresce → sustentar famílias → explorar e lidar com ameaças ocasionais.
 
-- **DECIDIDO:** clique esquerdo seleciona personagem; clique direito dá ordem contextual (mover, colher, cortar, construir, interagir).
-- **DECIDIDO:** tarefas são executadas automaticamente; o jogador não precisa controlar fisicamente cada golpe ou movimento.
-- **PROPOSTA:** arrastar caixa para seleção múltipla; Shift para enfileirar ordens; ícones discretos de estado; câmera com zoom, arraste e limites do mapa.
-- **PROPOSTA:** estados da unidade: ocioso, deslocando, trabalhando, transportando, defendendo, incapacitado.
+- **DECIDIDO:** clique esquerdo seleciona personagem; clique direito dá ordem contextual (mover no chão, colher, cortar, coletar, entregar carga, construir, interagir). Na T2, o clique direito em terreno livre permanece estritamente como movimento RTS.
+- **DECIDIDO:** tarefas são executadas automaticamente; o jogador não precisa controlar fisicamente cada golpe, deslocamento ou retorno de descarga.
+- **PROPOSTA:** arrastar caixa para seleção múltipla; Shift para enfileirar ordens; ícones discretos de estado e barra/porcentagem de carga; câmera com zoom, arraste e limites do mapa.
+- **PROPOSTA:** estados da unidade: ocioso, deslocando, trabalhando, transportando, defendendo, incapacitado (com `ocioso`, `deslocando`, `trabalhando` e `transportando` diretamente associados ao ciclo físico de coleta e entrega no acampamento).
 - **Regra de UX:** preferir uma única ação contextual clara a painéis cheios de microcomandos.
 
 ## 5. Sobrevivência e economia simplificadas
 
 - **DECIDIDO:** não há barras individuais de fome ou sede.
-- **DECIDIDO:** o assentamento mantém um **estoque coletivo de pontos de alimentos**. Cada pessoa tem um consumo periódico; todos são sustentados por esse estoque.
+- **DECIDIDO — Início sem infraestrutura prévia:** o casal protagonista começa sem ferramentas, sem equipamentos e sem construções humanas pré-existentes no mapa.
+- **DECIDIDO:** o assentamento mantém um **estoque coletivo de pontos de alimentos** e demais recursos compartilhados utilizáveis pela comunidade. Cada pessoa tem um consumo periódico; todos são sustentados por esse estoque.
 - **DECIDIDO:** não é necessário cozinhar receitas complexas ou fabricar alimento ingrediente por ingrediente.
+- **DECIDIDO — Transporte físico e proibição de crédito instantâneo:** os materiais coletados (madeira, pedra, alimentos e futuras categorias) **não** aparecem instantaneamente no estoque compartilhado durante a coleta. Cada trabalhador carrega fisicamente os materiais coletados e o estoque coletivo só é atualizado após descarga física válida no acampamento.
+- **DECIDIDO — Escopo T2: somente pilhas individuais no acampamento:** na T2, os materiais descarregados formam **pilhas físicas individuais** de madeira, pedra ou alimentos exclusivamente **dentro do acampamento** (em zona lógica inicial sem construções pré-prontas; placeholders simples permitidos inicialmente e modelos 3D finais posteriormente). Cada pilha mantém quantidade própria, localização e estado de exposição, podendo pilhas da mesma categoria ser agrupadas conforme regra técnica determinística.
+  - **Nota histórica de escopo:** a proposta anterior de permitir pilhas espalhadas por todo o mapa e recuperação de materiais abandonados fora do acampamento foi **retirada do escopo da T2** e poderá ser reconsiderada futuramente, sem assumir aprovação prévia.
+- **DECIDIDO — Sincronia entre pilhas do acampamento e estoque:** todas as pilhas válidas do acampamento contribuem para o estoque coletivo utilizável, que reflete exatamente as quantidades disponíveis nessas pilhas (sem contagem duplicada).
+- **DECIDIDO — Exposição, deterioração e justificativa de armazéns:** materiais mantidos expostos no chão do acampamento sofrem desgaste ao longo do tempo e podem desaparecer se permanecerem expostos por tempo prolongado, reduzindo corretamente os recursos disponíveis no estoque. Armazéns construíveis pertencem à **T3+** e deverão proteger os materiais.
+- **DECIDIDO — Peso, capacidade individual e porcentagem de carga:** cada tipo de material possui peso unitário específico e cada habitante (incluindo o casal protagonista) possui capacidade individual de carga. A capacidade ocupada deve ser representada em porcentagem (`0%` a `100%`) com base no peso total transportado, permitindo futura evolução da capacidade por características, profissão, equipamentos ou melhorias.
+- **DECIDIDO — Retorno automático ao acampamento:** quando a carga do trabalhador atingir `100%`, ou não houver espaço livre suficiente para comportar mais uma unidade coletável do material, ele interrompe o ciclo na fonte e retorna automaticamente ao acampamento para descarregar.
+- **DECIDIDO — Armazenamento por categoria e evolução progressiva:** o armazenamento contempla madeira, pedra, alimentos e futuras categorias, partindo de pilhas individuais no chão do acampamento inicial (sem construções pré-existentes) até armazéns e depósitos construíveis em marcos posteriores (`T3+`).
 - **Fontes iniciais previstas:** coleta de frutos, pesca, caça, plantações e, posteriormente, criação de animais.
 - **Recursos de trabalho iniciais previstos:** madeira, pedra e alimentos; minério é uma expansão posterior.
-- **PROPOSTA:** interface mostrar saldo alimentar por dia e autonomia estimada; consequências graduais se faltar alimento (redução de produtividade e risco para moradores comuns).
-- **ABERTO:** números de geração, consumo e penalidades, a calibrar por testes.
+- **DECIDIDO:** a aparência das fontes deve refletir coerentemente a extração.
+- **DECIDIDO:** a árvore não permanece vertical após fornecer troncos; frutos podem ser coletados sem destruir a planta.
+- **PROPOSTA:** implementação provisória de árvores pequenas/frágeis e animação de derrubada sem ferramentas.
+- **ABERTO:** ferramentas para árvores maduras, regeneração de frutos e regras futuras de sustentabilidade.
+- **PROPOSTA:** permitir entrega parcial quando a fonte se esgota antes de `100%` e suportar múltiplas categorias na mochila em caso de redirecionamento de ordem.
+- **PROPOSTA:** interface mostrar porcentagem de carga individual do morador selecionado, estoque utilizável por categoria (sincronizado com as pilhas do acampamento), indicação/alerta de pilhas expostas à deterioração, saldo alimentar por dia e autonomia estimada; consequências graduais se faltar alimento (redução de produtividade e risco para moradores comuns).
+- **ABERTO:** duração exata da exposição, perda gradual versus desaparecimento integral, política de exposição ao adicionar materiais novos a uma pilha antiga, diferenças de deterioração por categoria, valores numéricos exatos de peso unitário, capacidade individual inicial, taxa de coleta, consumo e eventuais tetos por pilha ou depósito, a calibrar por testes.
 
 ## 6. Construção, profissões e nível da comunidade
 
-- **DECIDIDO:** casas e edifícios são vistos e administrados pelo exterior; não existirão interiores jogáveis.
-- **DECIDIDO:** o jogador posiciona obras, gasta recursos compartilhados e designa trabalhadores para concluí-las.
+- **DECIDIDO:** o início no campo ocorre sem construções humanas pré-existentes; casas e edifícios são vistos e administrados pelo exterior, sem interiores jogáveis.
+- **DECIDIDO:** o jogador posiciona obras, gasta recursos compartilhados disponíveis e designa trabalhadores para concluí-las.
 - **DECIDIDO:** cada casal casado deve ter uma casinha/residência própria.
 - **DECIDIDO:** o jogador direciona a força de trabalho e decide quem atua como agricultor, pescador, lenhador, construtor, ferreiro, guarda etc.
 - **DECIDIDO:** a expansão de prédios e profissões será associada ao **nível de desenvolvimento da comunidade**, ainda sem fórmula definida.
+- **DECIDIDO — Evolução do armazenamento:** o armazenamento por categoria (madeira, pedra, alimentos e futuras categorias) evolui progressivamente de pilhas individuais expostas no chão do acampamento (`T2`) até depósitos rústicos e armazéns protetores construíveis pelo jogador (`T3+`) que reduzem ou eliminam a perda por exposição.
 - **ABERTO:** teto tecnológico; intenção atual é manter uma identidade rústica, com aparência melhorada progressivamente, e não avançar obrigatoriamente à indústria moderna.
 
 **Escada de progressão — PROPOSTA, não fechada:**
 
 | Nível | Marco visual | Possíveis desbloqueios |
 |---|---|---|
-| 1 | Acampamento | Abrigo, coleta, fogueira |
-| 2 | Propriedade | Primeira casa, roça, depósito |
+| 1 | Acampamento | Pilhas individuais no acampamento, abrigo básico, coleta, fogueira |
+| 2 | Propriedade | Primeira casa, roça, primeiro armazém/depósito coberto (T3+) |
 | 3 | Povoado | Carpintaria, criação de animais |
 | 4 | Aldeia | Ferraria, arsenal, estruturas de defesa |
 | 5 | Vila | Oficinas, comércio local, melhorias estéticas |
@@ -195,7 +210,7 @@
 | Marco | Escopo | Evidência mínima de conclusão |
 |---|---|---|
 | T1 — Fundação RTS | Câmera, terreno demonstrativo, casal selecionável, clique para mover | Os dois recebem e concluem ordens de movimento sem travar |
-| T2 — Trabalho e recursos | Recursos coletáveis, estoque compartilhado, tarefas automáticas | Ordem em árvore/arbusto altera estoque corretamente |
+| T2 — Trabalho e recursos | Recursos coletáveis com peso, capacidade individual (0%–100%), transporte físico, pilhas individuais no acampamento por categoria com exposição/deterioração configurável e sincronia exata com o estoque | Ordem em árvore/arbusto/rocha acumula carga na unidade, retorna ao acampamento sem construções prévias, forma/agrupa pilhas físicas no acampamento e o estoque coletivo reflete exatamente essas pilhas |
 | T3 — Construção | Posicionar obra, descontar recursos, designar construtor | Abrigo/casa completado e persistido |
 | T4 — Mundo e calendário | Ciclo dia/noite, tempo, região inicial, salvar/carregar | Estado e construções persistem após reiniciar |
 | T5 — Família | Entidades familiares, fases, residência, nascimentos em modo teste | Vínculos e progressão sobrevivem ao save/load |
@@ -208,7 +223,7 @@
 ## 14. Critérios de aceite do primeiro protótipo
 
 1. Jogador consegue selecionar um ou ambos protagonistas e dar ordens pelo mouse.
-2. Personagens encontram caminho e executam ao menos um trabalho de coleta.
+2. Personagens encontram caminho, executam trabalho de coleta acumulando carga física individual e entregam os recursos em pilhas físicas no acampamento (sem construções prévias) sincronizadas ao estoque coletivo.
 3. Existe estoque coletivo com alimentos e outro recurso de construção.
 4. Jogador posiciona e conclui um abrigo sem entrar em interior.
 5. Interface é legível em câmera isométrica e não exige microgestão de fome individual.
@@ -228,19 +243,19 @@
 
 ## 16. Instrução de handoff para o Antigravity
 
-**Missão inicial:** implementar apenas o marco **T1 — Fundação RTS** usando este GDD como fonte de verdade. Antes de alterar arquivos, analisar a estrutura existente do projeto, caso haja uma; caso não exista, propor uma estrutura mínima de Godot 4.x. Não assumir que já exista código para *Dawn of Kin*.
+**Estado histórico e missão atual:** o marco **T1 — Fundação RTS** foi concluído e aprovado (`t1-complete`, commit `2808799`). A missão atual utiliza este GDD como fonte de verdade para planejar e, somente após aprovação explícita dos rascunhos técnicos e de arquitetura, implementar incrementalmente o marco **T2 — Trabalho e recursos**.
 
 **Regras de execução:**
 
-1. Trabalhar em passos pequenos, testáveis e reversíveis; não implementar T2–T8 antes da validação de T1.
+1. Trabalhar em passos pequenos, testáveis e reversíveis; preservar integralmente o núcleo da T1 e não implementar T3–T8 antes da validação da T2.
 2. Preservar funcionalidades já existentes; antes de mudanças estruturais, registrar o estado do Git e explicar o plano.
 3. Preferir código modular, nomes claros, cenas reutilizáveis e dados desacoplados de UI.
-4. Separar comportamento de protótipo de decisões fechadas; qualquer valor temporário deve estar documentado e parametrizado.
+4. Separar comportamento de protótipo de decisões fechadas; qualquer valor temporário (pesos, taxas, prazos de deterioração, limites) deve estar documentado e parametrizado.
 5. Executar testes e informar arquivos alterados, comandos usados, resultados, limitações e próximos passos.
 6. Não produzir ativos finais de arte até definição de orçamento visual e validação do núcleo RTS.
 
-**Primeiro resultado esperado:** um mapa de teste isométrico com dois personagens distinguíveis, seleção por clique, comando de movimento por clique direito, feedback visual e câmera funcional. Nada além disso é obrigatório para T1.
+**Resultado esperado na fase T2:** sobre a base isométrica validada da T1, permitir que o casal protagonista (sem ferramentas ou estruturas humanas pré-construídas) colete madeira, pedra e alimentos com peso e porcentagem de carga (`0%`–`100%`), retorne automaticamente ao acampamento ao atingir a capacidade (ou não caber mais 1 unidade) e forme/agrupe pilhas físicas individuais no acampamento sujeitas à exposição configurável, mantendo o estoque coletivo exatamente sincronizado com as pilhas válidas do acampamento e preparando a base modular para armazéns protetores construíveis na `T3+`.
 
 ---
 
-**Status do documento:** base consolidada e pronta para orientar implementação incremental. Pendências estão explicitamente marcadas para que o Antigravity não as transforme em decisões implícitas.
+**Status do documento:** base atualizada com T1 concluída (`t1-complete`) e decisões **DECIDIDO** da T2 (transporte físico D2-1 + somente pilhas individuais no acampamento na T2 + exposição/deterioração), pronta para orientar revisão e aprovação do planejamento técnico da T2. Pendências continuam explicitamente marcadas como **PROPOSTA** ou **ABERTO** para que o Antigravity não as transforme em decisões implícitas.

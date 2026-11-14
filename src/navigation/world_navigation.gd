@@ -46,6 +46,8 @@ class PathResult extends RefCounted:
 var _is_ready: bool = false
 var _is_syncing: bool = false
 var _sync_started_usec: int = 0
+var _sync_min_map_iteration: int = 1
+var _sync_min_region_iteration: int = 1
 var _last_bake_ms: float = 0.0
 var _last_sync_ms: float = 0.0
 
@@ -131,6 +133,10 @@ func request_rebake() -> void:
 		navigation_failed.emit("empty_navmesh")
 		return
 
+	var map_rid: RID = get_navigation_map()
+	var region_rid: RID = get_region_rid()
+	_sync_min_map_iteration = (NavigationServer3D.map_get_iteration_id(map_rid) + 1) if map_rid.is_valid() else 1
+	_sync_min_region_iteration = (NavigationServer3D.region_get_iteration_id(region_rid) + 1) if region_rid.is_valid() else 1
 	navigation_mesh = nav_mesh
 	_sync_started_usec = Time.get_ticks_usec()
 	_is_syncing = true
@@ -223,11 +229,12 @@ func _check_navigation_server_ready() -> bool:
 	var region_rid: RID = get_region_rid()
 	if not map_rid.is_valid() or not region_rid.is_valid():
 		return false
-	if NavigationServer3D.map_get_iteration_id(map_rid) <= 0:
+	if NavigationServer3D.map_get_iteration_id(map_rid) < _sync_min_map_iteration:
 		return false
-	if NavigationServer3D.region_get_iteration_id(region_rid) <= 0:
+	if NavigationServer3D.region_get_iteration_id(region_rid) < _sync_min_region_iteration:
 		return false
-	if NavigationServer3D.map_get_regions(map_rid).is_empty():
+	var regions: Array[RID] = NavigationServer3D.map_get_regions(map_rid)
+	if regions.is_empty() or not regions.has(region_rid):
 		return false
 
 	var center_xz: Vector2 = map_bounds.get_center()

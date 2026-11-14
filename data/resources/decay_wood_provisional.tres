@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="DecayProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/economy/decay_profile.gd" id="1_decay_profile"]
+
+[resource]
+script = ExtResource("1_decay_profile")
+can_decay = true
+exposure_duration_sec = 420.0
+gradual_unit_interval_sec = 120.0
+decay_mode = 0

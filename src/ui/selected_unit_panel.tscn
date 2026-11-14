@@ -1,0 +1,148 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/selected_unit_panel.gd" id="1_script"]
+
+[node name="SelectedUnitPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(316, 0)
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="HeaderRow" type="HBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="UnitNameLabel" type="Label" parent="Margin/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94, 0.91, 0.83, 1)
+theme_override_font_sizes/font_size = 16
+text = ""
+
+[node name="UnitStateLabel" type="Label" parent="Margin/VBox/HeaderRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.74, 0.67, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 2
+text = ""
+
+[node name="MultiSummaryLabel" type="Label" parent="Margin/VBox"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.74, 0.67, 1)
+theme_override_font_sizes/font_size = 13
+text = "Selecione 1 personagem para ver carga e estado"
+
+[node name="SingleUnitContent" type="VBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="CarryBarRow" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="CarryProgressBar" type="ProgressBar" parent="Margin/VBox/SingleUnitContent/CarryBarRow"]
+custom_minimum_size = Vector2(180, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+max_value = 100.0
+step = 0.01
+show_percentage = false
+
+[node name="PercentageLabel" type="Label" parent="Margin/VBox/SingleUnitContent/CarryBarRow"]
+custom_minimum_size = Vector2(44, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94, 0.91, 0.83, 1)
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 2
+text = "0%"
+
+[node name="WeightLabel" type="Label" parent="Margin/VBox/SingleUnitContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.74, 0.67, 1)
+theme_override_font_sizes/font_size = 14
+text = "Peso transportado: 0 / 0"
+
+[node name="CarriedRow" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="WoodItem" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent/CarriedRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Swatch" type="ColorRect" parent="Margin/VBox/SingleUnitContent/CarriedRow/WoodItem"]
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.64, 0.44, 0.25, 1)
+
+[node name="TextLabel" type="Label" parent="Margin/VBox/SingleUnitContent/CarriedRow/WoodItem"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 14
+text = "Madeira: 0 un"
+
+[node name="StoneItem" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent/CarriedRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Swatch" type="ColorRect" parent="Margin/VBox/SingleUnitContent/CarriedRow/StoneItem"]
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.66, 0.69, 0.71, 1)
+
+[node name="TextLabel" type="Label" parent="Margin/VBox/SingleUnitContent/CarriedRow/StoneItem"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 14
+text = "Pedra: 0 un"
+
+[node name="FoodItem" type="HBoxContainer" parent="Margin/VBox/SingleUnitContent/CarriedRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Swatch" type="ColorRect" parent="Margin/VBox/SingleUnitContent/CarriedRow/FoodItem"]
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.8, 0.56, 0.24, 1)
+
+[node name="TextLabel" type="Label" parent="Margin/VBox/SingleUnitContent/CarriedRow/FoodItem"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.56, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 14
+text = "Alimentos: 0 un"

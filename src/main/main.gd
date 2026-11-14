@@ -1,6 +1,11 @@
 class_name MainScene
 extends Node3D
-## Root composition script connecting level data, world navigation, units, selection, and camera rig.
+## Root composition script connecting level data, world navigation, economy runtime,
+## units, selection, and camera rig without relying on hidden singletons or autoloads.
+
+const FOOD_DEFINITION: ResourceDefinition = preload("res://data/resources/food.tres")
+const WOOD_DEFINITION: ResourceDefinition = preload("res://data/resources/wood.tres")
+const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone.tres")
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -9,7 +14,14 @@ extends Node3D
 @onready var _command_controller: CommandController = $CommandController
 @onready var _input_controller: RtsInputController = $RtsInputController
 @onready var _destination_marker: DestinationMarker = $DestinationMarker
+@onready var _economy_clock: EconomyClockController = get_node_or_null("EconomyClockController") as EconomyClockController
 @onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
+@onready var _resource_hud: ResourceHud = get_node_or_null("UiLayer/ResourceHud") as ResourceHud
+
+var _time_provider: SimulatedWorldTimeProvider = null
+var _camp_storage_zone: CampStorageZone = null
+var _ground_pile_manager: GroundPileManager = null
+var _settlement_inventory: SettlementInventory = null
 
 
 func _ready() -> void:
@@ -22,11 +34,58 @@ func _ready() -> void:
 			if child is Unit:
 				(child as Unit).set_world_navigation(world_nav)
 
+	_setup_economy(world_nav)
+
 	if _command_controller != null:
 		_command_controller.configure(_selection_manager, world_nav, _destination_marker)
+		if _settlement_inventory != null and _camp_storage_zone != null:
+			_command_controller.configure_economy(_settlement_inventory, _camp_storage_zone)
 
 	if _input_controller != null:
 		_input_controller.configure(_selection_manager, _camera_rig, _selection_box_overlay, _command_controller)
+
+	if _resource_hud != null:
+		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
+
+
+func _exit_tree() -> void:
+	if _resource_hud != null:
+		_resource_hud.unbind()
+	if _ground_pile_manager != null:
+		_ground_pile_manager.cleanup()
+		_ground_pile_manager = null
+	_settlement_inventory = null
+	_time_provider = null
+
+
+func _setup_economy(world_nav: WorldNavigation) -> void:
+	if _test_map == null:
+		return
+	_camp_storage_zone = _test_map.get_camp_storage_zone()
+	var camp_piles_root: Node3D = _test_map.get_camp_piles_root()
+	if _camp_storage_zone == null or camp_piles_root == null:
+		return
+
+	_camp_storage_zone.set_world_navigation(world_nav)
+	_time_provider = SimulatedWorldTimeProvider.new(0.0)
+	var definitions: Dictionary = {
+		&"food": FOOD_DEFINITION,
+		&"wood": WOOD_DEFINITION,
+		&"stone": STONE_DEFINITION,
+	}
+	_ground_pile_manager = GroundPileManager.new(
+		definitions,
+		_camp_storage_zone,
+		camp_piles_root,
+		_time_provider
+	)
+	_settlement_inventory = SettlementInventory.new(_ground_pile_manager)
+
+	if _economy_clock == null:
+		_economy_clock = EconomyClockController.new()
+		_economy_clock.name = "EconomyClockController"
+		add_child(_economy_clock)
+	_economy_clock.configure(_ground_pile_manager, _time_provider)
 
 
 func get_units() -> Array[Unit]:
@@ -37,6 +96,10 @@ func get_units() -> Array[Unit]:
 		if child is Unit:
 			result.append(child as Unit)
 	return result
+
+
+func get_test_map() -> TestMap:
+	return _test_map
 
 
 func get_selection_manager() -> SelectionManager:
@@ -51,9 +114,33 @@ func get_selection_box_overlay() -> SelectionBoxOverlay:
 	return _selection_box_overlay
 
 
+func get_resource_hud() -> ResourceHud:
+	return _resource_hud
+
+
 func get_command_controller() -> CommandController:
 	return _command_controller
 
 
 func get_destination_marker() -> DestinationMarker:
 	return _destination_marker
+
+
+func get_camp_storage_zone() -> CampStorageZone:
+	return _camp_storage_zone
+
+
+func get_ground_pile_manager() -> GroundPileManager:
+	return _ground_pile_manager
+
+
+func get_settlement_inventory() -> SettlementInventory:
+	return _settlement_inventory
+
+
+func get_economy_clock() -> EconomyClockController:
+	return _economy_clock
+
+
+func get_time_provider() -> SimulatedWorldTimeProvider:
+	return _time_provider

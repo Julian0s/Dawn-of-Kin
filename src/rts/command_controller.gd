@@ -8,12 +8,16 @@ signal command_issued(pick: PickResult, anchor_position: Vector3, unit_count: in
 @export var selection_manager_path: NodePath = NodePath()
 @export var world_navigation_path: NodePath = NodePath()
 @export var destination_marker_path: NodePath = NodePath()
+@export var camp_storage_zone_path: NodePath = NodePath()
 @export var formation_clearance: float = GroupMovePlanner.DEFAULT_CLEARANCE
 
 var _selection_manager: SelectionManager = null
 var _world_navigation: WorldNavigation = null
 var _destination_marker: DestinationMarker = null
+var _settlement_inventory: SettlementInventory = null
+var _camp_storage_zone: CampStorageZone = null
 var _last_plan: GroupMovePlanner.PlanResult = null
+var _last_command_reason: String = ""
 
 
 func _ready() -> void:
@@ -35,24 +39,50 @@ func set_world_navigation(world_navigation: WorldNavigation) -> void:
 	_world_navigation = world_navigation
 
 
+func configure_economy(
+	settlement_inventory: SettlementInventory,
+	camp_storage_zone: CampStorageZone
+) -> void:
+	_settlement_inventory = settlement_inventory
+	_camp_storage_zone = camp_storage_zone
+
+
+func get_settlement_inventory() -> SettlementInventory:
+	return _settlement_inventory
+
+
+func get_camp_storage_zone() -> CampStorageZone:
+	return _camp_storage_zone
+
+
 func get_last_plan() -> GroupMovePlanner.PlanResult:
 	return _last_plan
 
 
+func get_last_command_reason() -> String:
+	return _last_command_reason
+
+
 func command_at(pick: PickResult) -> bool:
 	_resolve_dependencies()
+	_last_command_reason = ""
 
 	if pick == null or pick.is_none() or not pick.position.is_finite():
+		_last_command_reason = "invalid_pick"
 		return false
 	if _selection_manager == null or _selection_manager.is_empty():
+		_last_command_reason = "empty_selection"
 		return false
 	if _world_navigation == null or not is_instance_valid(_world_navigation):
+		_last_command_reason = "missing_navigation"
 		return false
 	if not _world_navigation.is_navigation_ready():
+		_last_command_reason = "navigation_not_ready"
 		return false
 
 	var units: Array[Unit] = _collect_commandable_units()
 	if units.is_empty():
+		_last_command_reason = "no_commandable_units"
 		return false
 
 	var requested_target: Vector3 = pick.position
@@ -76,7 +106,10 @@ func command_at(pick: PickResult) -> bool:
 				requested_target = pick.position
 			allow_snapped_anchor = true
 			marker_normal = Vector3.UP
+		PickResult.Kind.RESOURCE_SOURCE:
+			return _command_gather_resource(pick, units)
 		_:
+			_last_command_reason = "unsupported_pick_kind"
 			return false
 
 	if not requested_target.is_finite():
@@ -119,6 +152,54 @@ func command_at(pick: PickResult) -> bool:
 	return true
 
 
+func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
+	if pick == null or not pick.is_resource_source() or not is_instance_valid(pick.resource_source):
+		_last_command_reason = "invalid_resource_source"
+		return false
+
+	var source: ResourceSource = pick.resource_source
+	if source.is_depleted():
+		_last_command_reason = "resource_source_depleted"
+		return false
+	if not source.is_available():
+		_last_command_reason = "invalid_resource_source"
+		return false
+
+	if _settlement_inventory == null or _camp_storage_zone == null or not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_valid():
+		_last_command_reason = GatherResourceOrder.REASON_MISSING_ECONOMY
+		return false
+
+	var started_count: int = 0
+	var first_failure_reason: String = ""
+
+	for unit: Unit in units:
+		if unit.get_world_navigation() == null:
+			unit.set_world_navigation(_world_navigation)
+
+		if not source.has_worker_slot(unit):
+			if first_failure_reason.is_empty():
+				first_failure_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
+			continue
+
+		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory)
+		unit.issue_order(order)
+		if order.is_active():
+			started_count += 1
+		elif first_failure_reason.is_empty():
+			first_failure_reason = order.failure_reason
+
+	if started_count <= 0:
+		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else GatherResourceOrder.REASON_NO_WORKER_SLOT
+		return false
+
+	var marker_pos: Vector3 = source.global_position
+	if _destination_marker != null and is_instance_valid(_destination_marker):
+		_destination_marker.show_at(marker_pos, Vector3.UP, true)
+
+	command_issued.emit(pick, marker_pos, started_count, true)
+	return true
+
+
 func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]:
 	var occupied: Array[Vector3] = []
 	var tree: SceneTree = get_tree()
@@ -134,12 +215,17 @@ func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]
 		if commanded_units.has(other):
 			continue
 
-		if other.get_state() == Unit.State.MOVING:
+		if other.get_state() != Unit.State.IDLE:
 			var other_order: UnitOrder = other.get_current_order()
 			if other_order is MoveOrder:
 				var reserved: Vector3 = (other_order as MoveOrder).resolved_target
 				if reserved.is_finite():
 					occupied.append(reserved)
+					continue
+			elif other_order != null and other_order.has_method("get_reserved_target"):
+				var reserved_work: Variant = other_order.call("get_reserved_target")
+				if reserved_work is Vector3 and (reserved_work as Vector3).is_finite():
+					occupied.append(reserved_work as Vector3)
 					continue
 		occupied.append(other.global_position)
 
@@ -163,3 +249,5 @@ func _resolve_dependencies() -> void:
 		_world_navigation = get_node_or_null(world_navigation_path) as WorldNavigation
 	if _destination_marker == null and not destination_marker_path.is_empty():
 		_destination_marker = get_node_or_null(destination_marker_path) as DestinationMarker
+	if _camp_storage_zone == null and not camp_storage_zone_path.is_empty():
+		_camp_storage_zone = get_node_or_null(camp_storage_zone_path) as CampStorageZone

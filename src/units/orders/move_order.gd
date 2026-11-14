@@ -39,6 +39,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if movement == null:
 		mark_failed(REASON_MISSING_MOVEMENT)
 		return
+	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 
 	var nav: WorldNavigation = world_nav if world_nav != null else movement.get_world_navigation()
 	if nav == null:

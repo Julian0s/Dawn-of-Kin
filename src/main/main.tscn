@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
@@ -12,6 +12,8 @@
 [ext_resource type="PackedScene" path="res://src/ui/selection_box_overlay.tscn" id="10_selection_box_overlay"]
 [ext_resource type="Script" path="res://src/rts/command_controller.gd" id="11_command_controller"]
 [ext_resource type="PackedScene" path="res://src/rts/destination_marker.tscn" id="12_destination_marker"]
+[ext_resource type="Script" path="res://src/economy/economy_clock_controller.gd" id="13_economy_clock"]
+[ext_resource type="PackedScene" path="res://src/ui/resource_hud.tscn" id="14_resource_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -63,10 +65,15 @@ command_controller_path = NodePath("../CommandController")
 
 [node name="DestinationMarker" parent="." instance=ExtResource("12_destination_marker")]
 
+[node name="EconomyClockController" type="Node" parent="."]
+script = ExtResource("13_economy_clock")
+
 [node name="RtsCameraRig" parent="." instance=ExtResource("3_camera_rig")]
 
 [node name="UiLayer" type="CanvasLayer" parent="."]
 
 [node name="SelectionBoxOverlay" parent="UiLayer" instance=ExtResource("10_selection_box_overlay")]
+
+[node name="ResourceHud" parent="UiLayer" instance=ExtResource("14_resource_hud")]
 
 [node name="DebugOverlay" parent="UiLayer" instance=ExtResource("4_debug_overlay")]
