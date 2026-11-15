@@ -21,7 +21,7 @@ Executar na raiz do worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`:
    .\tools\run_game.ps1 -Resolution "1920x1080" -FailOnWarnings
    ```
 
-> **Preparação inicial no mapa (`TestMap`):** O acampamento começa com `0` de madeira/pedra. Primeiro, envie `LeaderA` / `LeaderB` para coletar madeira (`WoodTree01/02`) e pedra (`StoneRock01/02`) até acumular pilhas no acampamento suficientes para testar a criação do `Abrigo Básico` (`12 Madeira, 6 Pedra`) ou `Depósito Rústico` (`16 Madeira, 10 Pedra`).
+> **Preparação inicial no mapa (`TestMap`):** O acampamento começa com `0` de madeira/pedra. Primeiro, envie `LeaderA` / `LeaderB` para coletar madeira (`WoodTree01/02`) e pedra (`StoneRock01/02`) até acumular pilhas no acampamento suficientes para testar a criação do `Abrigo Básico` (`12 Madeira, 6 Pedra`) ou `Depósito Rústico` (`18 Madeira, 10 Pedra`).
 
 ---
 

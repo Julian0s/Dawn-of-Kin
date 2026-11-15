@@ -413,3 +413,140 @@ func test_05_d9_worker_roles_max_builders_promotion_and_excess_rejection() -> vo
 	# Unregister W3 -> W2 becomes SOLO_SUPPLIER!
 	site.unregister_worker(w3, o3)
 	assert_eq(site.get_worker_role(w2), ConstructionSite.WorkerRole.SOLO_SUPPLIER)
+
+
+func test_06_r1_site_buffer_integrity_and_transit_claim_isolation() -> void:
+	var fx: Dictionary = _make_fixture()
+	var host: Node3D = fx["host"] as Node3D
+	var defs: Dictionary = fx["defs"] as Dictionary
+	var inventory: SettlementInventory = fx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = fx["cm"] as ConstructionManager
+	var wood_def: ResourceDefinition = defs[&"wood"] as ResourceDefinition
+
+	# Stock enough for two sites (site_a + site_b: 2x Shelter = 24 wood, 12 stone).
+	assert_true(inventory.deposit(&"wood", 24))
+	assert_true(inventory.deposit(&"stone", 12))
+	var res_a: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(6.0, 0.0, 6.0))
+	assert_true(bool(res_a["ok"]))
+	var site_a: ConstructionSite = res_a["site"] as ConstructionSite
+
+	var res_b: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(11.0, 0.0, 6.0))
+	assert_true(bool(res_b["ok"]))
+	var site_b: ConstructionSite = res_b["site"] as ConstructionSite
+
+	var w1: Unit = _spawn_dummy_unit(host, "W1_R1", Vector3(2.0, 0.0, 2.0))
+	var w2: Unit = _spawn_dummy_unit(host, "W2_R1", Vector3(2.5, 0.0, 2.0))
+
+	# A) Unclaimed carry_load must be rejected without touching buffer or reserved piles.
+	assert_true(w1.get_carry_load().add_units(wood_def, 5))
+	var unclaimed_drop: Dictionary = site_a.accept_delivery_from_carry_load(w1, w1.get_carry_load())
+	assert_true(unclaimed_drop.is_empty(), "Unattributed backpack cargo must NOT enter construction buffer")
+	assert_eq(site_a.get_delivered_buffer_amount(&"wood"), 0)
+	assert_eq(site_a.get_reserved_in_piles_amount(&"wood"), 12)
+	assert_eq(w1.get_carry_load().get_amount(&"wood"), 5)
+	w1.get_carry_load().take_all()
+	assert_true(w1.get_carry_load().is_empty())
+
+	# B) Mixed cargo: 5 wood attributed to site_a + 3 unattributed wood in the same backpack.
+	var piles_a: Array[Dictionary] = inventory.get_reserved_pile_entries(site_a.reservation_id, &"wood")
+	var pile_a_id: int = int(piles_a[0]["pile_id"])
+	assert_eq(inventory.withdraw_reserved_from_pile_to_carry_load(pile_a_id, site_a.reservation_id, wood_def, 5, w1.get_carry_load()), 5)
+	site_a.record_withdrawn_for_site(w1, &"wood", 5)
+	assert_true(w1.get_carry_load().add_units(wood_def, 3))
+	assert_eq(w1.get_carry_load().get_amount(&"wood"), 8)
+
+	var mixed_drop: Dictionary = site_a.accept_delivery_from_carry_load(w1, w1.get_carry_load())
+	assert_eq(int(mixed_drop.get(&"wood", 0)), 5, "Only claimed slice (5) may be accepted")
+	assert_eq(w1.get_carry_load().get_amount(&"wood"), 3, "Unattributed slice (3) must remain in backpack")
+	assert_eq(site_a.get_delivered_buffer_amount(&"wood"), 5)
+	assert_eq(site_a.get_reserved_in_piles_amount(&"wood"), 7)
+	assert_eq(site_a.get_in_transit_amount(&"wood"), 0)
+
+	# D) Repeated dropoff with leftover unattributed cargo does nothing and never duplicates buffer.
+	assert_true(site_a.accept_delivery_from_carry_load(w1, w1.get_carry_load()).is_empty())
+	assert_eq(site_a.get_delivered_buffer_amount(&"wood"), 5)
+	assert_eq(w1.get_carry_load().get_amount(&"wood"), 3)
+	w1.get_carry_load().take_all()
+	assert_true(w1.get_carry_load().is_empty())
+
+	# C) Two competing sites: cargo attributed to site_b cannot be delivered to site_a or reduce site_b claim.
+	var piles_b: Array[Dictionary] = inventory.get_reserved_pile_entries(site_b.reservation_id, &"wood")
+	var pile_b_id: int = int(piles_b[0]["pile_id"])
+	assert_eq(inventory.withdraw_reserved_from_pile_to_carry_load(pile_b_id, site_b.reservation_id, wood_def, 3, w2.get_carry_load()), 3)
+	site_b.record_withdrawn_for_site(w2, &"wood", 3)
+
+	assert_true(site_a.accept_delivery_from_carry_load(w2, w2.get_carry_load()).is_empty(), "site_a must reject cargo owned by site_b")
+	assert_eq(site_a.get_delivered_buffer_amount(&"wood"), 5)
+	assert_eq(site_b.get_in_transit_amount(&"wood"), 3, "Failed dropoff at site_a must NOT reduce site_b transit claim")
+	assert_eq(w2.get_carry_load().get_amount(&"wood"), 3)
+
+	var valid_b_drop: Dictionary = site_b.accept_delivery_from_carry_load(w2, w2.get_carry_load())
+	assert_eq(int(valid_b_drop.get(&"wood", 0)), 3)
+	assert_eq(site_b.get_delivered_buffer_amount(&"wood"), 3)
+	assert_eq(site_b.get_in_transit_amount(&"wood"), 0)
+	assert_true(w2.get_carry_load().is_empty())
+
+	# E) Interrupt + resume on same site preserves claim and respects accounting invariant cap.
+	var o1 := UnitOrder.new(); o1.mark_running()
+	assert_eq(site_a.register_worker(w1, o1, false), ConstructionSite.WorkerRole.SOLO_SUPPLIER)
+	assert_eq(inventory.withdraw_reserved_from_pile_to_carry_load(pile_a_id, site_a.reservation_id, wood_def, 4, w1.get_carry_load()), 4)
+	site_a.record_withdrawn_for_site(w1, &"wood", 4)
+	o1.cancel(null)
+	site_a.unregister_worker(w1, o1)
+	assert_eq(int(site_a.get_transit_claim_for_unit(w1).get(&"wood", 0)), 4)
+
+	var o1_retry := UnitOrder.new(); o1_retry.mark_running()
+	assert_eq(site_a.register_worker(w1, o1_retry, false), ConstructionSite.WorkerRole.SOLO_SUPPLIER)
+	var resumed_drop: Dictionary = site_a.accept_delivery_from_carry_load(w1, w1.get_carry_load())
+	assert_eq(int(resumed_drop.get(&"wood", 0)), 4)
+	assert_eq(site_a.get_delivered_buffer_amount(&"wood"), 9)
+	site_a.unregister_worker(w1, o1_retry)
+
+	# Accounting invariant: record_withdrawn_for_site caps strictly to required - delivered - reserved - in_transit.
+	assert_eq(inventory.withdraw_reserved_from_pile_to_carry_load(pile_a_id, site_a.reservation_id, wood_def, 3, w1.get_carry_load()), 3)
+	site_a.record_withdrawn_for_site(w1, &"wood", 99)
+	assert_eq(site_a.get_in_transit_amount(&"wood"), 3, "Transit recording must clamp at accounting headroom (12 - 9 - 0 = 3)")
+	var sum_wood: int = site_a.get_delivered_buffer_amount(&"wood") + site_a.get_reserved_in_piles_amount(&"wood") + site_a.get_in_transit_amount(&"wood")
+	assert_true(sum_wood <= site_a.get_required_amount(&"wood"))
+
+
+func test_07_r1_has_active_peer_transport_ignores_interrupted_orphan_claims() -> void:
+	var fx: Dictionary = _make_fixture()
+	var host: Node3D = fx["host"] as Node3D
+	var defs: Dictionary = fx["defs"] as Dictionary
+	var inventory: SettlementInventory = fx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = fx["cm"] as ConstructionManager
+	var wood_def: ResourceDefinition = defs[&"wood"] as ResourceDefinition
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(6.0, 0.0, 6.0))
+	assert_true(bool(res["ok"]))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+
+	var w1: Unit = _spawn_dummy_unit(host, "W1_Peer", Vector3(2.0, 0.0, 2.0))
+	var w2: Unit = _spawn_dummy_unit(host, "W2_Peer", Vector3(2.5, 0.0, 2.0))
+	var w3: Unit = _spawn_dummy_unit(host, "W3_Peer", Vector3(3.0, 0.0, 2.0))
+
+	var o1 := UnitOrder.new(); o1.mark_running()
+	assert_eq(site.register_worker(w1, o1, false), ConstructionSite.WorkerRole.SOLO_SUPPLIER)
+	var piles: Array[Dictionary] = inventory.get_reserved_pile_entries(site.reservation_id, &"wood")
+	var pile_id: int = int(piles[0]["pile_id"])
+	assert_eq(inventory.withdraw_reserved_from_pile_to_carry_load(pile_id, site.reservation_id, wood_def, 4, w1.get_carry_load()), 4)
+	site.record_withdrawn_for_site(w1, &"wood", 4)
+	assert_true(site.has_active_peer_transport_for_site(w2), "Active peer holding withdrawn claim must report active peer transport")
+
+	# Interrupt W1: transit claim stays attributed to W1 for resume, yet active peer transport is FALSE.
+	o1.cancel(null)
+	site.unregister_worker(w1, o1)
+	assert_eq(site.get_in_transit_amount(&"wood"), 4)
+	assert_false(site.has_active_peer_transport_for_site(w2), "Orphan claim from interrupted worker must NOT count as active peer transport")
+
+	# W2 claims remaining wood on pile (active pickup intention) while W3 checks peer status.
+	var o2 := UnitOrder.new(); o2.mark_running()
+	assert_eq(site.register_worker(w2, o2, false), ConstructionSite.WorkerRole.SOLO_SUPPLIER)
+	assert_eq(site.claim_pickup(w2, pile_id, &"wood", 8, 12), 8)
+	assert_true(site.has_active_peer_transport_for_site(w3))
+	o2.cancel(null)
+	site.unregister_worker(w2, o2)
+	assert_false(site.has_active_peer_transport_for_site(w3))

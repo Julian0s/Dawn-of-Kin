@@ -566,3 +566,323 @@ func test_06_unreachable_site_pile_and_decay_mid_walk() -> void:
 	assert_not_null(pile_mgr)
 	vp.queue_free()
 	await wait_process_frames(2)
+
+
+func _build_wall_enclosure(parent: Node3D, node_name: String, center: Vector3, half_extents: Vector2, wall_height: float = 3.0, thickness: float = 0.45) -> StaticBody3D:
+	var enclosure := StaticBody3D.new()
+	enclosure.name = node_name
+	enclosure.collision_layer = CollisionLayers.MASK_OBSTACLES
+	enclosure.collision_mask = 0
+	var half_h: float = wall_height * 0.5
+	var specs: Array[Array] = [
+		[Vector3(center.x, half_h, center.z + half_extents.y + thickness * 0.5), Vector3(half_extents.x * 2.0 + thickness * 2.0, wall_height, thickness)],
+		[Vector3(center.x, half_h, center.z - half_extents.y - thickness * 0.5), Vector3(half_extents.x * 2.0 + thickness * 2.0, wall_height, thickness)],
+		[Vector3(center.x + half_extents.x + thickness * 0.5, half_h, center.z), Vector3(thickness, wall_height, half_extents.y * 2.0)],
+		[Vector3(center.x - half_extents.x - thickness * 0.5, half_h, center.z), Vector3(thickness, wall_height, half_extents.y * 2.0)],
+	]
+	for spec: Array in specs:
+		var cs := CollisionShape3D.new()
+		var bx := BoxShape3D.new()
+		bx.size = spec[1] as Vector3
+		cs.shape = bx
+		cs.position = spec[0] as Vector3
+		enclosure.add_child(cs)
+	parent.add_child(enclosure)
+	return enclosure
+
+
+func _wait_nav_ready(nav: WorldNavigation) -> void:
+	await wait_physics_frames(2)
+	nav.request_rebake()
+	var nav_f: int = 0
+	while not nav.is_navigation_ready() and nav_f < MAX_NAV_FRAMES:
+		await wait_physics_frames(1)
+		nav_f += 1
+	assert_true(nav.is_navigation_ready())
+
+
+func test_06_r1_closed_wall_blocks_pile_withdrawal_and_site_dropoff() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var worker: Unit = (ctx["units"] as Array[Unit])[0]
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
+	assert_true(bool(res["ok"]))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+
+	# A) Seal camp/piles inside a closed wall box; check both physical reach predicate AND order rejection.
+	var wood_entries: Array[Dictionary] = inventory.get_reserved_pile_entries(site.reservation_id, &"wood")
+	assert_false(wood_entries.is_empty())
+	var wood_pile_pos: Vector3 = wood_entries[0]["world_pos"] as Vector3
+	var camp_enclosure: StaticBody3D = _build_wall_enclosure(
+		test_map,
+		"R1_ClosedCampWall",
+		camp.global_position,
+		camp.zone_bounds_half_extents + Vector2(0.8, 0.8)
+	)
+	await _wait_nav_ready(nav)
+
+	# Even when unit stands right outside the wall within nominal distance, wall blocks physical pile reach.
+	var site_world: World3D = site.get_world_3d()
+	assert_not_null(site_world)
+	var near_outside: Vector3 = wood_pile_pos + Vector3(-1.45, 0.0, 0.0)
+	if near_outside.x > camp.global_position.x - camp.zone_bounds_half_extents.x - 1.5:
+		near_outside = camp.global_position + Vector3(-(camp.zone_bounds_half_extents.x + 1.5), 0.0, 0.0)
+	assert_false(
+		BuildSlotPlanner.is_unit_in_pile_reach(near_outside, wood_pile_pos, ConstructionSite.DEFAULT_PILE_PICKUP_REACH, site_world),
+		"Pile reach predicate must return false across a closed wall"
+	)
+
+	worker.global_position = near_outside
+	await wait_physics_frames(2)
+	var blocked_pile_order := ConstructOrder.new(site, camp)
+	worker.issue_order(blocked_pile_order)
+	var f1: int = 0
+	while blocked_pile_order.is_active() and f1 < 300:
+		await wait_physics_frames(1)
+		f1 += 1
+	assert_eq(blocked_pile_order.status, UnitOrder.Status.FAILED, "Closed wall around reserved piles must fail cleanly")
+	assert_eq(blocked_pile_order.failure_reason, ConstructOrder.REASON_PILE_UNREACHABLE)
+	assert_true(worker.get_carry_load().is_empty(), "No units may be withdrawn through a closed wall")
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 12)
+
+	# Remove camp enclosure before testing site enclosure.
+	camp_enclosure.queue_free()
+	await _wait_nav_ready(nav)
+
+	# B) Worker validly withdraws 5 wood, then a closed wall surrounds the construction site before dropoff.
+	var pile_id: int = int(wood_entries[0]["pile_id"])
+	var withdrawn: int = inventory.withdraw_reserved_from_pile_to_carry_load(
+		pile_id,
+		site.reservation_id,
+		WOOD_DEF.duplicate() as ResourceDefinition,
+		5,
+		worker.get_carry_load()
+	)
+	assert_eq(withdrawn, 5)
+	site.record_withdrawn_for_site(worker, &"wood", withdrawn)
+
+	var half_extents: Vector2 = site.get_footprint_rect().size * 0.5
+	var site_enclosure: StaticBody3D = _build_wall_enclosure(
+		test_map,
+		"R1_ClosedSiteWall",
+		site.global_position,
+		half_extents + Vector2(0.45, 0.45)
+	)
+	await _wait_nav_ready(nav)
+
+	var outside_site: Vector3 = site.global_position + Vector3(-(half_extents.x + 1.10), 0.0, 0.0)
+	assert_false(
+		BuildSlotPlanner.is_unit_in_site_dropoff_range(outside_site, site, ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE, site_world),
+		"Dropoff reach predicate must reject delivery across a closed wall even inside perimeter tolerance"
+	)
+
+	worker.global_position = outside_site
+	await wait_physics_frames(2)
+	var blocked_site_order := ConstructOrder.new(site, camp)
+	worker.issue_order(blocked_site_order)
+	var f2: int = 0
+	while blocked_site_order.is_active() and f2 < 300:
+		await wait_physics_frames(1)
+		f2 += 1
+	assert_eq(blocked_site_order.status, UnitOrder.Status.FAILED, "Closed wall around site must fail cleanly")
+	assert_eq(blocked_site_order.failure_reason, ConstructOrder.REASON_SITE_UNREACHABLE)
+	assert_eq(worker.get_carry_load().get_amount(&"wood"), 5, "Cargo must remain intact in backpack when dropoff is wall-blocked")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 0, "Site buffer must stay 0 when wall blocks dropoff")
+
+	site_enclosure.queue_free()
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_07_r1_partial_wall_detour_and_open_ground_regression() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var worker: Unit = (ctx["units"] as Array[Unit])[0]
+
+	# Place a site in open space at (-6, 0, -5) and place a partial wall between worker's west approach and site.
+	var detour_site_pos := Vector3(-6.0, 0.0, -5.0)
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, detour_site_pos)
+	assert_true(bool(res["ok"]))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+
+	var partial_wall := StaticBody3D.new()
+	partial_wall.name = "R1_PartialWall"
+	partial_wall.collision_layer = CollisionLayers.MASK_OBSTACLES
+	partial_wall.collision_mask = 0
+	var wall_cs := CollisionShape3D.new()
+	var wall_bx := BoxShape3D.new()
+	wall_bx.size = Vector3(0.45, 3.0, 6.2)
+	wall_cs.shape = wall_bx
+	wall_cs.position = detour_site_pos + Vector3(-2.55, 1.5, 0.0)
+	partial_wall.add_child(wall_cs)
+	test_map.add_child(partial_wall)
+	await _wait_nav_ready(nav)
+
+	# 2C: Directly west of the partial wall is within tolerance (1.05m from west face) yet blocked by the wall.
+	var site_world: World3D = site.get_world_3d()
+	assert_not_null(site_world)
+	var west_of_wall: Vector3 = detour_site_pos + Vector3(-3.05, 0.0, 0.0)
+	assert_false(
+		BuildSlotPlanner.is_unit_in_site_dropoff_range(west_of_wall, site, ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE, site_world),
+		"Partial wall between unit and site face must block straight-line dropoff reach"
+	)
+
+	var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
+		west_of_wall,
+		site,
+		nav
+	)
+	assert_true(bool(slot_res.get("valid", false)), "Partial wall with open detour must resolve a valid accessible perimeter slot")
+	var chosen_slot: Vector3 = slot_res["position"] as Vector3
+	assert_true(
+		BuildSlotPlanner.is_unit_in_site_dropoff_range(chosen_slot, site, ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE, site_world),
+		"Chosen perimeter slot must have unobstructed dropoff reach to the site"
+	)
+
+	# Worker starts west of partial wall holding 6 reserved wood; must walk around the wall (never drop through wall) and finish all 12w/6s.
+	var wood_entries: Array[Dictionary] = inventory.get_reserved_pile_entries(site.reservation_id, &"wood")
+	var wood_pile_id: int = int(wood_entries[0]["pile_id"])
+	var pre_taken: int = inventory.withdraw_reserved_from_pile_to_carry_load(
+		wood_pile_id,
+		site.reservation_id,
+		WOOD_DEF.duplicate() as ResourceDefinition,
+		6,
+		worker.get_carry_load()
+	)
+	assert_eq(pre_taken, 6)
+	site.record_withdrawn_for_site(worker, &"wood", pre_taken)
+
+	worker.global_position = west_of_wall
+	await wait_physics_frames(2)
+	var detour_order := ConstructOrder.new(site, camp)
+	worker.issue_order(detour_order)
+
+	var max_z_deviation: float = 0.0
+	var delivered_only_with_clear_reach: bool = true
+	var prev_wood_buf: int = 0
+	var sim_f: int = 0
+	while not site.is_fully_supplied() and sim_f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		sim_f += 1
+		max_z_deviation = maxf(max_z_deviation, absf(worker.global_position.z - detour_site_pos.z))
+		var cur_buf: int = site.get_delivered_buffer_amount(&"wood")
+		if cur_buf > prev_wood_buf:
+			if not BuildSlotPlanner.is_unit_in_site_dropoff_range(worker.global_position, site, ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE + 0.15, site_world):
+				delivered_only_with_clear_reach = false
+			prev_wood_buf = cur_buf
+
+	assert_true(site.is_fully_supplied(), "Worker must complete full supply after detouring partial wall and continuing on open ground")
+	assert_true(delivered_only_with_clear_reach, "Delivery must only happen from an unobstructed side of the partial wall")
+	assert_true(max_z_deviation > 1.8, "Worker starting behind partial wall must physically detour around wall edge (not pass through wall)")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+
+	partial_wall.queue_free()
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_08_r1_interrupted_transporter_does_not_stall_replacement_or_touch_builder_pack() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var main_root: MainScene = ctx["main"] as MainScene
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var w1: Unit = (ctx["units"] as Array[Unit])[0]
+	var w2: Unit = _spawn_extra_worker(main_root, nav, "R1_PeerW2", camp.global_position + Vector3(-1.5, 0.0, 4.0))
+	var w3: Unit = _spawn_extra_worker(main_root, nav, "R1_PeerW3", camp.global_position + Vector3(-2.5, 0.0, 4.0))
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
+	assert_true(bool(res["ok"]))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+
+	# Pre-seed W3 (will be BUILDER) with 2 external unattributed wood that must remain untouched during standby.
+	assert_true(w3.get_carry_load().add_units(WOOD_DEF.duplicate() as ResourceDefinition, 2))
+
+	# 1. Start W1 as SOLO_SUPPLIER until it withdraws reserved wood, then interrupt it mid-transport.
+	w1.global_position = camp.global_position + Vector3(-1.0, 0.0, 2.5)
+	await wait_physics_frames(2)
+	var o1 := ConstructOrder.new(site, camp)
+	w1.issue_order(o1)
+	var withdraw_f: int = 0
+	while w1.get_carry_load().is_empty() and withdraw_f < 600:
+		await wait_physics_frames(1)
+		withdraw_f += 1
+	assert_false(w1.get_carry_load().is_empty(), "W1 must physically withdraw material before interruption")
+	var orphan_wood: int = w1.get_carry_load().get_amount(&"wood")
+	assert_true(orphan_wood > 0)
+
+	# Interrupt W1 -> move far away, leaving orphan transit claim in W1's backpack.
+	w1.issue_order(MoveOrder.new(Vector3(-12.0, 0.0, -8.0)))
+	await wait_physics_frames(4)
+	assert_false(site.has_active_peer_transport_for_site(), "Interrupted worker orphan claim must NOT count as active peer transport")
+
+	# 2. Assign W2 (TRANSPORTER) and W3 (BUILDER) to the site.
+	var o2 := ConstructOrder.new(site, camp)
+	var o3 := ConstructOrder.new(site, camp)
+	w2.issue_order(o2)
+	w3.issue_order(o3)
+	assert_eq(site.get_worker_role(w2), ConstructionSite.WorkerRole.TRANSPORTER)
+	assert_eq(site.get_worker_role(w3), ConstructionSite.WorkerRole.BUILDER)
+
+	# Track W2 phase transitions and W3 pack integrity while W2 works through remaining piles.
+	var phase_changes: int = 0
+	var last_phase: ConstructOrder.Phase = o2.get_phase()
+	var saw_builder_standby_with_intact_pack: bool = false
+	var f: int = 0
+	while o2.is_active() and f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		f += 1
+		var cur_phase: ConstructOrder.Phase = o2.get_phase()
+		if cur_phase != last_phase:
+			phase_changes += 1
+			last_phase = cur_phase
+		if o3.is_active() and o3.get_phase() == ConstructOrder.Phase.BUILDER_STANDBY:
+			if w3.get_carry_load().get_amount(&"wood") == 2:
+				saw_builder_standby_with_intact_pack = true
+
+	# W2 must NOT stall in infinite wait/replanning; once piles are exhausted it must finish cleanly with REASON_RESERVATION_UNAVAILABLE.
+	assert_false(o2.is_active(), "Replacement transporter must NOT stall infinitely waiting on interrupted peer claim")
+	assert_eq(o2.status, UnitOrder.Status.FAILED)
+	assert_eq(o2.failure_reason, ConstructOrder.REASON_RESERVATION_UNAVAILABLE)
+	assert_true(phase_changes <= 24, "Replacement transporter must not loop/replan per frame (phase_changes=%d)" % phase_changes)
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12 - orphan_wood, "W2 must deliver all non-orphaned pile wood before exiting")
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6, "W2 must deliver all reserved stone before exiting")
+	assert_true(saw_builder_standby_with_intact_pack, "Standby BUILDER must keep pre-existing carry_load untouched")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12 - orphan_wood, "BUILDER external wood must never leak into site buffer")
+
+	# Cancel W3 cleanly if promoted after W2 exited, then re-issue W1 with its attributed wood -> site finishes 100%!
+	w3.issue_order(MoveOrder.new(Vector3(-11.0, 0.0, -8.0)))
+	await wait_physics_frames(2)
+
+	var o1_resume := ConstructOrder.new(site, camp)
+	w1.issue_order(o1_resume)
+	var resume_f: int = 0
+	while not site.is_fully_supplied() and resume_f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		resume_f += 1
+	assert_true(site.is_fully_supplied(), "Re-issuing original interrupted worker must deliver its held claim and reach 100% supply")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+
+	vp.queue_free()
+	await wait_process_frames(2)

@@ -98,3 +98,39 @@ Todas as execuções ocorreram na worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_cons
 - **Testes manuais e visuais:** O protocolo `docs/testing/T3_3_manual_test_protocol.md` ainda **não foi executado** manualmente pelo proprietário (todos os itens permanecem marcados como `NÃO TESTADO`).
 - **Benchmark em tomada CA:** O benchmark `t3_3_logistics_benchmark.gd` foi medido apenas sob bateria DC; execução opcional em tomada CA pode ser feita seguindo o mesmo script se necessário para comparação.
 - **UI provisória:** `PlacementTestOverlay` / `TemporarySitePanel` é uma interface temporária de apoio à T3.3 e será substituída pelo catálogo/inspetor definitivos na T3.5.
+
+---
+
+## 6. Revisão T3.3-R1 — Integridade da Entrega, Alcance Físico e Coordenação Pós-Interrupção
+
+### 6.1 Correções Técnicas Aplicadas
+1. **Integridade do buffer do canteiro (`src/buildings/construction_site.gd`):**
+   - `accept_delivery_from_carry_load(unit, carry_load)` agora exige `unit` válido e limita o aceite por recurso a `mini(claimed, mini(need, mini(carried, invariant_cap)))` usando `_transit_claims` atribuídos especificamente àquele trabalhador e àquela obra.
+   - Carga não atribuída ou pertencente a outro canteiro permanece intacta em `UnitCarryLoad`, sem reduzir reivindicações de outras obras; interrupção e reemissão para a mesma obra preservam o claim em trânsito da unidade.
+   - `record_withdrawn_for_site()` limita o registro em trânsito à folga `required - delivered - reserved - in_transit`, preservando o invariante `reserved + in_transit + delivered_buffer <= required`.
+2. **Bloqueio de retirada/entrega através de paredes (`src/buildings/build_slot_planner.gd`, `src/units/orders/construct_order.gd`):**
+   - Introduzido `BuildSlotPlanner.has_clear_physical_access()` via raycast físico 3D (`CollisionLayers.MASK_WORLD_SOLID`, `hit_from_inside = true` a `REACH_PROBE_HEIGHT = 0.55`).
+   - `is_unit_in_pile_reach()` e `is_unit_in_site_dropoff_range()` (com fallback para `site.get_world_3d()` quando inserido na árvore) exigem acesso físico desobstruído além de distância XZ e tolerância vertical.
+   - `compute_pile_approach_slot()` e `compute_site_perimeter_slot()` filtram candidatos com acesso físico livre e priorizam por menor distância navegável real (`_path_length`) para contornar obstáculos parciais sem alterar a NavMesh ativa.
+   - `ConstructOrder` revalida o alcance físico com `_get_world_3d()` no instante exato da retirada da pilha e da entrega no perímetro, recorrendo a helpers não recursivos `_retry_pile_approach_or_fail()` e `_retry_site_dropoff_or_fail()`.
+3. **Espera por colega interrompido e isolamento do `BUILDER` (`src/buildings/construction_site.gd`, `src/units/orders/construct_order.gd`):**
+   - Causa raiz confirmada: antes da R1, a verificação usava `get_in_transit_amount() > 0` (que inclui reivindicações órfãs de trabalhadores já cancelados/interrompidos), enviando o novo transportador a `_start_moving_to_builder_slot()` enquanto ainda mantinha papel `SOLO_SUPPLIER`/`TRANSPORTER`, gerando replanejamento contínuo por frame em `_update_builder_standby`.
+   - Adicionado `ConstructionSite.has_active_peer_transport_for_site(exclude_unit)` (considera apenas trabalhadores com ordem ativa `SOLO_SUPPLIER`/`TRANSPORTER` e `_pending_pickups` ou `_transit_claims` válidos) e estado dedicado `ConstructOrder.Phase.WAITING_FOR_PEER_SUPPLY` dirigido pelos sinais `state_changed` e `workers_changed`. Trabalhadores em `BUILDER_STANDBY` não consomem nem transferem sua `UnitCarryLoad` pré-existente.
+4. **Correção documental no protocolo manual (`docs/testing/T3_3_manual_test_protocol.md`):**
+   - Corrigido o custo citado do `Depósito Rústico` de `16 Madeira, 10 Pedra` para `18 Madeira, 10 Pedra`, em conformidade com `data/buildings/storage_depot.tres`.
+
+### 6.2 Validação Pós-R1
+- `.\tools\validate.ps1`: **APROVADA** (`0 errors, 0 warnings, 103 scripts checked`).
+- `.\tools\run_tests.ps1 -Segmented`: **227/227 testes aprovados em 32 suítes** (`0 failures, 0 suite errors, 7.488 asserções`), incluindo:
+  - `tests/unit/test_t3_3_construction_site.gd`: **7/7 testes** (`164` asserções) — cobrindo entrega sem claim, carga mista, isolamento entre obras, idempotência, reemissão, invariante contábil e `has_active_peer_transport_for_site`.
+  - `tests/integration/test_t3_3_construction_logistics.gd`: **9/9 testes** (`174` asserções) — cobrindo parede fechada ao redor de pilhas/canteiro, parede parcial com desvio, terreno aberto, substituição após colega interrompido e integridade da mochila do `BUILDER`.
+
+### 6.3 Benchmark `t3_3_logistics_benchmark.gd` — Antes vs. Depois da R1 (Bateria DC)
+- **Hardware / Ambiente:** `Intel(R) UHD Graphics 620`, renderer `gl_compatibility`, plano `Equilibrado`, bateria DC (`BatteryStatus=1`), sem `--fixed-fps`.
+- **Pré-R1 (`9774035`, carga 74%):**
+  - `1920×1080`: `site_creation_ms` média `6,072 ms` (`p95 = 7,842 ms`), `active_logistics_frame_ms` média `8,489 ms` (`117,80 FPS`, `p50 = 8,187 ms`, `p95 = 13,080 ms`, `max = 20,672 ms`, `0` quadros `> 100 ms`).
+  - `1280×720`: `site_creation_ms` média `4,807 ms` (`p95 = 5,138 ms`), `active_logistics_frame_ms` média `4,978 ms` (`200,90 FPS`, `p50 = 4,721 ms`, `p95 = 6,683 ms`, `max = 12,348 ms`, `0` quadros `> 100 ms`).
+- **Pós-R1 (`feature/t3-3-construction-logistics`, carga 49%):**
+  - `1920×1080`: `site_creation_ms` média `6,468 ms` (`p95 = 6,797 ms`), `active_logistics_frame_ms` média `9,639 ms` (`103,75 FPS`, `p50 = 9,318 ms`, `p95 = 15,290 ms`, `max = 26,181 ms`, `0` quadros `> 100 ms`).
+  - `1280×720`: `site_creation_ms` média `5,912 ms` (`p95 = 6,847 ms`), `active_logistics_frame_ms` média `7,469 ms` (`133,88 FPS`, `p50 = 7,086 ms`, `p95 = 11,893 ms`, `max = 23,116 ms`, `0` quadros `> 100 ms`).
+- **Interpretação:** Mesmo sob bateria DC (49% de carga), os quadros ativos permanecem abaixo de `16,67 ms` no `p95` em ambas as resoluções (`103,75 FPS` em `1080p` e `133,88 FPS` em `720p`, `0` engasgos `> 100 ms`), demonstrando que as verificações físicas espaciais por evento não introduziram custo significativo por frame. Os testes manuais em `docs/testing/T3_3_manual_test_protocol.md` continuam `NÃO TESTADO` aguardando execução pelo proprietário.
