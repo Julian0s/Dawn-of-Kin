@@ -1,10 +1,10 @@
 # Dawn of Kin — Notas Técnicas da Etapa T3.3 (Canteiro de Obra e Suprimento Físico)
 
-**Etapa:** T3.3 — Canteiro de Obra e Suprimento Físico (Transporte)  
-**Branch de Implementação:** `feature/t3-3-construction-logistics`  
-**Base:** `origin/main` (`931ad196346251e3f24a3ea5db6facb3641233bc`, T3.1 e T3.2 integradas)  
-**Engine / Renderer:** Godot `4.7.2.stable`, `gl_compatibility`  
-**Estado:** Implementada e validada automaticamente; aguardando validação visual/manual e aprovação formal do proprietário (`T3.4+` permanecem bloqueadas).
+- **Etapa:** T3.3 — Canteiro de Obra e Suprimento Físico (Transporte)
+- **Branch de Implementação:** `feature/t3-3-construction-logistics`
+- **Base:** `origin/main` (`931ad196346251e3f24a3ea5db6facb3641233bc`, T3.1 e T3.2 integradas)
+- **Engine / Renderer:** Godot `4.7.2.stable`, `gl_compatibility`
+- **Estado:** Implementada e validada automaticamente; aguardando validação visual/manual e aprovação formal do proprietário (`T3.4+` permanecem bloqueadas).
 
 ---
 
