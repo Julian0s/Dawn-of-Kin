@@ -108,6 +108,8 @@ func command_at(pick: PickResult) -> bool:
 			marker_normal = Vector3.UP
 		PickResult.Kind.RESOURCE_SOURCE:
 			return _command_gather_resource(pick, units)
+		PickResult.Kind.CONSTRUCTION_SITE:
+			return _command_supply_construction_site(pick, units)
 		_:
 			_last_command_reason = "unsupported_pick_kind"
 			return false
@@ -193,6 +195,69 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 		return false
 
 	var marker_pos: Vector3 = source.global_position
+	if _destination_marker != null and is_instance_valid(_destination_marker):
+		_destination_marker.show_at(marker_pos, Vector3.UP, true)
+
+	command_issued.emit(pick, marker_pos, started_count, true)
+	return true
+
+
+func command_units_to_site(site: ConstructionSite, units: Array[Unit] = []) -> bool:
+	_resolve_dependencies()
+	_last_command_reason = ""
+	if site == null or not is_instance_valid(site) or not site.is_valid():
+		_last_command_reason = ConstructOrder.REASON_INVALID_SITE
+		return false
+	if _world_navigation == null or not is_instance_valid(_world_navigation):
+		_last_command_reason = "missing_navigation"
+		return false
+	if not _world_navigation.is_navigation_ready():
+		_last_command_reason = "navigation_not_ready"
+		return false
+	var target_units: Array[Unit] = []
+	var source_units: Array[Unit] = units
+	if source_units.is_empty():
+		source_units = _collect_commandable_units()
+	for unit: Unit in source_units:
+		if unit != null and is_instance_valid(unit) and unit.is_inside_tree():
+			target_units.append(unit)
+	if target_units.is_empty():
+		_last_command_reason = "no_commandable_units"
+		return false
+	var pick := PickResult.from_construction_site(site, site.global_position, Vector3.UP)
+	return _command_supply_construction_site(pick, target_units)
+
+
+func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> bool:
+	if pick == null or not pick.is_construction_site():
+		_last_command_reason = ConstructOrder.REASON_INVALID_SITE
+		return false
+
+	var site: ConstructionSite = pick.construction_site
+	if site == null or not is_instance_valid(site) or not site.is_valid():
+		_last_command_reason = ConstructOrder.REASON_INVALID_SITE
+		return false
+
+	var started_count: int = 0
+	var first_failure_reason: String = ""
+	for unit: Unit in units:
+		if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
+			continue
+		if unit.get_world_navigation() == null:
+			unit.set_world_navigation(_world_navigation)
+
+		var order := ConstructOrder.new(site, _camp_storage_zone)
+		unit.issue_order(order)
+		if order.is_active() or order.is_succeeded():
+			started_count += 1
+		elif first_failure_reason.is_empty():
+			first_failure_reason = order.failure_reason
+
+	if started_count <= 0:
+		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else ConstructOrder.REASON_NO_WORKER_SLOT
+		return false
+
+	var marker_pos: Vector3 = site.global_position if site.is_inside_tree() else pick.position
 	if _destination_marker != null and is_instance_valid(_destination_marker):
 		_destination_marker.show_at(marker_pos, Vector3.UP, true)
 

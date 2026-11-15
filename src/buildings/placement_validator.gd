@@ -46,6 +46,7 @@ class ValidationContext extends RefCounted:
 	var camp_storage_zone: CampStorageZone = null
 	var ground_pile_manager: GroundPileManager = null
 	var extra_piles: Array[GroundResourcePile] = []
+	var construction_sites: Array[ConstructionSite] = []
 	var units: Array[Unit] = []
 	var resource_sources: Array[ResourceSource] = []
 	var connectivity_checkpoints: Array[Vector3] = []
@@ -148,6 +149,17 @@ class ValidationContext extends RefCounted:
 							_append_scoped_pile(ctx.extra_piles, seen_piles, item as GroundResourcePile, ctx.world_3d)
 			_collect_scoped_piles_recursive(p_region_root, ctx.extra_piles, seen_piles, ctx.world_3d)
 
+		var seen_sites: Dictionary = {}
+		var tree: SceneTree = p_region_root.get_tree() if p_region_root != null and is_instance_valid(p_region_root) else null
+		if tree == null and p_world_navigation != null and is_instance_valid(p_world_navigation):
+			tree = p_world_navigation.get_tree()
+		if tree != null:
+			for site_node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+				if site_node is ConstructionSite:
+					_append_scoped_site(ctx.construction_sites, seen_sites, site_node as ConstructionSite, ctx.world_3d)
+		if ctx.has_region_scope:
+			_collect_scoped_sites_recursive(p_region_root, ctx.construction_sites, seen_sites, ctx.world_3d)
+
 		return ctx
 
 	func refresh_dynamic_state() -> ValidationContext:
@@ -231,6 +243,22 @@ class ValidationContext extends RefCounted:
 			_append_scoped_pile(out, seen, root_node as GroundResourcePile, expected_world)
 		for child: Node in root_node.get_children():
 			_collect_scoped_piles_recursive(child, out, seen, expected_world)
+
+	static func _append_scoped_site(out: Array[ConstructionSite], seen: Dictionary, site_node: ConstructionSite, expected_world: World3D) -> void:
+		if not _matches_world(site_node, expected_world):
+			return
+		var sid: int = site_node.get_instance_id()
+		if not seen.has(sid):
+			seen[sid] = true
+			out.append(site_node)
+
+	static func _collect_scoped_sites_recursive(root_node: Node, out: Array[ConstructionSite], seen: Dictionary, expected_world: World3D) -> void:
+		if root_node == null or not is_instance_valid(root_node):
+			return
+		if root_node is ConstructionSite:
+			_append_scoped_site(out, seen, root_node as ConstructionSite, expected_world)
+		for child: Node in root_node.get_children():
+			_collect_scoped_sites_recursive(child, out, seen, expected_world)
 
 
 class ValidationResult extends RefCounted:
@@ -446,6 +474,17 @@ func _prepare_confirm_job(
 			"size": Vector3(definition.footprint_size.x, definition.visual_height, definition.footprint_size.y),
 		}
 	]
+	for existing_site: ConstructionSite in context.construction_sites:
+		if existing_site == null or not is_instance_valid(existing_site) or existing_site.definition == null:
+			continue
+		candidate_boxes.append({
+			"position": existing_site.global_position,
+			"size": Vector3(
+				existing_site.definition.footprint_size.x,
+				existing_site.definition.visual_height,
+				existing_site.definition.footprint_size.y
+			),
+		})
 
 	return {
 		"proceed": true,
@@ -701,6 +740,19 @@ func _validate_spatial_base(
 				return result
 		_fail_result(result, REASON_OBSTACLE_OVERLAP, "Posição inválida: há obstáculos ou construções na área.")
 		return result
+
+	var candidate_rect: Rect2 = definition.get_footprint_rect_at(Vector2(resolved_pos.x, resolved_pos.z))
+	var tol: float = FOOTPRINT_EDGE_TOLERANCE_M
+	var shrunk_candidate := Rect2(
+		candidate_rect.position + Vector2(tol, tol),
+		Vector2(maxf(0.0, candidate_rect.size.x - tol * 2.0), maxf(0.0, candidate_rect.size.y - tol * 2.0))
+	)
+	for existing_site: ConstructionSite in context.construction_sites:
+		if existing_site == null or not is_instance_valid(existing_site) or not existing_site.is_valid():
+			continue
+		if existing_site.get_footprint_rect().intersects(shrunk_candidate, true):
+			_fail_result(result, REASON_OBSTACLE_OVERLAP, "Posição inválida: já existe um canteiro de obra nessa área.")
+			return result
 
 	if _overlaps_physical_piles(definition, resolved_pos, context):
 		_fail_result(result, REASON_PILE_OVERLAP, "Posição inválida: há pilhas de materiais neste local.")

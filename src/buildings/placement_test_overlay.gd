@@ -1,7 +1,7 @@
 class_name PlacementTestOverlay
 extends Control
-## Minimal temporary UI trigger and status feedback for T3.2 spatial placement validation.
-## Intentionally temporary for T3.2; does not implement the T3.5 build catalog or inspector HUD.
+## Minimal temporary UI trigger, placement feedback, and T3.3 site inspection panel.
+## Intentionally temporary for T3.2/T3.3; does not implement the T3.5 build catalog or inspector HUD.
 
 const TOAST_DURATION_SEC: float = 2.8
 const VALID_TEXT_COLOR: Color = Color(0.58, 0.80, 0.52, 1.0)
@@ -9,6 +9,12 @@ const INVALID_TEXT_COLOR: Color = Color(0.90, 0.45, 0.38, 1.0)
 const TOAST_TEXT_COLOR: Color = Color(0.86, 0.88, 0.62, 1.0)
 
 var _placement_controller: PlacementController = null
+var _construction_manager: ConstructionManager = null
+var _command_controller: CommandController = null
+var _selection_manager: SelectionManager = null
+var _input_controller: RtsInputController = null
+var _selected_site: ConstructionSite = null
+
 var _shelter_def: BuildingDefinition = null
 var _depot_def: BuildingDefinition = null
 
@@ -20,6 +26,14 @@ var _cancel_btn: Button = null
 var _status_panel: PanelContainer = null
 var _status_title_label: Label = null
 var _status_detail_label: Label = null
+
+var _site_panel: PanelContainer = null
+var _site_title_label: Label = null
+var _site_state_label: Label = null
+var _site_resources_label: Label = null
+var _site_workers_label: Label = null
+var _site_assign_btn: Button = null
+var _site_close_btn: Button = null
 
 var _toast_remaining_sec: float = 0.0
 var _built_ui: bool = false
@@ -33,6 +47,8 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_disconnect_controller()
+	_disconnect_construction()
+	set_inspected_site(null)
 
 
 func _process(delta: float) -> void:
@@ -83,6 +99,56 @@ func configure(
 	_sync_button_states()
 
 
+func configure_construction(
+	construction_manager: ConstructionManager,
+	command_controller: CommandController = null,
+	selection_manager: SelectionManager = null,
+	input_controller: RtsInputController = null
+) -> void:
+	_build_ui()
+	_disconnect_construction()
+	_construction_manager = construction_manager
+	_command_controller = command_controller
+	_selection_manager = selection_manager
+	_input_controller = input_controller
+
+	if _construction_manager != null and is_instance_valid(_construction_manager):
+		_construction_manager.site_created.connect(_on_site_created)
+		_construction_manager.site_creation_rejected.connect(_on_site_creation_rejected)
+	if _input_controller != null and is_instance_valid(_input_controller):
+		_input_controller.construction_site_picked.connect(_on_construction_site_picked)
+	if _selection_manager != null and is_instance_valid(_selection_manager):
+		_selection_manager.selection_changed.connect(_on_selection_changed_for_site_ui)
+	_refresh_site_panel()
+
+
+func set_inspected_site(site: ConstructionSite) -> void:
+	if _selected_site != null and is_instance_valid(_selected_site):
+		if _selected_site.state_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.state_changed.disconnect(_on_inspected_site_updated)
+		if _selected_site.buffer_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.buffer_changed.disconnect(_on_inspected_site_updated)
+		if _selected_site.workers_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.workers_changed.disconnect(_on_inspected_site_updated)
+	_selected_site = site if (site != null and is_instance_valid(site) and site.is_valid()) else null
+	if _selected_site != null:
+		if not _selected_site.state_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.state_changed.connect(_on_inspected_site_updated)
+		if not _selected_site.buffer_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.buffer_changed.connect(_on_inspected_site_updated)
+		if not _selected_site.workers_changed.is_connected(_on_inspected_site_updated):
+			_selected_site.workers_changed.connect(_on_inspected_site_updated)
+	_refresh_site_panel()
+
+
+func get_inspected_site() -> ConstructionSite:
+	return _selected_site
+
+
+func get_assign_workers_button() -> Button:
+	return _site_assign_btn
+
+
 func get_shelter_button() -> Button:
 	return _shelter_btn
 
@@ -105,6 +171,10 @@ func get_status_detail_text() -> String:
 
 func is_status_visible() -> bool:
 	return _status_panel != null and _status_panel.visible
+
+
+func is_site_panel_visible() -> bool:
+	return _site_panel != null and _site_panel.visible
 
 
 func _build_ui() -> void:
@@ -151,7 +221,7 @@ func _build_ui() -> void:
 
 	var header := Label.new()
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	header.text = "Prévia T3.2 (teste temporário)"
+	header.text = "Construção temporária (T3.2/T3.3)"
 	header.add_theme_font_size_override(&"font_size", 11)
 	header.add_theme_color_override(&"font_color", HudStyle.TEXT_MUTED_COLOR)
 	bar_vbox.add_child(header)
@@ -215,6 +285,76 @@ func _build_ui() -> void:
 	_status_detail_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
 	status_vbox.add_child(_status_detail_label)
 
+	_site_panel = PanelContainer.new()
+	_site_panel.name = "TemporarySitePanel"
+	_site_panel.anchor_left = 0.0
+	_site_panel.anchor_top = 0.0
+	_site_panel.offset_left = 16.0
+	_site_panel.offset_top = 68.0
+	_site_panel.offset_right = 348.0
+	_site_panel.offset_bottom = 260.0
+	_site_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_site_panel.visible = false
+	_site_panel.add_theme_stylebox_override(&"panel", HudStyle.create_panel_style())
+	add_child(_site_panel)
+
+	var site_margin := MarginContainer.new()
+	site_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	site_margin.add_theme_constant_override(&"margin_left", 10)
+	site_margin.add_theme_constant_override(&"margin_top", 8)
+	site_margin.add_theme_constant_override(&"margin_right", 10)
+	site_margin.add_theme_constant_override(&"margin_bottom", 8)
+	_site_panel.add_child(site_margin)
+
+	var site_vbox := VBoxContainer.new()
+	site_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	site_vbox.add_theme_constant_override(&"separation", 4)
+	site_margin.add_child(site_vbox)
+
+	var site_header := Label.new()
+	site_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	site_header.text = "Canteiro T3.3 (UI temporária)"
+	site_header.add_theme_font_size_override(&"font_size", 11)
+	site_header.add_theme_color_override(&"font_color", HudStyle.TEXT_MUTED_COLOR)
+	site_vbox.add_child(site_header)
+
+	_site_title_label = Label.new()
+	_site_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_site_title_label.add_theme_font_size_override(&"font_size", 13)
+	_site_title_label.add_theme_color_override(&"font_color", HudStyle.TEXT_PRIMARY_COLOR)
+	site_vbox.add_child(_site_title_label)
+
+	_site_state_label = Label.new()
+	_site_state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_site_state_label.add_theme_font_size_override(&"font_size", 12)
+	_site_state_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
+	site_vbox.add_child(_site_state_label)
+
+	_site_resources_label = Label.new()
+	_site_resources_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_site_resources_label.add_theme_font_size_override(&"font_size", 12)
+	_site_resources_label.add_theme_color_override(&"font_color", HudStyle.TEXT_SECONDARY_COLOR)
+	site_vbox.add_child(_site_resources_label)
+
+	_site_workers_label = Label.new()
+	_site_workers_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_site_workers_label.add_theme_font_size_override(&"font_size", 12)
+	_site_workers_label.add_theme_color_override(&"font_color", HudStyle.TEXT_SECONDARY_COLOR)
+	site_vbox.add_child(_site_workers_label)
+
+	var site_btn_row := HBoxContainer.new()
+	site_btn_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	site_btn_row.add_theme_constant_override(&"separation", 6)
+	site_vbox.add_child(site_btn_row)
+
+	_site_assign_btn = _create_button("Designar selecionados")
+	_site_assign_btn.pressed.connect(_on_assign_selected_pressed)
+	site_btn_row.add_child(_site_assign_btn)
+
+	_site_close_btn = _create_button("Fechar")
+	_site_close_btn.pressed.connect(func() -> void: set_inspected_site(null))
+	site_btn_row.add_child(_site_close_btn)
+
 
 func _create_button(label_text: String) -> Button:
 	var btn := Button.new()
@@ -268,7 +408,7 @@ func _on_placement_confirmed(
 	_result: PlacementValidator.ValidationResult
 ) -> void:
 	_sync_button_states()
-	if _status_panel != null and def != null:
+	if _status_panel != null and def != null and _construction_manager == null:
 		_status_title_label.text = "Posição válida confirmada: %s em (%.1f, %.1f)" % [
 			def.display_name,
 			world_pos.x,
@@ -331,6 +471,136 @@ func _disconnect_controller() -> void:
 		if _placement_controller.hover_state_changed.is_connected(_on_hover_state_changed):
 			_placement_controller.hover_state_changed.disconnect(_on_hover_state_changed)
 	_placement_controller = null
+
+
+func _disconnect_construction() -> void:
+	if _construction_manager != null and is_instance_valid(_construction_manager):
+		if _construction_manager.site_created.is_connected(_on_site_created):
+			_construction_manager.site_created.disconnect(_on_site_created)
+		if _construction_manager.site_creation_rejected.is_connected(_on_site_creation_rejected):
+			_construction_manager.site_creation_rejected.disconnect(_on_site_creation_rejected)
+	if _input_controller != null and is_instance_valid(_input_controller):
+		if _input_controller.construction_site_picked.is_connected(_on_construction_site_picked):
+			_input_controller.construction_site_picked.disconnect(_on_construction_site_picked)
+	if _selection_manager != null and is_instance_valid(_selection_manager):
+		if _selection_manager.selection_changed.is_connected(_on_selection_changed_for_site_ui):
+			_selection_manager.selection_changed.disconnect(_on_selection_changed_for_site_ui)
+	_construction_manager = null
+	_command_controller = null
+	_selection_manager = null
+	_input_controller = null
+
+
+func _on_site_created(site: ConstructionSite) -> void:
+	if site != null and is_instance_valid(site):
+		set_inspected_site(site)
+	if _status_panel != null and site != null and site.definition != null:
+		_status_title_label.text = "Canteiro criado: %s (%s)" % [site.definition.display_name, String(site.site_id)]
+		_status_detail_label.text = "Recursos reservados; designe trabalhadores com clique direito no canteiro"
+		_status_detail_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
+		_status_panel.visible = true
+		_toast_remaining_sec = TOAST_DURATION_SEC
+		set_process(true)
+
+
+func _on_site_creation_rejected(
+	_reason: String,
+	message: String,
+	definition: BuildingDefinition,
+	_world_position: Vector3
+) -> void:
+	if _status_panel != null:
+		var def_name: String = definition.display_name if definition != null else "Edificação"
+		_status_title_label.text = "Não foi possível criar canteiro: %s" % def_name
+		_status_detail_label.text = message if not message.is_empty() else "Operação rejeitada."
+		_status_detail_label.add_theme_color_override(&"font_color", INVALID_TEXT_COLOR)
+		_status_panel.visible = true
+		_toast_remaining_sec = TOAST_DURATION_SEC
+		set_process(true)
+
+
+func _on_construction_site_picked(site: ConstructionSite) -> void:
+	set_inspected_site(site)
+
+
+func _on_selection_changed_for_site_ui(_selected: Array[Unit]) -> void:
+	_refresh_site_panel()
+
+
+func _on_inspected_site_updated(_site: ConstructionSite, _extra_a: Variant = null, _extra_b: Variant = null) -> void:
+	_refresh_site_panel()
+
+
+func _on_assign_selected_pressed() -> void:
+	if _selected_site == null or not is_instance_valid(_selected_site) or _command_controller == null:
+		return
+	var ok: bool = _command_controller.command_units_to_site(_selected_site)
+	if not ok and _status_panel != null:
+		_status_title_label.text = "Designação não aplicada"
+		_status_detail_label.text = "Motivo: %s" % _command_controller.get_last_command_reason()
+		_status_detail_label.add_theme_color_override(&"font_color", INVALID_TEXT_COLOR)
+		_status_panel.visible = true
+		_toast_remaining_sec = TOAST_DURATION_SEC
+		set_process(true)
+	_refresh_site_panel()
+
+
+func _refresh_site_panel() -> void:
+	if _site_panel == null:
+		return
+	if _selected_site == null or not is_instance_valid(_selected_site) or not _selected_site.is_valid():
+		_site_panel.visible = false
+		return
+
+	_site_panel.visible = true
+	var snap: Dictionary = _selected_site.get_status_snapshot()
+	var display_name: String = str(snap.get("display_name", "Canteiro"))
+	_site_title_label.text = "%s [%s]" % [display_name, String(_selected_site.site_id)]
+
+	var fully_supplied: bool = bool(snap.get("is_fully_supplied", false))
+	if fully_supplied:
+		_site_state_label.text = "Estado: Suprido e pronto para construção (T3.4)"
+		_site_state_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
+	else:
+		_site_state_label.text = "Estado: Aguardando suprimento físico (T3.3)"
+		_site_state_label.add_theme_color_override(&"font_color", TOAST_TEXT_COLOR)
+
+	var req: Dictionary = snap.get("required", {}) as Dictionary
+	var buf: Dictionary = snap.get("delivered_buffer", {}) as Dictionary
+	var res_piles: Dictionary = snap.get("reserved_in_piles", {}) as Dictionary
+	var transit: Dictionary = snap.get("in_transit", {}) as Dictionary
+	var missing: Dictionary = snap.get("missing", {}) as Dictionary
+	var res_lines: Array[String] = []
+	var keys: Array[StringName] = []
+	for k: Variant in req.keys():
+		keys.append(k as StringName)
+	keys.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
+	for res_id: StringName in keys:
+		var r_def: ResourceDefinition = _selected_site.get_resource_definition(res_id)
+		var label: String = r_def.display_name if (r_def != null and not r_def.display_name.is_empty()) else String(res_id)
+		res_lines.append("%s: Buf %d/%d | Res %d | Tr %d | Falt %d" % [
+			label,
+			int(buf.get(res_id, 0)),
+			int(req.get(res_id, 0)),
+			int(res_piles.get(res_id, 0)),
+			int(transit.get(res_id, 0)),
+			int(missing.get(res_id, 0)),
+		])
+	_site_resources_label.text = "\n".join(res_lines)
+
+	var workers: Array = snap.get("workers", []) as Array
+	if workers.is_empty():
+		_site_workers_label.text = "Trabalhadores: nenhum designado (máx. constr.: %d)" % int(snap.get("max_builders", 2))
+	else:
+		var w_lines: Array[String] = ["Trabalhadores (%d):" % workers.size()]
+		for w: Dictionary in workers:
+			w_lines.append("- %s: %s" % [str(w.get("name", "?")), str(w.get("role_label", "?"))])
+		_site_workers_label.text = "\n".join(w_lines)
+
+	if _site_assign_btn != null:
+		var sel_count: int = _selection_manager.get_selected_units().size() if _selection_manager != null else 0
+		_site_assign_btn.disabled = (sel_count <= 0 or _command_controller == null)
+		_site_assign_btn.text = "Designar selecionados (%d)" % sel_count if sel_count > 0 else "Designar selecionados"
 
 
 func _consume_viewport_input() -> void:

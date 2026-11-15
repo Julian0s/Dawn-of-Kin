@@ -117,9 +117,19 @@ func pick_along_ray(
 	solid_query.collide_with_bodies = true
 	var solid_hit: Dictionary = space_state.intersect_ray(solid_query)
 
+	var building_query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+		ray_origin,
+		ray_end,
+		CollisionLayers.MASK_BUILDINGS
+	)
+	building_query.collide_with_areas = true
+	building_query.collide_with_bodies = true
+	var building_hit: Dictionary = space_state.intersect_ray(building_query)
+
 	var has_sel: bool = not sel_hit.is_empty()
 	var has_res: bool = not res_hit.is_empty()
 	var has_solid: bool = not solid_hit.is_empty()
+	var has_building: bool = not building_hit.is_empty()
 
 	var picked_unit: Unit = _resolve_unit_from_collider(sel_hit.get("collider")) if has_sel else null
 	var unit_pos: Vector3 = Vector3.ZERO
@@ -146,26 +156,44 @@ func pick_along_ray(
 			source_dist
 		)
 
-	if unit_visible and source_visible:
-		if source_dist + OCCLUSION_EPSILON < unit_dist:
-			return _build_resource_pick(picked_source, res_hit, source_pos)
-		return PickResult.from_unit(
-			picked_unit,
-			unit_pos,
-			_safe_hit_normal(sel_hit),
-			sel_hit.get("collider")
-		)
+	var picked_site: ConstructionSite = ConstructionSite.resolve_from_collider(building_hit.get("collider")) if has_building else null
+	var site_pos: Vector3 = Vector3.ZERO
+	var site_dist: float = INF
+	var site_visible: bool = false
+	if picked_site != null and picked_site.is_valid():
+		site_pos = building_hit["position"] as Vector3
+		site_dist = ray_origin.distance_to(site_pos)
+		site_visible = not _is_distance_occluded_by_hit(ray_origin, solid_hit, site_dist)
 
+	var best_kind: StringName = &""
+	var best_dist: float = INF
 	if unit_visible:
-		return PickResult.from_unit(
-			picked_unit,
-			unit_pos,
-			_safe_hit_normal(sel_hit),
-			sel_hit.get("collider")
-		)
+		best_kind = &"unit"
+		best_dist = unit_dist
+	if source_visible and (best_kind.is_empty() or source_dist + OCCLUSION_EPSILON < best_dist):
+		best_kind = &"source"
+		best_dist = source_dist
+	if site_visible and (best_kind.is_empty() or site_dist + OCCLUSION_EPSILON < best_dist):
+		best_kind = &"site"
+		best_dist = site_dist
 
-	if source_visible:
-		return _build_resource_pick(picked_source, res_hit, source_pos)
+	match best_kind:
+		&"unit":
+			return PickResult.from_unit(
+				picked_unit,
+				unit_pos,
+				_safe_hit_normal(sel_hit),
+				sel_hit.get("collider")
+			)
+		&"source":
+			return _build_resource_pick(picked_source, res_hit, source_pos)
+		&"site":
+			return PickResult.from_construction_site(
+				picked_site,
+				site_pos,
+				_safe_hit_normal(building_hit),
+				building_hit.get("collider")
+			)
 
 	if has_solid:
 		var solid_collider: Object = solid_hit.get("collider")

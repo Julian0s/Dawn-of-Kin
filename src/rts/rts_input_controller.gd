@@ -3,6 +3,8 @@ extends Node
 ## Translates viewport mouse and keyboard inputs into selection and hover intentions.
 ## Delegates raycasting to WorldPicker and selection state to SelectionManager.
 
+signal construction_site_picked(site: ConstructionSite)
+
 const BASE_DRAG_THRESHOLD_PX: float = 6.0
 
 @export var selection_manager_path: NodePath = NodePath()
@@ -214,8 +216,14 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 			_selection_manager.toggle_unit(pick.unit)
 		else:
 			_selection_manager.select_single(pick.unit)
+			construction_site_picked.emit(null)
+	elif pick.is_construction_site():
+		if not shift_held:
+			_selection_manager.clear_selection()
+		construction_site_picked.emit(pick.construction_site)
 	elif not shift_held:
 		_selection_manager.clear_selection()
+		construction_site_picked.emit(null)
 
 
 func _handle_right_click(screen_pos: Vector2) -> void:

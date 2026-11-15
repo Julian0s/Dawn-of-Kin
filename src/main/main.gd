@@ -26,6 +26,8 @@ var _time_provider: SimulatedWorldTimeProvider = null
 var _camp_storage_zone: CampStorageZone = null
 var _ground_pile_manager: GroundPileManager = null
 var _settlement_inventory: SettlementInventory = null
+var _construction_sites_root: Node3D = null
+var _construction_manager: ConstructionManager = null
 
 
 func _ready() -> void:
@@ -39,6 +41,7 @@ func _ready() -> void:
 				(child as Unit).set_world_navigation(world_nav)
 
 	_setup_economy(world_nav)
+	_setup_construction(world_nav)
 
 	if _command_controller != null:
 		_command_controller.configure(_selection_manager, world_nav, _destination_marker)
@@ -71,20 +74,70 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			self,
 			_units_root
 		)
+		if not _placement_controller.placement_confirmed.is_connected(_on_placement_confirmed):
+			_placement_controller.placement_confirmed.connect(_on_placement_confirmed)
 	if _placement_test_overlay != null and _placement_controller != null:
 		_placement_test_overlay.configure(
 			_placement_controller,
 			SHELTER_BASIC_DEFINITION,
 			STORAGE_DEPOT_DEFINITION
 		)
+		_placement_test_overlay.configure_construction(
+			_construction_manager,
+			_command_controller,
+			_selection_manager,
+			_input_controller
+		)
+
+
+func _setup_construction(world_nav: WorldNavigation) -> void:
+	_construction_sites_root = get_node_or_null("ConstructionSites") as Node3D
+	if _construction_sites_root == null:
+		_construction_sites_root = Node3D.new()
+		_construction_sites_root.name = "ConstructionSites"
+		add_child(_construction_sites_root)
+
+	_construction_manager = get_node_or_null("ConstructionManager") as ConstructionManager
+	if _construction_manager == null:
+		_construction_manager = ConstructionManager.new()
+		_construction_manager.name = "ConstructionManager"
+		add_child(_construction_manager)
+
+	var defs: Dictionary = {
+		&"food": FOOD_DEFINITION,
+		&"wood": WOOD_DEFINITION,
+		&"stone": STONE_DEFINITION,
+	}
+	_construction_manager.configure(
+		_construction_sites_root,
+		_settlement_inventory,
+		defs,
+		_camp_storage_zone,
+		world_nav,
+		&"default"
+	)
+
+
+func _on_placement_confirmed(
+	definition: BuildingDefinition,
+	world_position: Vector3,
+	_result: PlacementValidator.ValidationResult
+) -> void:
+	if _construction_manager != null and is_instance_valid(_construction_manager):
+		_construction_manager.try_create_site_from_placement(definition, world_position)
 
 
 func _exit_tree() -> void:
+	if _placement_controller != null and is_instance_valid(_placement_controller):
+		if _placement_controller.placement_confirmed.is_connected(_on_placement_confirmed):
+			_placement_controller.placement_confirmed.disconnect(_on_placement_confirmed)
 	if _resource_hud != null:
 		_resource_hud.unbind()
 	if _ground_pile_manager != null:
 		_ground_pile_manager.cleanup()
 		_ground_pile_manager = null
+	_construction_manager = null
+	_construction_sites_root = null
 	_settlement_inventory = null
 	_time_provider = null
 
@@ -183,3 +236,11 @@ func get_placement_controller() -> PlacementController:
 
 func get_placement_test_overlay() -> PlacementTestOverlay:
 	return _placement_test_overlay
+
+
+func get_construction_manager() -> ConstructionManager:
+	return _construction_manager
+
+
+func get_construction_sites_root() -> Node3D:
+	return _construction_sites_root
