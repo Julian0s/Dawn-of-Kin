@@ -14,6 +14,7 @@ var _selection_manager: SelectionManager = null
 var _camera_rig: RtsCameraRig = null
 var _selection_box_overlay: SelectionBoxOverlay = null
 var _command_controller: CommandController = null
+var _placement_controller: PlacementController = null
 var _world_picker: WorldPicker = WorldPicker.new()
 
 var _left_pressed: bool = false
@@ -45,12 +46,29 @@ func _process(_delta: float) -> void:
 	if _hovered_unit != null and (not is_instance_valid(_hovered_unit) or not _hovered_unit.is_inside_tree()):
 		_hovered_unit = null
 
+	if _placement_controller != null and is_instance_valid(_placement_controller) and _placement_controller.is_placement_active():
+		_cancel_active_drag()
+		_set_hovered_unit(null)
+		return
+
 	if _has_pointer_pos and not _is_drag_gesture and _can_pick():
 		_update_hover_at(_last_pointer_pos)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	var viewport: Viewport = get_viewport()
+
+	if _placement_controller != null and is_instance_valid(_placement_controller) and _placement_controller.is_placement_active():
+		_cancel_active_drag()
+		_set_hovered_unit(null)
+		if _placement_controller.handle_unhandled_input(event):
+			if viewport != null:
+				viewport.set_input_as_handled()
+		elif event is InputEventMouseMotion:
+			var motion_ev: InputEventMouseMotion = event as InputEventMouseMotion
+			_last_pointer_pos = motion_ev.position
+			_has_pointer_pos = true
+		return
 
 	if event.is_action_pressed(InputActions.CLEAR_SELECTION):
 		if _is_drag_gesture or _left_pressed:
@@ -133,7 +151,8 @@ func configure(
 	selection_manager: SelectionManager,
 	camera_rig: RtsCameraRig,
 	selection_box_overlay: SelectionBoxOverlay = null,
-	command_controller: CommandController = null
+	command_controller: CommandController = null,
+	placement_controller: PlacementController = null
 ) -> void:
 	_selection_manager = selection_manager
 	_camera_rig = camera_rig
@@ -141,6 +160,12 @@ func configure(
 		_selection_box_overlay = selection_box_overlay
 	if command_controller != null:
 		_command_controller = command_controller
+	if placement_controller != null:
+		_placement_controller = placement_controller
+
+
+func set_placement_controller(placement_controller: PlacementController) -> void:
+	_placement_controller = placement_controller
 
 
 func set_world_picker(picker: WorldPicker) -> void:

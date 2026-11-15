@@ -6,6 +6,8 @@ extends Node3D
 const FOOD_DEFINITION: ResourceDefinition = preload("res://data/resources/food.tres")
 const WOOD_DEFINITION: ResourceDefinition = preload("res://data/resources/wood.tres")
 const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone.tres")
+const SHELTER_BASIC_DEFINITION: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
+const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildings/storage_depot.tres")
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -15,8 +17,10 @@ const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone
 @onready var _input_controller: RtsInputController = $RtsInputController
 @onready var _destination_marker: DestinationMarker = $DestinationMarker
 @onready var _economy_clock: EconomyClockController = get_node_or_null("EconomyClockController") as EconomyClockController
+@onready var _placement_controller: PlacementController = get_node_or_null("PlacementController") as PlacementController
 @onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
 @onready var _resource_hud: ResourceHud = get_node_or_null("UiLayer/ResourceHud") as ResourceHud
+@onready var _placement_test_overlay: PlacementTestOverlay = get_node_or_null("UiLayer/PlacementTestOverlay") as PlacementTestOverlay
 
 var _time_provider: SimulatedWorldTimeProvider = null
 var _camp_storage_zone: CampStorageZone = null
@@ -41,11 +45,37 @@ func _ready() -> void:
 		if _settlement_inventory != null and _camp_storage_zone != null:
 			_command_controller.configure_economy(_settlement_inventory, _camp_storage_zone)
 
+	_setup_placement(world_nav)
+
 	if _input_controller != null:
-		_input_controller.configure(_selection_manager, _camera_rig, _selection_box_overlay, _command_controller)
+		_input_controller.configure(
+			_selection_manager,
+			_camera_rig,
+			_selection_box_overlay,
+			_command_controller,
+			_placement_controller
+		)
 
 	if _resource_hud != null:
 		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
+
+
+func _setup_placement(world_nav: WorldNavigation) -> void:
+	if _placement_controller != null:
+		_placement_controller.configure(
+			_camera_rig,
+			_test_map,
+			world_nav,
+			_camp_storage_zone,
+			_ground_pile_manager,
+			self
+		)
+	if _placement_test_overlay != null and _placement_controller != null:
+		_placement_test_overlay.configure(
+			_placement_controller,
+			SHELTER_BASIC_DEFINITION,
+			STORAGE_DEPOT_DEFINITION
+		)
 
 
 func _exit_tree() -> void:
@@ -144,3 +174,11 @@ func get_economy_clock() -> EconomyClockController:
 
 func get_time_provider() -> SimulatedWorldTimeProvider:
 	return _time_provider
+
+
+func get_placement_controller() -> PlacementController:
+	return _placement_controller
+
+
+func get_placement_test_overlay() -> PlacementTestOverlay:
+	return _placement_test_overlay

@@ -1,0 +1,339 @@
+class_name PlacementTestOverlay
+extends Control
+## Minimal temporary UI trigger and status feedback for T3.2 spatial placement validation.
+## Intentionally temporary for T3.2; does not implement the T3.5 build catalog or inspector HUD.
+
+const TOAST_DURATION_SEC: float = 2.8
+const VALID_TEXT_COLOR: Color = Color(0.58, 0.80, 0.52, 1.0)
+const INVALID_TEXT_COLOR: Color = Color(0.90, 0.45, 0.38, 1.0)
+const TOAST_TEXT_COLOR: Color = Color(0.86, 0.88, 0.62, 1.0)
+
+var _placement_controller: PlacementController = null
+var _shelter_def: BuildingDefinition = null
+var _depot_def: BuildingDefinition = null
+
+var _bar_panel: PanelContainer = null
+var _shelter_btn: Button = null
+var _depot_btn: Button = null
+var _cancel_btn: Button = null
+
+var _status_panel: PanelContainer = null
+var _status_title_label: Label = null
+var _status_detail_label: Label = null
+
+var _toast_remaining_sec: float = 0.0
+var _built_ui: bool = false
+
+
+func _ready() -> void:
+	set_process(false)
+	set_physics_process(false)
+	_build_ui()
+
+
+func _exit_tree() -> void:
+	_disconnect_controller()
+
+
+func _process(delta: float) -> void:
+	if _toast_remaining_sec <= 0.0:
+		set_process(false)
+		return
+	_toast_remaining_sec -= maxf(delta, 0.0)
+	if _toast_remaining_sec <= 0.0:
+		_toast_remaining_sec = 0.0
+		set_process(false)
+		if _placement_controller == null or not _placement_controller.is_placement_active():
+			if _status_panel != null:
+				_status_panel.visible = false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _placement_controller == null or not is_instance_valid(_placement_controller):
+		return
+	if event is InputEventKey:
+		var key_ev: InputEventKey = event as InputEventKey
+		if key_ev.pressed and not key_ev.echo:
+			if key_ev.physical_keycode == KEY_F6 and _shelter_def != null:
+				_toggle_definition(_shelter_def)
+				_consume_viewport_input()
+			elif key_ev.physical_keycode == KEY_F7 and _depot_def != null:
+				_toggle_definition(_depot_def)
+				_consume_viewport_input()
+
+
+func configure(
+	placement_controller: PlacementController,
+	shelter_definition: BuildingDefinition,
+	depot_definition: BuildingDefinition
+) -> void:
+	_build_ui()
+	_disconnect_controller()
+	_placement_controller = placement_controller
+	_shelter_def = shelter_definition
+	_depot_def = depot_definition
+
+	if _placement_controller != null:
+		_placement_controller.placement_started.connect(_on_placement_started)
+		_placement_controller.placement_cancelled.connect(_on_placement_cancelled)
+		_placement_controller.placement_confirmed.connect(_on_placement_confirmed)
+		_placement_controller.placement_rejected.connect(_on_placement_rejected)
+		_placement_controller.hover_state_changed.connect(_on_hover_state_changed)
+
+	_sync_button_states()
+
+
+func get_shelter_button() -> Button:
+	return _shelter_btn
+
+
+func get_depot_button() -> Button:
+	return _depot_btn
+
+
+func get_cancel_button() -> Button:
+	return _cancel_btn
+
+
+func get_status_title_text() -> String:
+	return _status_title_label.text if _status_title_label != null else ""
+
+
+func get_status_detail_text() -> String:
+	return _status_detail_label.text if _status_detail_label != null else ""
+
+
+func is_status_visible() -> bool:
+	return _status_panel != null and _status_panel.visible
+
+
+func _build_ui() -> void:
+	if _built_ui:
+		return
+	_built_ui = true
+
+	layout_mode = 1
+	anchors_preset = Control.PRESET_FULL_RECT
+	anchor_right = 1.0
+	anchor_bottom = 1.0
+	grow_horizontal = Control.GROW_DIRECTION_BOTH
+	grow_vertical = Control.GROW_DIRECTION_BOTH
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	_bar_panel = PanelContainer.new()
+	_bar_panel.name = "TemporaryPlacementBar"
+	_bar_panel.anchor_left = 1.0
+	_bar_panel.anchor_top = 1.0
+	_bar_panel.anchor_right = 1.0
+	_bar_panel.anchor_bottom = 1.0
+	_bar_panel.offset_left = -312.0
+	_bar_panel.offset_top = -84.0
+	_bar_panel.offset_right = -16.0
+	_bar_panel.offset_bottom = -16.0
+	_bar_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_bar_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_bar_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bar_panel.add_theme_stylebox_override(&"panel", HudStyle.create_panel_style())
+	add_child(_bar_panel)
+
+	var bar_margin := MarginContainer.new()
+	bar_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_margin.add_theme_constant_override(&"margin_left", 10)
+	bar_margin.add_theme_constant_override(&"margin_top", 6)
+	bar_margin.add_theme_constant_override(&"margin_right", 10)
+	bar_margin.add_theme_constant_override(&"margin_bottom", 8)
+	_bar_panel.add_child(bar_margin)
+
+	var bar_vbox := VBoxContainer.new()
+	bar_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_vbox.add_theme_constant_override(&"separation", 4)
+	bar_margin.add_child(bar_vbox)
+
+	var header := Label.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.text = "Prévia T3.2 (teste temporário)"
+	header.add_theme_font_size_override(&"font_size", 11)
+	header.add_theme_color_override(&"font_color", HudStyle.TEXT_MUTED_COLOR)
+	bar_vbox.add_child(header)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn_row.add_theme_constant_override(&"separation", 6)
+	bar_vbox.add_child(btn_row)
+
+	_shelter_btn = _create_button("Abrigo 4×4 [F6]")
+	_shelter_btn.pressed.connect(func() -> void: _toggle_definition(_shelter_def))
+	btn_row.add_child(_shelter_btn)
+
+	_depot_btn = _create_button("Depósito 5×4 [F7]")
+	_depot_btn.pressed.connect(func() -> void: _toggle_definition(_depot_def))
+	btn_row.add_child(_depot_btn)
+
+	_cancel_btn = _create_button("Cancelar")
+	_cancel_btn.visible = false
+	_cancel_btn.pressed.connect(_on_cancel_pressed)
+	btn_row.add_child(_cancel_btn)
+
+	_status_panel = PanelContainer.new()
+	_status_panel.name = "PlacementStatusBanner"
+	_status_panel.anchor_left = 0.5
+	_status_panel.anchor_right = 0.5
+	_status_panel.offset_left = -280.0
+	_status_panel.offset_top = 16.0
+	_status_panel.offset_right = 280.0
+	_status_panel.offset_bottom = 72.0
+	_status_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_panel.visible = false
+	_status_panel.add_theme_stylebox_override(&"panel", HudStyle.create_panel_style())
+	add_child(_status_panel)
+
+	var status_margin := MarginContainer.new()
+	status_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_margin.add_theme_constant_override(&"margin_left", 14)
+	status_margin.add_theme_constant_override(&"margin_top", 8)
+	status_margin.add_theme_constant_override(&"margin_right", 14)
+	status_margin.add_theme_constant_override(&"margin_bottom", 8)
+	_status_panel.add_child(status_margin)
+
+	var status_vbox := VBoxContainer.new()
+	status_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_vbox.add_theme_constant_override(&"separation", 3)
+	status_margin.add_child(status_vbox)
+
+	_status_title_label = Label.new()
+	_status_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_title_label.add_theme_font_size_override(&"font_size", 13)
+	_status_title_label.add_theme_color_override(&"font_color", HudStyle.TEXT_PRIMARY_COLOR)
+	status_vbox.add_child(_status_title_label)
+
+	_status_detail_label = Label.new()
+	_status_detail_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_detail_label.add_theme_font_size_override(&"font_size", 13)
+	_status_detail_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
+	status_vbox.add_child(_status_detail_label)
+
+
+func _create_button(label_text: String) -> Button:
+	var btn := Button.new()
+	btn.text = label_text
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	btn.add_theme_font_size_override(&"font_size", 12)
+	return btn
+
+
+func _toggle_definition(def: BuildingDefinition) -> void:
+	if _placement_controller == null or def == null:
+		return
+	if _placement_controller.is_placement_active() and _placement_controller.get_active_definition() == def:
+		_placement_controller.cancel_placement()
+		return
+	_placement_controller.start_placement(def)
+
+
+func _on_cancel_pressed() -> void:
+	if _placement_controller != null:
+		_placement_controller.cancel_placement()
+
+
+func _on_placement_started(def: BuildingDefinition) -> void:
+	_toast_remaining_sec = 0.0
+	set_process(false)
+	_sync_button_states()
+	if _status_panel != null and def != null:
+		_status_title_label.text = "Posicionando: %s (%.1f × %.1f m) — Esq.: confirmar | Dir./Esc: cancelar" % [
+			def.display_name,
+			def.footprint_size.x,
+			def.footprint_size.y,
+		]
+		_status_detail_label.text = "Mova o cursor sobre o terreno"
+		_status_detail_label.add_theme_color_override(&"font_color", HudStyle.TEXT_SECONDARY_COLOR)
+		_status_panel.visible = true
+
+
+func _on_placement_cancelled(_def: BuildingDefinition) -> void:
+	_toast_remaining_sec = 0.0
+	set_process(false)
+	_sync_button_states()
+	if _status_panel != null:
+		_status_panel.visible = false
+
+
+func _on_placement_confirmed(
+	def: BuildingDefinition,
+	world_pos: Vector3,
+	_result: PlacementValidator.ValidationResult
+) -> void:
+	_sync_button_states()
+	if _status_panel != null and def != null:
+		_status_title_label.text = "Posição válida confirmada: %s em (%.1f, %.1f)" % [
+			def.display_name,
+			world_pos.x,
+			world_pos.z,
+		]
+		_status_detail_label.text = "Simulação T3.2 concluída — nenhuma obra ou reserva criada"
+		_status_detail_label.add_theme_color_override(&"font_color", TOAST_TEXT_COLOR)
+		_status_panel.visible = true
+		_toast_remaining_sec = TOAST_DURATION_SEC
+		set_process(true)
+
+
+func _on_placement_rejected(
+	_def: BuildingDefinition,
+	_world_pos: Vector3,
+	result: PlacementValidator.ValidationResult
+) -> void:
+	_sync_button_states()
+	if _status_panel != null and result != null:
+		_status_detail_label.text = result.reason_text if not result.reason_text.is_empty() else "Posição inválida."
+		_status_detail_label.add_theme_color_override(&"font_color", INVALID_TEXT_COLOR)
+		_status_panel.visible = true
+
+
+func _on_hover_state_changed(valid: bool, reason_text: String, _world_pos: Vector3) -> void:
+	if _placement_controller == null or not _placement_controller.is_placement_active():
+		return
+	if _status_panel == null:
+		return
+	_status_panel.visible = true
+	if valid:
+		_status_detail_label.text = "Posição válida (clique esquerdo para validar malha e confirmar)"
+		_status_detail_label.add_theme_color_override(&"font_color", VALID_TEXT_COLOR)
+	else:
+		_status_detail_label.text = reason_text if not reason_text.is_empty() else "Posição inválida."
+		_status_detail_label.add_theme_color_override(&"font_color", INVALID_TEXT_COLOR)
+
+
+func _sync_button_states() -> void:
+	var active_def: BuildingDefinition = _placement_controller.get_active_definition() if _placement_controller != null else null
+	var is_active: bool = _placement_controller != null and _placement_controller.is_placement_active()
+	if _cancel_btn != null:
+		_cancel_btn.visible = is_active
+	if _shelter_btn != null:
+		_shelter_btn.text = ("[Abrigo 4×4]" if (is_active and active_def == _shelter_def) else "Abrigo 4×4 [F6]")
+	if _depot_btn != null:
+		_depot_btn.text = ("[Depósito 5×4]" if (is_active and active_def == _depot_def) else "Depósito 5×4 [F7]")
+
+
+func _disconnect_controller() -> void:
+	if _placement_controller != null and is_instance_valid(_placement_controller):
+		if _placement_controller.placement_started.is_connected(_on_placement_started):
+			_placement_controller.placement_started.disconnect(_on_placement_started)
+		if _placement_controller.placement_cancelled.is_connected(_on_placement_cancelled):
+			_placement_controller.placement_cancelled.disconnect(_on_placement_cancelled)
+		if _placement_controller.placement_confirmed.is_connected(_on_placement_confirmed):
+			_placement_controller.placement_confirmed.disconnect(_on_placement_confirmed)
+		if _placement_controller.placement_rejected.is_connected(_on_placement_rejected):
+			_placement_controller.placement_rejected.disconnect(_on_placement_rejected)
+		if _placement_controller.hover_state_changed.is_connected(_on_hover_state_changed):
+			_placement_controller.hover_state_changed.disconnect(_on_hover_state_changed)
+	_placement_controller = null
+
+
+func _consume_viewport_input() -> void:
+	var viewport: Viewport = get_viewport()
+	if viewport != null:
+		viewport.set_input_as_handled()

@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
@@ -14,6 +14,8 @@
 [ext_resource type="PackedScene" path="res://src/rts/destination_marker.tscn" id="12_destination_marker"]
 [ext_resource type="Script" path="res://src/economy/economy_clock_controller.gd" id="13_economy_clock"]
 [ext_resource type="PackedScene" path="res://src/ui/resource_hud.tscn" id="14_resource_hud"]
+[ext_resource type="Script" path="res://src/buildings/placement_controller.gd" id="15_placement_controller"]
+[ext_resource type="Script" path="res://src/buildings/placement_test_overlay.gd" id="16_placement_test_overlay"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -68,6 +70,9 @@ command_controller_path = NodePath("../CommandController")
 [node name="EconomyClockController" type="Node" parent="."]
 script = ExtResource("13_economy_clock")
 
+[node name="PlacementController" type="Node" parent="."]
+script = ExtResource("15_placement_controller")
+
 [node name="RtsCameraRig" parent="." instance=ExtResource("3_camera_rig")]
 
 [node name="UiLayer" type="CanvasLayer" parent="."]
@@ -75,5 +80,15 @@ script = ExtResource("13_economy_clock")
 [node name="SelectionBoxOverlay" parent="UiLayer" instance=ExtResource("10_selection_box_overlay")]
 
 [node name="ResourceHud" parent="UiLayer" instance=ExtResource("14_resource_hud")]
+
+[node name="PlacementTestOverlay" type="Control" parent="UiLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("16_placement_test_overlay")
 
 [node name="DebugOverlay" parent="UiLayer" instance=ExtResource("4_debug_overlay")]
