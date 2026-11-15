@@ -332,22 +332,39 @@ func confirm_at_world_pos(world_pos: Vector3) -> PlacementValidator.ValidationRe
 		target_def,
 		world_pos,
 		ctx,
-		func(async_result: PlacementValidator.ValidationResult) -> void:
-			sync_returned[0] = async_result
-			if not is_instance_valid(self) or not is_inside_tree():
-				return
-			if req_generation != _confirm_generation:
-				return
-			_confirm_in_flight = false
-			_active_confirm_token = null
-			if not is_placement_active() or _active_definition != target_def:
-				return
-			_apply_confirm_outcome(target_def, world_pos, async_result)
+		PlacementController._on_async_confirm_complete.bind(
+			weakref(self),
+			req_generation,
+			target_def,
+			world_pos,
+			sync_returned
+		)
 	)
 
 	if _active_confirm_token == null:
 		_confirm_in_flight = false
 	return sync_returned[0]
+
+
+static func _on_async_confirm_complete(
+	async_result: PlacementValidator.ValidationResult,
+	controller_ref: WeakRef,
+	req_generation: int,
+	target_def: BuildingDefinition,
+	world_pos: Vector3,
+	sync_returned: Array[PlacementValidator.ValidationResult]
+) -> void:
+	sync_returned[0] = async_result
+	var controller: PlacementController = controller_ref.get_ref() as PlacementController
+	if controller == null or not is_instance_valid(controller) or not controller.is_inside_tree():
+		return
+	if req_generation != controller._confirm_generation:
+		return
+	controller._confirm_in_flight = false
+	controller._active_confirm_token = null
+	if not controller.is_placement_active() or controller._active_definition != target_def:
+		return
+	controller._apply_confirm_outcome(target_def, world_pos, async_result)
 
 
 func _apply_confirm_outcome(

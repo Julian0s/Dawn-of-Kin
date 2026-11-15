@@ -457,3 +457,131 @@ func test_04_dynamic_world_hover_updates_with_stationary_cursor_and_midflight_ca
 
 	vp.queue_free()
 	await wait_process_frames(2)
+
+
+func test_05_async_confirm_race_conditions_scenarios_a_to_e() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var main_root: MainScene = ctx["main"] as MainScene
+	var camera: Camera3D = ctx["camera"] as Camera3D
+	var placement: PlacementController = ctx["placement"] as PlacementController
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var leader_a: Unit = units[0]
+
+	var confirmed_events: Array[Dictionary] = []
+	var rejected_events: Array[Dictionary] = []
+	var cancelled_defs: Array[BuildingDefinition] = []
+	placement.placement_confirmed.connect(func(def: BuildingDefinition, pos: Vector3, res: PlacementValidator.ValidationResult) -> void:
+		confirmed_events.append({"def": def, "pos": pos, "result": res})
+	)
+	placement.placement_rejected.connect(func(def: BuildingDefinition, pos: Vector3, res: PlacementValidator.ValidationResult) -> void:
+		rejected_events.append({"def": def, "pos": pos, "result": res})
+	)
+	placement.placement_cancelled.connect(func(def: BuildingDefinition) -> void:
+		cancelled_defs.append(def)
+	)
+
+	await _push_key_press(vp, KEY_F6)
+	assert_true(placement.is_placement_active())
+	var shelter_def: BuildingDefinition = placement.get_active_definition()
+	var free_world := Vector3(-6.0, 0.0, 1.5)
+	var free_screen: Vector2 = camera.unproject_position(free_world)
+	_push_mouse_motion(vp, free_screen)
+	await wait_process_frames(2)
+	var preview: PlacementPreview = placement.get_preview()
+	assert_true(preview.is_valid_state())
+
+	# Scenario A: worker enters footprint deterministically while confirm bake is in flight.
+	var orig_leader_pos: Vector3 = leader_a.global_position
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending(), "Async confirm must be pending right after dispatch")
+	assert_null(placement.confirm_at_world_pos(free_world), "Duplicate confirm while pending must be ignored")
+	leader_a.global_position = free_world
+	await _wait_for_confirm_settled(placement)
+
+	assert_eq(confirmed_events.size(), 0, "Scenario A must not emit placement_confirmed")
+	assert_eq(rejected_events.size(), 1, "Scenario A must emit placement_rejected")
+	assert_eq((rejected_events[0]["result"] as PlacementValidator.ValidationResult).reason_code, PlacementValidator.REASON_UNIT_OVERLAP)
+	assert_true(placement.is_placement_active(), "Scenario A rejection must keep placement active")
+	assert_false(preview.is_valid_state(), "Scenario A rejection must flip preview to invalid red")
+
+	leader_a.global_position = orig_leader_pos
+	await wait_physics_frames(2)
+
+	# Scenario B: physical pile spawns in footprint before async callback completes.
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	var dyn_pile := GroundResourcePile.new()
+	test_map.add_child(dyn_pile)
+	dyn_pile.configure_initial(981, main_root.WOOD_DEFINITION, 5, free_world)
+	await _wait_for_confirm_settled(placement)
+
+	assert_eq(confirmed_events.size(), 0, "Scenario B must not emit placement_confirmed")
+	assert_eq(rejected_events.size(), 2, "Scenario B must emit placement_rejected")
+	assert_eq((rejected_events[1]["result"] as PlacementValidator.ValidationResult).reason_code, PlacementValidator.REASON_PILE_OVERLAP)
+	assert_true(placement.is_placement_active(), "Scenario B rejection must keep placement active")
+	assert_false(preview.is_valid_state(), "Scenario B rejection must show invalid red preview")
+
+	dyn_pile.queue_free()
+	await wait_process_frames(2)
+
+	# Scenario E: navigation rebake triggered mid-flight must invalidate stale candidate mesh.
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	nav.request_rebake()
+	await _wait_for_confirm_settled(placement)
+	var nav_wait: int = 0
+	while not nav.is_navigation_ready() and nav_wait < 120:
+		await wait_process_frames(1)
+		nav_wait += 1
+	assert_true(nav.is_navigation_ready(), "Navigation rebake must settle")
+	assert_eq(confirmed_events.size(), 0, "Scenario E must never emit placement_confirmed from stale bake")
+	assert_eq(rejected_events.size(), 3, "Scenario E must emit placement_rejected")
+	assert_true(placement.is_placement_active())
+
+	# Scenario D1: RMB cancel during pending bake prevents confirmation and never reopens preview.
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	await _push_mouse_click(vp, MOUSE_BUTTON_RIGHT, free_screen)
+	assert_false(placement.is_confirm_pending(), "RMB cancel must clear pending confirm immediately")
+	assert_false(placement.is_placement_active(), "RMB cancel must deactivate placement")
+	assert_false(preview.visible, "Preview must remain hidden after mid-flight cancel")
+	assert_eq(cancelled_defs.size(), 1)
+	await wait_process_frames(15)
+	assert_eq(confirmed_events.size(), 0, "Delayed callback after RMB cancel must not confirm")
+	assert_false(placement.is_placement_active(), "Delayed callback must not reopen placement")
+	assert_false(preview.visible, "Delayed callback must not reopen preview")
+
+	# Scenario D2: building switch during pending bake prevents confirmation for old building.
+	await _push_key_press(vp, KEY_F6)
+	assert_true(placement.is_placement_active())
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	await _push_key_press(vp, KEY_F7)
+	var depot_def: BuildingDefinition = placement.get_active_definition()
+	assert_ne(depot_def, shelter_def)
+	await wait_process_frames(15)
+	assert_eq(confirmed_events.size(), 0, "Switching building during pending bake must abort old confirm")
+	assert_true(placement.is_placement_active())
+	assert_eq(placement.get_active_definition(), depot_def)
+
+	# Scenario C: stable state completes and confirms normally.
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	await _wait_for_confirm_settled(placement)
+	assert_eq(confirmed_events.size(), 1, "Scenario C stable confirm must emit placement_confirmed once")
+	assert_true((confirmed_events[0]["result"] as PlacementValidator.ValidationResult).valid)
+	assert_false(placement.is_placement_active())
+
+	# Scenario D3: destroying controller mid-flight cancels safely without confirming.
+	await _push_key_press(vp, KEY_F6)
+	placement.confirm_at_world_pos(free_world)
+	assert_true(placement.is_confirm_pending())
+	placement.queue_free()
+	await get_tree().create_timer(0.18).timeout
+	assert_eq(confirmed_events.size(), 1, "Freeing controller mid-flight must never emit additional confirmation")
+
+	vp.queue_free()
+	await wait_process_frames(2)

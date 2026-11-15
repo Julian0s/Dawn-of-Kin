@@ -117,6 +117,7 @@ var _is_syncing: bool = false
 var _sync_started_usec: int = 0
 var _sync_min_map_iteration: int = 1
 var _sync_min_region_iteration: int = 1
+var _navigation_revision: int = 0
 var _last_bake_ms: float = 0.0
 var _last_sync_ms: float = 0.0
 var _cached_static_vertices: PackedFloat32Array = PackedFloat32Array()
@@ -124,6 +125,14 @@ var _cached_static_indices: PackedInt32Array = PackedInt32Array()
 var _cached_static_source_id: int = 0
 var _cached_static_bounds: Rect2 = Rect2()
 var _has_static_geometry_cache: bool = false
+var _active_async_tokens: Array[AsyncBakeToken] = []
+
+
+func _exit_tree() -> void:
+	for tok: AsyncBakeToken in _active_async_tokens:
+		if tok != null:
+			tok.cancel()
+	_active_async_tokens.clear()
 
 
 func _ready() -> void:
@@ -145,6 +154,7 @@ func _physics_process(_delta: float) -> void:
 	if elapsed_sec > SYNC_TIMEOUT_SEC:
 		_is_syncing = false
 		_is_ready = false
+		_navigation_revision += 1
 		set_physics_process(false)
 		push_error("WorldNavigation: Timed out waiting for NavigationServer3D map synchronization.")
 		navigation_failed.emit("sync_timeout")
@@ -153,6 +163,7 @@ func _physics_process(_delta: float) -> void:
 	if _check_navigation_server_ready():
 		_is_syncing = false
 		_is_ready = true
+		_navigation_revision += 1
 		_last_sync_ms = float(Time.get_ticks_usec() - _sync_started_usec) / 1000.0
 		set_physics_process(false)
 		navigation_ready.emit()
@@ -162,6 +173,10 @@ func is_navigation_ready() -> bool:
 	return _is_ready
 
 
+func get_navigation_revision() -> int:
+	return _navigation_revision
+
+
 func set_map_bounds(bounds: Rect2) -> void:
 	if not map_bounds.is_equal_approx(bounds):
 		invalidate_static_geometry_cache()
@@ -169,11 +184,14 @@ func set_map_bounds(bounds: Rect2) -> void:
 
 
 func invalidate_static_geometry_cache() -> void:
+	var had_cache: bool = _has_static_geometry_cache
 	_has_static_geometry_cache = false
 	_cached_static_vertices = PackedFloat32Array()
 	_cached_static_indices = PackedInt32Array()
 	_cached_static_source_id = 0
 	_cached_static_bounds = Rect2()
+	if had_cache:
+		_navigation_revision += 1
 
 
 func has_static_geometry_cache() -> bool:
@@ -204,6 +222,7 @@ func get_last_bake_metrics() -> Dictionary:
 func request_rebake() -> void:
 	_is_ready = false
 	_is_syncing = false
+	_navigation_revision += 1
 
 	var source_root: Node = get_node_or_null(source_root_path)
 	if source_root == null:
@@ -356,19 +375,48 @@ func create_candidate_session_async(
 	var source_data: NavigationMeshSourceGeometryData3D = prep["source_data"] as NavigationMeshSourceGeometryData3D
 	var prepare_ms: float = float(prep.get("prepare_ms", 0.0))
 	var bake_start_usec: int = Time.get_ticks_usec()
+	_prune_finished_async_tokens()
+	_active_async_tokens.append(token)
 
-	var finish_cb: Callable = func() -> void:
-		var elapsed_bake_ms: float = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
-		if token.cancelled or not is_instance_valid(self) or not is_inside_tree():
-			return
-		var session: CandidateSession = _finalize_candidate_session(cand_nav, prepare_ms, elapsed_bake_ms)
-		if on_complete.is_valid():
-			on_complete.call(session)
-		else:
-			session.dispose()
-
+	var finish_cb: Callable = WorldNavigation._on_candidate_bake_async_complete.bind(
+		weakref(self),
+		token,
+		cand_nav,
+		bake_start_usec,
+		prepare_ms,
+		on_complete
+	)
 	NavigationServer3D.bake_from_source_geometry_data_async(cand_nav, source_data, finish_cb)
 	return token
+
+
+func _prune_finished_async_tokens() -> void:
+	for i: int in range(_active_async_tokens.size() - 1, -1, -1):
+		var tok: AsyncBakeToken = _active_async_tokens[i]
+		if tok == null or tok.cancelled:
+			_active_async_tokens.remove_at(i)
+
+
+static func _on_candidate_bake_async_complete(
+	nav_ref: WeakRef,
+	token: AsyncBakeToken,
+	cand_nav: NavigationMesh,
+	bake_start_usec: int,
+	prepare_ms: float,
+	on_complete: Callable
+) -> void:
+	if token != null and token.cancelled:
+		return
+	var world_nav: WorldNavigation = nav_ref.get_ref() as WorldNavigation
+	if world_nav == null or not is_instance_valid(world_nav) or not world_nav.is_inside_tree():
+		return
+	world_nav._active_async_tokens.erase(token)
+	var elapsed_bake_ms: float = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
+	var session: CandidateSession = world_nav._finalize_candidate_session(cand_nav, prepare_ms, elapsed_bake_ms)
+	if on_complete.is_valid():
+		on_complete.call(session)
+	else:
+		session.dispose()
 
 
 func _store_static_geometry_cache(source_root: Node, source_data: NavigationMeshSourceGeometryData3D) -> void:

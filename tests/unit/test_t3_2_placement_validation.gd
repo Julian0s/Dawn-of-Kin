@@ -484,3 +484,137 @@ func test_06_region_isolation_two_regions_and_async_confirm_parity() -> void:
 		var ares: PlacementValidator.ValidationResult = async_results[0]
 		assert_true(ares.valid, "Async confirm on valid spot must match sync validity: %s" % ares.reason_text)
 		assert_true(ares.used_candidate_navmesh)
+
+
+func test_07_async_confirm_revalidation_scenarios_a_b_c_e() -> void:
+	var test_map: TestMap = TEST_MAP_SCENE.instantiate() as TestMap
+	add_test_child(test_map)
+	var nav: WorldNavigation = test_map.get_navigation()
+	assert_true(await _wait_for_navigation_ready(nav), "WorldNavigation must become ready")
+	await wait_physics_frames(2)
+
+	var camp_zone: CampStorageZone = test_map.get_camp_storage_zone()
+	var worker: Unit = UNIT_SCENE.instantiate() as Unit
+	worker.position = Vector3(-14.0, 0.0, 4.0)
+	test_map.add_child(worker)
+	await wait_physics_frames(2)
+
+	var validator := PlacementValidator.new()
+	var ctx := PlacementValidator.ValidationContext.from_region(test_map, nav, camp_zone)
+	var valid_pos := Vector3(0.37, 0.0, -13.19)
+
+	# Scenario C: stable world state confirms cleanly via async validator contract.
+	var res_c: Array[PlacementValidator.ValidationResult] = []
+	var tok_c: WorldNavigation.AsyncBakeToken = validator.validate_confirm_async(
+		DEPOT_DEF,
+		valid_pos,
+		ctx,
+		func(r: PlacementValidator.ValidationResult) -> void:
+			res_c.append(r)
+	)
+	assert_not_null(tok_c)
+	var wait_f: int = 0
+	while res_c.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_eq(res_c.size(), 1, "Scenario C callback must fire once")
+	assert_true(res_c[0].valid, "Scenario C stable async confirm must succeed: %s" % res_c[0].reason_text)
+	assert_true(res_c[0].used_candidate_navmesh)
+
+	# Scenario A: worker enters footprint deterministically while async bake is in flight.
+	var res_a: Array[PlacementValidator.ValidationResult] = []
+	var tok_a: WorldNavigation.AsyncBakeToken = validator.validate_confirm_async(
+		SHELTER_DEF,
+		valid_pos,
+		ctx,
+		func(r: PlacementValidator.ValidationResult) -> void:
+			res_a.append(r)
+	)
+	assert_not_null(tok_a)
+	assert_true(res_a.is_empty(), "Async callback must not complete synchronously before next-line mutation")
+	worker.global_position = valid_pos
+
+	wait_f = 0
+	while res_a.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_eq(res_a.size(), 1, "Scenario A callback must fire once")
+	assert_false(res_a[0].valid, "Scenario A must reject when worker entered footprint mid-bake")
+	assert_eq(res_a[0].reason_code, PlacementValidator.REASON_UNIT_OVERLAP)
+	worker.global_position = Vector3(-14.0, 0.0, 4.0)
+	await wait_physics_frames(2)
+
+	# Scenario B: new physical pile spawns inside footprint while async bake is in flight.
+	var res_b: Array[PlacementValidator.ValidationResult] = []
+	var tok_b: WorldNavigation.AsyncBakeToken = validator.validate_confirm_async(
+		SHELTER_DEF,
+		valid_pos,
+		ctx,
+		func(r: PlacementValidator.ValidationResult) -> void:
+			res_b.append(r)
+	)
+	assert_not_null(tok_b)
+	assert_true(res_b.is_empty(), "Async callback must still be pending before pile spawn")
+	var spawned_pile := GroundResourcePile.new()
+	test_map.add_child(spawned_pile)
+	spawned_pile.configure_initial(980, WOOD_DEF, 6, valid_pos)
+
+	wait_f = 0
+	while res_b.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_eq(res_b.size(), 1, "Scenario B callback must fire once")
+	assert_false(res_b[0].valid, "Scenario B must reject when pile appeared in footprint mid-bake")
+	assert_eq(res_b[0].reason_code, PlacementValidator.REASON_PILE_OVERLAP)
+	spawned_pile.queue_free()
+	await wait_process_frames(2)
+
+	# Scenario E1: static geometry cache invalidated mid-flight while nav reports ready.
+	var res_e1: Array[PlacementValidator.ValidationResult] = []
+	var tok_e1: WorldNavigation.AsyncBakeToken = validator.validate_confirm_async(
+		SHELTER_DEF,
+		valid_pos,
+		ctx,
+		func(r: PlacementValidator.ValidationResult) -> void:
+			res_e1.append(r)
+	)
+	assert_not_null(tok_e1)
+	assert_true(res_e1.is_empty())
+	nav.invalidate_static_geometry_cache()
+
+	wait_f = 0
+	while res_e1.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_eq(res_e1.size(), 1, "Scenario E1 callback must fire once")
+	assert_false(res_e1[0].valid, "Scenario E1 must reject stale candidate session when static cache invalidated")
+	assert_eq(res_e1[0].reason_code, PlacementValidator.REASON_NAVIGATION_STALE)
+
+	nav.request_rebake()
+	assert_true(await _wait_for_navigation_ready(nav), "Navigation must recover after rebake")
+
+	# Scenario E2: full rebake initiated mid-flight; reject even if rebake finishes quickly.
+	var res_e2: Array[PlacementValidator.ValidationResult] = []
+	var tok_e2: WorldNavigation.AsyncBakeToken = validator.validate_confirm_async(
+		SHELTER_DEF,
+		valid_pos,
+		ctx,
+		func(r: PlacementValidator.ValidationResult) -> void:
+			res_e2.append(r)
+	)
+	assert_not_null(tok_e2)
+	assert_true(res_e2.is_empty())
+	nav.request_rebake()
+
+	wait_f = 0
+	while res_e2.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_true(await _wait_for_navigation_ready(nav), "Navigation rebake must finish cleanly")
+	assert_eq(res_e2.size(), 1, "Scenario E2 callback must fire once")
+	assert_false(res_e2[0].valid, "Scenario E2 must reject candidate session from previous nav revision")
+	assert_true(
+		res_e2[0].reason_code == PlacementValidator.REASON_NAVIGATION_STALE
+		or res_e2[0].reason_code == PlacementValidator.REASON_NAV_NOT_READY,
+		"Scenario E2 must fail with navigation stale/not ready, got %s" % String(res_e2[0].reason_code)
+	)
