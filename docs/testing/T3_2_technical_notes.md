@@ -3,7 +3,7 @@
 **Branch:** `feature/t3-2-placement`<br>
 **Base:** `main` (`ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`)<br>
 **Engine / Renderer:** Godot `4.7.2.stable` / `gl_compatibility`<br>
-**Status:** Implementado e validado automaticamente na T3.2; aguardando testes manuais e aceite do proprietário (T3.3+ não iniciada).
+**Status:** Concluído, auditado tecnicamente e formalmente aprovado pelo proprietário em 15/11/2026 (T3.3+ permanece não autorizada).
 
 ---
 

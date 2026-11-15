@@ -6,14 +6,14 @@
 **Uso:** minuta de referência de produto para revisão do proprietário antes de substituir a v1.0 em `AGENTS.md`  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
-> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental não promovida aguardando aprovação formal do proprietário**. O documento [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) é a fonte normativa vigente e recebeu as atualizações e decisões aprovadas pelo proprietário. A fase **T2** encontra-se oficialmente concluída e aprovada; na fase **T3**, a etapa **T3.1 — Contabilidade, Reservas e Saque em Lote** foi **IMPLEMENTADA, AUDITADA E APROVADA PELO PROPRIETÁRIO EM 15/11/2026** (branch `feature/t3-1-reservations`, commit técnico final `b05e8e682b686f1a1afb4cc0a1c2accbb20adc82`), permanecendo as etapas posteriores (**T3.2+**) estritamente sem autorização de implementação.
+> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental não promovida aguardando aprovação formal do proprietário**. O documento [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) é a fonte normativa vigente e recebeu as atualizações e decisões aprovadas pelo proprietário. A fase **T2** encontra-se oficialmente concluída e aprovada; na fase **T3**, a etapa **T3.1 — Contabilidade, Reservas e Saque em Lote** foi **IMPLEMENTADA, AUDITADA E APROVADA PELO PROPRIETÁRIO EM 15/11/2026** (integrada na `main`), e a etapa **T3.2 — Validação Espacial, Área Reservada e Prévia sem Grid** foi **IMPLEMENTADA, AUDITADA TECNICAMENTE, TESTADA MANUALMENTE (11/11 ITENS) E FORMALMENTE APROVADA PELO PROPRIETÁRIO EM 15/11/2026** (branch `feature/t3-2-placement`, commit `f2110b6`), permanecendo as etapas posteriores (**T3.3+**) planejadas e estritamente sem autorização de implementação.
 >
 > **Regra de leitura:** **DECIDIDO** = aprovado pelo proprietário; **PROPOSTA** / **PROPOSTA TÉCNICA** / **PROPOSTA FUTURA** = sugestão técnica ou de design para avaliação, não compromisso fechado; **ABERTO** = depende de definição futura e não deve ser presumido na implementação.
 >
-> **Estado real observado do projeto em 14/11/2026:**
+> **Estado real observado do projeto em 15/11/2026:**
 > - **T1 — Fundação RTS:** **concluída e aprovada** (`t1-complete`, commit `2808799`, 90 testes automatizados e 1.607 asserções).
 > - **T2 — Trabalho e Recursos (`T2.0`–`T2.6` + `B1`):** **concluída e aprovada** pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes e 21/21 itens manuais aprovados), com limitação de desempenho em bateria DC aceita como não bloqueante para a T2.
-> - **T3 — Construção:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`); etapa **T3.1** concluída e formalmente aprovada pelo proprietário em 15/11/2026; etapas `T3.2` em diante continuam estritamente bloqueadas sem autorização de implementação.
+> - **T3 — Construção:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`); etapa **T3.1** concluída e integrada na `main`; etapa **T3.2** concluída, testada manualmente e formalmente aprovada pelo proprietário em 15/11/2026; etapas `T3.3` em diante continuam estritamente bloqueadas sem autorização de implementação.
 
 ---
 
@@ -379,7 +379,7 @@
 
 **Regras de execução:**
 
-1. Enquanto a v1.1 não for formalmente aceita pelo proprietário, [AGENTS.md](../AGENTS.md) permanece apontando para [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md), e nenhuma implementação de `T3`–`T8` está autorizada.
+1. Enquanto a v1.1 não for formalmente aceita pelo proprietário, [AGENTS.md](../AGENTS.md) permanece apontando para [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md), e nenhuma implementação de `T3.3`–`T8` está autorizada (T3.1 integrada na `main` e T3.2 aprovada pelo proprietário em 15/11/2026).
 2. Trabalhar em passos pequenos, testáveis e reversíveis; não modificar código nem antecipar sistemas descritos nesta minuta.
 3. Separar rigorosamente marcadores **DECIDIDO**, **PROPOSTA** e **ABERTO**, preservando todas as questões abertas sem suposições silenciosas na futura fase de planejamento técnico de `T4`, `T5` e `T6`.
 4. Toda afirmação sobre testes, benchmarks e aprovações deve distinguir explicitamente: implementado, testado automaticamente (processo único vs segmentado), medido em benchmark e aprovado manualmente pelo proprietário.
