@@ -6,6 +6,27 @@ extends RefCounted
 
 const PILE_ANGLE_SAMPLES: int = 8
 const HEIGHT_TOLERANCE: float = 2.5
+const REACH_PROBE_HEIGHT: float = 0.55
+
+
+static func has_clear_physical_access(
+	from_pos: Vector3,
+	to_pos: Vector3,
+	world_3d: World3D,
+	collision_mask: int = CollisionLayers.MASK_WORLD_SOLID
+) -> bool:
+	if not from_pos.is_finite() or not to_pos.is_finite():
+		return false
+	if world_3d == null or world_3d.direct_space_state == null:
+		return true
+	var delta_xz := Vector2(to_pos.x - from_pos.x, to_pos.z - from_pos.z)
+	if delta_xz.length_squared() <= 0.0004:
+		return true
+	var p0 := Vector3(from_pos.x, from_pos.y + REACH_PROBE_HEIGHT, from_pos.z)
+	var p1 := Vector3(to_pos.x, to_pos.y + REACH_PROBE_HEIGHT, to_pos.z)
+	var ray := PhysicsRayQueryParameters3D.create(p0, p1, collision_mask)
+	ray.hit_from_inside = true
+	return world_3d.direct_space_state.intersect_ray(ray).is_empty()
 
 
 static func collect_other_unit_positions(
@@ -51,20 +72,24 @@ static func collect_other_unit_positions(
 static func is_unit_in_pile_reach(
 	unit_pos: Vector3,
 	pile_pos: Vector3,
-	reach_radius: float = ConstructionSite.DEFAULT_PILE_PICKUP_REACH
+	reach_radius: float = ConstructionSite.DEFAULT_PILE_PICKUP_REACH,
+	world_3d: World3D = null
 ) -> bool:
 	if not unit_pos.is_finite() or not pile_pos.is_finite():
 		return false
 	if absf(unit_pos.y - pile_pos.y) > HEIGHT_TOLERANCE:
 		return false
 	var dist: float = Vector2(unit_pos.x - pile_pos.x, unit_pos.z - pile_pos.z).length()
-	return dist <= reach_radius + 0.05
+	if dist > reach_radius + 0.05:
+		return false
+	return has_clear_physical_access(unit_pos, pile_pos, world_3d)
 
 
 static func is_unit_in_site_dropoff_range(
 	unit_pos: Vector3,
 	site: ConstructionSite,
-	reach_tolerance: float = ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE
+	reach_tolerance: float = ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+	world_3d: World3D = null
 ) -> bool:
 	if not unit_pos.is_finite() or site == null or not is_instance_valid(site):
 		return false
@@ -72,9 +97,19 @@ static func is_unit_in_site_dropoff_range(
 	if not site_pos.is_finite() or absf(unit_pos.y - site_pos.y) > HEIGHT_TOLERANCE:
 		return false
 	var rect: Rect2 = site.get_footprint_rect()
-	var dx: float = maxf(maxf(rect.position.x - unit_pos.x, 0.0), unit_pos.x - rect.end.x)
-	var dz: float = maxf(maxf(rect.position.y - unit_pos.z, 0.0), unit_pos.z - rect.end.y)
-	return sqrt(dx * dx + dz * dz) <= reach_tolerance
+	var closest_x: float = clampf(unit_pos.x, rect.position.x, rect.end.x)
+	var closest_z: float = clampf(unit_pos.z, rect.position.y, rect.end.y)
+	var dx: float = unit_pos.x - closest_x
+	var dz: float = unit_pos.z - closest_z
+	if sqrt(dx * dx + dz * dz) > reach_tolerance:
+		return false
+	var resolved_world: World3D = world_3d
+	if resolved_world == null and site.is_inside_tree():
+		resolved_world = site.get_world_3d()
+	if resolved_world == null:
+		return true
+	var edge_target := Vector3(closest_x, site_pos.y, closest_z)
+	return has_clear_physical_access(unit_pos, edge_target, resolved_world)
 
 
 static func compute_pile_approach_slot(
@@ -90,6 +125,7 @@ static func compute_pile_approach_slot(
 	if world_nav == null or not world_nav.is_navigation_ready():
 		return {"valid": false, "position": Vector3.ZERO, "reason": "navigation_not_ready"}
 
+	var nav_world_3d: World3D = world_nav.get_world_3d() if world_nav.is_inside_tree() else null
 	var min_worker_spacing: float = agent_radius * 2.0 + 0.08
 	var candidate_offsets: Array[Vector3] = []
 
@@ -133,8 +169,10 @@ static func compute_pile_approach_slot(
 		var resolved_dist: float = Vector2(resolved.x - pile_pos.x, resolved.z - pile_pos.z).length()
 		if resolved_dist > reach_radius:
 			continue
+		if not has_clear_physical_access(resolved, pile_pos, nav_world_3d):
+			continue
 
-		var travel_dist: float = Vector2(resolved.x - unit_pos.x, resolved.z - unit_pos.z).length()
+		var travel_dist: float = _path_length(path_res.path)
 		if _is_separated_from_all(resolved, occupied_positions, min_worker_spacing):
 			if travel_dist < best_separated_dist:
 				best_separated_dist = travel_dist
@@ -171,6 +209,7 @@ static func compute_site_perimeter_slot(
 	if not site_pos.is_finite():
 		return {"valid": false, "position": Vector3.ZERO, "reason": "invalid_site"}
 
+	var nav_world_3d: World3D = world_nav.get_world_3d() if world_nav.is_inside_tree() else null
 	var min_worker_spacing: float = agent_radius * 2.0 + 0.1
 	var margins: Array[float] = [outward_margin, minf(reach_tolerance * 0.9, outward_margin + 0.35)]
 	var rect: Rect2 = site.get_footprint_rect()
@@ -200,10 +239,10 @@ static func compute_site_perimeter_slot(
 			if not _is_unit_connected_to_path(unit_pos, path_res, world_nav):
 				continue
 			var resolved: Vector3 = path_res.resolved_target
-			if _distance_to_rect(resolved, rect) > reach_tolerance:
+			if not is_unit_in_site_dropoff_range(resolved, site, reach_tolerance, nav_world_3d):
 				continue
 
-			var travel_dist: float = Vector2(resolved.x - unit_pos.x, resolved.z - unit_pos.z).length()
+			var travel_dist: float = _path_length(path_res.path)
 			# When a specific builder slot index is requested, give modest preference
 			# to earlier unblocked slots so multiple builders fan out around the perimeter.
 			var score: float = travel_dist + (float(i) * 0.35 if preferred_slot_index >= 0 else 0.0)
@@ -357,13 +396,15 @@ static func _is_unit_connected_to_path(
 	if start_dist_xz > WorldNavigation.REACHABLE_TOLERANCE_XZ + 0.5 or start_dist_y > WorldNavigation.REACHABLE_TOLERANCE_Y:
 		return false
 	if start_dist_xz > 0.25 and world_nav != null and world_nav.is_inside_tree():
-		var world_3d: World3D = world_nav.get_world_3d()
-		if world_3d != null and world_3d.direct_space_state != null:
-			var ray := PhysicsRayQueryParameters3D.create(
-				unit_pos + Vector3(0.0, 0.75, 0.0),
-				start_pt + Vector3(0.0, 0.75, 0.0),
-				CollisionLayers.MASK_OBSTACLES
-			)
-			if not world_3d.direct_space_state.intersect_ray(ray).is_empty():
-				return false
+		if not has_clear_physical_access(unit_pos, start_pt, world_nav.get_world_3d()):
+			return false
 	return true
+
+
+static func _path_length(path: PackedVector3Array) -> float:
+	if path.size() < 2:
+		return 0.0
+	var total: float = 0.0
+	for i: int in range(path.size() - 1):
+		total += path[i].distance_to(path[i + 1])
+	return total

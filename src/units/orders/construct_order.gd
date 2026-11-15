@@ -11,6 +11,7 @@ enum Phase {
 	MOVING_TO_SITE_DROPOFF,
 	MOVING_TO_BUILDER_SLOT,
 	BUILDER_STANDBY,
+	WAITING_FOR_PEER_SUPPLY,
 }
 
 const REASON_INVALID_SITE: String = "invalid_site"
@@ -67,7 +68,7 @@ func get_phase() -> Phase:
 
 
 func is_preparing_work() -> bool:
-	return _phase == Phase.BUILDER_STANDBY
+	return _phase == Phase.BUILDER_STANDBY or _phase == Phase.WAITING_FOR_PEER_SUPPLY
 
 
 func get_reserved_target() -> Vector3:
@@ -169,6 +170,8 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 			_update_moving_to_builder_slot(movement)
 		Phase.BUILDER_STANDBY:
 			_update_builder_standby(movement)
+		Phase.WAITING_FOR_PEER_SUPPLY:
+			_update_waiting_for_peer_supply(movement)
 
 
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
@@ -297,16 +300,9 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 		if fail_reason == "pile_unreachable":
 			_finish_failed(REASON_PILE_UNREACHABLE)
 			return
-		# Check if another worker holds remaining in-transit/pending supply vs permanently missing due to decay.
-		var required: Dictionary = site.get_required_amounts()
-		var has_active_peer_supply: bool = false
-		for res_key: Variant in required.keys():
-			var res_id: StringName = res_key as StringName
-			if site.get_in_transit_amount(res_id) > 0 or site.get_total_pending_pickup_for_resource(res_id, _unit) > 0:
-				has_active_peer_supply = true
-				break
-		if has_active_peer_supply:
-			_start_moving_to_builder_slot(movement)
+		# Distinguish an active peer transporter currently supplying this site from orphaned/interrupted claims.
+		if site.has_active_peer_transport_for_site(_unit):
+			_start_waiting_for_peer_supply(movement)
 		else:
 			_finish_failed(REASON_RESERVATION_UNAVAILABLE)
 		return
@@ -333,7 +329,12 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 	_phase = Phase.MOVING_TO_PILE
 	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 
-	if BuildSlotPlanner.is_unit_in_pile_reach(_unit.global_position, _target_pile_pos):
+	if BuildSlotPlanner.is_unit_in_pile_reach(
+		_unit.global_position,
+		_target_pile_pos,
+		ConstructionSite.DEFAULT_PILE_PICKUP_REACH,
+		_get_world_3d()
+	):
 		movement.stop_movement()
 		_execute_pile_withdrawal(movement)
 		return
@@ -395,10 +396,19 @@ func _handle_pile_arrival(movement: UnitMovement) -> void:
 		_advance_by_role(movement)
 		return
 
-	if BuildSlotPlanner.is_unit_in_pile_reach(_unit.global_position, _target_pile_pos):
+	if BuildSlotPlanner.is_unit_in_pile_reach(
+		_unit.global_position,
+		_target_pile_pos,
+		ConstructionSite.DEFAULT_PILE_PICKUP_REACH,
+		_get_world_3d()
+	):
 		_execute_pile_withdrawal(movement)
 		return
 
+	_retry_pile_approach_or_fail(movement)
+
+
+func _retry_pile_approach_or_fail(movement: UnitMovement) -> void:
 	if _approach_retries < MAX_APPROACH_RETRIES:
 		_approach_retries += 1
 		var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
@@ -420,6 +430,18 @@ func _handle_pile_arrival(movement: UnitMovement) -> void:
 
 
 func _execute_pile_withdrawal(movement: UnitMovement) -> void:
+	if not _is_target_pile_still_reserved():
+		_advance_by_role(movement)
+		return
+	if not BuildSlotPlanner.is_unit_in_pile_reach(
+		_unit.global_position,
+		_target_pile_pos,
+		ConstructionSite.DEFAULT_PILE_PICKUP_REACH,
+		_get_world_3d()
+	):
+		_retry_pile_approach_or_fail(movement)
+		return
+
 	var inventory: SettlementInventory = site.get_inventory()
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
 	if inventory == null or carry_load == null or _target_resource_def == null:
@@ -464,7 +486,12 @@ func _start_moving_to_site_dropoff(movement: UnitMovement) -> void:
 	_approach_retries = 0
 	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 
-	if BuildSlotPlanner.is_unit_in_site_dropoff_range(_unit.global_position, site):
+	if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+		_unit.global_position,
+		site,
+		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+		_get_world_3d()
+	):
 		movement.stop_movement()
 		_execute_site_dropoff(movement)
 		return
@@ -506,10 +533,19 @@ func _update_moving_to_site_dropoff(movement: UnitMovement) -> void:
 
 
 func _handle_site_dropoff_arrival(movement: UnitMovement) -> void:
-	if BuildSlotPlanner.is_unit_in_site_dropoff_range(_unit.global_position, site):
+	if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+		_unit.global_position,
+		site,
+		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+		_get_world_3d()
+	):
 		_execute_site_dropoff(movement)
 		return
 
+	_retry_site_dropoff_or_fail(movement)
+
+
+func _retry_site_dropoff_or_fail(movement: UnitMovement) -> void:
 	if _approach_retries < MAX_APPROACH_RETRIES:
 		_approach_retries += 1
 		var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
@@ -529,6 +565,15 @@ func _handle_site_dropoff_arrival(movement: UnitMovement) -> void:
 
 
 func _execute_site_dropoff(movement: UnitMovement) -> void:
+	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(
+		_unit.global_position,
+		site,
+		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+		_get_world_3d()
+	):
+		_retry_site_dropoff_or_fail(movement)
+		return
+
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
 	var dropped: Dictionary = site.accept_delivery_from_carry_load(_unit, carry_load)
 	if not dropped.is_empty():
@@ -586,7 +631,12 @@ func _update_moving_to_builder_slot(movement: UnitMovement) -> void:
 			movement.stop_movement()
 			_finish_failed(REASON_SITE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:
-			if BuildSlotPlanner.is_unit_in_site_dropoff_range(_unit.global_position, site):
+			if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+				_unit.global_position,
+				site,
+				ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+				_get_world_3d()
+			):
 				_enter_builder_standby(movement)
 			else:
 				_replan_requested = true
@@ -597,7 +647,12 @@ func _enter_builder_standby(movement: UnitMovement) -> void:
 	if movement != null:
 		movement.stop_movement()
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
-	if BuildSlotPlanner.is_unit_in_site_dropoff_range(_unit.global_position, site):
+	if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+		_unit.global_position,
+		site,
+		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+		_get_world_3d()
+	):
 		var site_pos: Vector3 = site.global_position
 		if _unit.global_position.distance_squared_to(site_pos) > 0.01:
 			var look_dir := Vector3(site_pos.x - _unit.global_position.x, 0.0, site_pos.z - _unit.global_position.z)
@@ -611,10 +666,82 @@ func _update_builder_standby(movement: UnitMovement) -> void:
 		_advance_by_role(movement)
 
 
+func _start_waiting_for_peer_supply(movement: UnitMovement) -> void:
+	_phase = Phase.WAITING_FOR_PEER_SUPPLY
+	_approach_retries = 0
+	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+
+	if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+		_unit.global_position,
+		site,
+		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+		_get_world_3d()
+	):
+		movement.stop_movement()
+		resolved_target = Vector3(INF, INF, INF)
+		_unit.set_order_state(self, Unit.State.WORKING)
+		return
+
+	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
+	var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
+		_unit.global_position,
+		site,
+		_world_nav,
+		occupied
+	)
+	if not bool(slot_res.get("valid", false)):
+		_finish_failed(REASON_SITE_UNREACHABLE)
+		return
+
+	resolved_target = slot_res["position"] as Vector3
+	if not movement.begin_move_to(resolved_target):
+		_finish_failed(REASON_SITE_UNREACHABLE)
+		return
+	_unit.set_order_state(self, Unit.State.MOVING)
+
+	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
+		movement.stop_movement()
+		_unit.set_order_state(self, Unit.State.WORKING)
+
+
+func _update_waiting_for_peer_supply(movement: UnitMovement) -> void:
+	match movement.get_move_state():
+		UnitMovement.MoveState.MOVING:
+			return
+		UnitMovement.MoveState.ARRIVED:
+			movement.stop_movement()
+			resolved_target = Vector3(INF, INF, INF)
+			_unit.set_order_state(self, Unit.State.WORKING)
+		UnitMovement.MoveState.FAILED_STUCK, UnitMovement.MoveState.FAILED_INVALID:
+			movement.stop_movement()
+			_finish_failed(REASON_SITE_UNREACHABLE)
+		UnitMovement.MoveState.IDLE:
+			if not site.has_active_peer_transport_for_site(_unit):
+				_advance_by_role(movement)
+
+
+func _has_claimable_reserved_piles() -> bool:
+	if not _is_site_valid():
+		return false
+	var required: Dictionary = site.get_required_amounts()
+	for res_key: Variant in required.keys():
+		var res_id: StringName = res_key as StringName
+		if site.get_remaining_supply_to_claim(res_id, _unit) > 0 and site.get_reserved_in_piles_amount(res_id) > 0:
+			return true
+	return false
+
+
 func _on_site_workers_changed(_changed_site: ConstructionSite) -> void:
 	if status != Status.RUNNING:
 		return
 	_replan_requested = true
+
+
+func _on_site_state_changed(_changed_site: ConstructionSite) -> void:
+	if status != Status.RUNNING or _phase != Phase.WAITING_FOR_PEER_SUPPLY:
+		return
+	if site.is_fully_supplied() or not site.has_active_peer_transport_for_site(_unit) or _has_claimable_reserved_piles():
+		_replan_requested = true
 
 
 func _bind_site_signals() -> void:
@@ -622,6 +749,8 @@ func _bind_site_signals() -> void:
 		return
 	if not site.workers_changed.is_connected(_on_site_workers_changed):
 		site.workers_changed.connect(_on_site_workers_changed)
+	if not site.state_changed.is_connected(_on_site_state_changed):
+		site.state_changed.connect(_on_site_state_changed)
 	_site_signals_bound = true
 
 
@@ -631,7 +760,17 @@ func _unbind_site_signals() -> void:
 	if site != null and is_instance_valid(site):
 		if site.workers_changed.is_connected(_on_site_workers_changed):
 			site.workers_changed.disconnect(_on_site_workers_changed)
+		if site.state_changed.is_connected(_on_site_state_changed):
+			site.state_changed.disconnect(_on_site_state_changed)
 	_site_signals_bound = false
+
+
+func _get_world_3d() -> World3D:
+	if _unit != null and is_instance_valid(_unit) and _unit.is_inside_tree():
+		return _unit.get_world_3d()
+	if _world_nav != null and is_instance_valid(_world_nav) and _world_nav.is_inside_tree():
+		return _world_nav.get_world_3d()
+	return null
 
 
 func _clear_pickup_target() -> void:

@@ -317,11 +317,22 @@ func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int)
 
 	var uid: int = unit.get_instance_id()
 	_pending_pickups.erase(uid)
-	_ensure_transit_listener(unit, carry_load)
 
+	var accounting_headroom: int = maxi(
+		0,
+		get_required_amount(resource_id)
+		- get_delivered_buffer_amount(resource_id)
+		- get_reserved_in_piles_amount(resource_id)
+		- get_in_transit_amount(resource_id)
+	)
+	var allowed_add: int = mini(amount, accounting_headroom)
+	if allowed_add <= 0:
+		return
+
+	_ensure_transit_listener(unit, carry_load)
 	var claim: Dictionary = _transit_claims[uid] as Dictionary
 	var amounts: Dictionary = claim["amounts"] as Dictionary
-	amounts[resource_id] = int(amounts.get(resource_id, 0)) + amount
+	amounts[resource_id] = int(amounts.get(resource_id, 0)) + allowed_add
 	_clamp_unit_transit_claim(uid)
 	state_changed.emit(self)
 
@@ -348,17 +359,58 @@ func get_unneeded_cargo_for_unit(unit: Unit, carry_load: UnitCarryLoad) -> Dicti
 	return unneeded
 
 
+func has_active_peer_transport_for_site(exclude_unit: Unit = null) -> bool:
+	_prune_stale_state()
+	var exclude_id: int = exclude_unit.get_instance_id() if exclude_unit != null and is_instance_valid(exclude_unit) else -1
+	for uid: int in _worker_order_ids:
+		if uid == exclude_id or not _assigned_workers.has(uid):
+			continue
+		var entry: Dictionary = _assigned_workers[uid] as Dictionary
+		var unit: Unit = entry.get("unit") as Unit
+		var order: UnitOrder = entry.get("order") as UnitOrder
+		if unit == null or not is_instance_valid(unit) or order == null or not order.is_active():
+			continue
+		var role: WorkerRole = entry.get("role", WorkerRole.UNASSIGNED) as WorkerRole
+		if role != WorkerRole.SOLO_SUPPLIER and role != WorkerRole.TRANSPORTER:
+			continue
+		if _pending_pickups.has(uid):
+			return true
+		if _transit_claims.has(uid):
+			var claim: Dictionary = _transit_claims[uid] as Dictionary
+			var amounts: Dictionary = claim.get("amounts", {}) as Dictionary
+			for res_key: Variant in amounts.keys():
+				var res_id: StringName = res_key as StringName
+				if int(amounts[res_id]) > 0 and get_remaining_need_for_dropoff(res_id) > 0:
+					return true
+	return false
+
+
 func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> Dictionary:
 	_prune_stale_state()
-	if not is_valid() or carry_load == null or carry_load.is_empty():
+	if not is_valid() or unit == null or not is_instance_valid(unit) or carry_load == null or carry_load.is_empty():
+		return {}
+
+	var unit_claim: Dictionary = get_transit_claim_for_unit(unit)
+	if unit_claim.is_empty():
 		return {}
 
 	var accepted: Dictionary = {}
 	var sorted_keys: Array[StringName] = _get_sorted_required_keys()
 	for res_id: StringName in sorted_keys:
+		var claimed: int = maxi(0, int(unit_claim.get(res_id, 0)))
+		if claimed <= 0:
+			continue
 		var need: int = get_remaining_need_for_dropoff(res_id)
 		var carried: int = carry_load.get_amount(res_id)
-		var take: int = mini(need, carried)
+		var other_in_transit: int = maxi(0, get_in_transit_amount(res_id) - claimed)
+		var invariant_cap: int = maxi(
+			0,
+			get_required_amount(res_id)
+			- get_delivered_buffer_amount(res_id)
+			- get_reserved_in_piles_amount(res_id)
+			- other_in_transit
+		)
+		var take: int = mini(claimed, mini(need, mini(carried, invariant_cap)))
 		if take > 0:
 			accepted[res_id] = take
 
