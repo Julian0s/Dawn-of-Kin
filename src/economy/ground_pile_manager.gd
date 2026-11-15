@@ -23,6 +23,8 @@ var _last_decay_time_sec: float = 0.0
 var _is_mutating: bool = false
 var _is_notifying: bool = false
 var _visual_cache: Dictionary = {"meshes": {}, "materials": {}}
+var _ledger: PileReservationLedger = PileReservationLedger.new()
+var _pending_decay_reservation_losses: Array[Dictionary] = []
 
 
 func _init(
@@ -93,6 +95,8 @@ func cleanup() -> void:
 			pile.free()
 	_piles.clear()
 	_decayed.clear()
+	_ledger.clear()
+	_pending_decay_reservation_losses.clear()
 	_visual_cache = {"meshes": {}, "materials": {}}
 	pile_creator_override = Callable()
 
@@ -103,7 +107,22 @@ func _dispatch_storage_changed() -> void:
 	_is_notifying = false
 
 
-func get_amount(resource_id: StringName) -> int:
+func _dispatch_reservations_changed() -> void:
+	_is_notifying = true
+	reservations_changed.emit()
+	if not _pending_decay_reservation_losses.is_empty():
+		var pending: Array[Dictionary] = _pending_decay_reservation_losses.duplicate()
+		_pending_decay_reservation_losses.clear()
+		for item: Dictionary in pending:
+			reservation_lost_to_decay.emit(
+				item["reservation_id"] as StringName,
+				item["resource_id"] as StringName,
+				item["lost_amount"] as int
+			)
+	_is_notifying = false
+
+
+func get_physical_amount(resource_id: StringName) -> int:
 	if resource_id == &"":
 		return 0
 	var total: int = 0
@@ -113,13 +132,52 @@ func get_amount(resource_id: StringName) -> int:
 	return total
 
 
-func get_all_amounts() -> Dictionary:
+func get_all_physical_amounts() -> Dictionary:
 	var totals: Dictionary = {}
 	for pile: GroundResourcePile in _piles:
 		if not is_instance_valid(pile) or pile.amount <= 0:
 			continue
 		totals[pile.resource_id] = (totals.get(pile.resource_id, 0) as int) + pile.amount
 	return totals
+
+
+func get_reserved_amount(resource_id: StringName) -> int:
+	return _ledger.get_reserved_amount_by_resource(resource_id)
+
+
+func get_all_reserved_amounts() -> Dictionary:
+	return _ledger.get_all_reserved_amounts()
+
+
+func has_reservation(reservation_id: StringName) -> bool:
+	return _ledger.has_reservation(reservation_id)
+
+
+func get_reservation_amount(reservation_id: StringName, resource_id: StringName) -> int:
+	return _ledger.get_reservation_amount(reservation_id, resource_id)
+
+
+func get_reservation_amounts(reservation_id: StringName) -> Dictionary:
+	return _ledger.get_reservation_amounts(reservation_id)
+
+
+func get_all_reservation_ids() -> Array[StringName]:
+	return _ledger.get_all_reservation_ids()
+
+
+func get_pile_reserved_amount(pile_id: int) -> int:
+	return _ledger.get_pile_reserved_amount(pile_id)
+
+
+func get_pile_available_amount(pile_id: int) -> int:
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	if pile == null or not is_instance_valid(pile):
+		return 0
+	return maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile_id))
+
+
+func get_pile_reservations(pile_id: int) -> Dictionary:
+	return _ledger.get_pile_reservations(pile_id)
 
 
 func get_piles() -> Array[GroundResourcePile]:
@@ -219,33 +277,87 @@ func try_create_pile_at(resource_id: StringName, amount: int, world_pos: Vector3
 func withdraw(resource_id: StringName, amount: int) -> bool:
 	if is_locked() or resource_id == &"" or amount <= 0:
 		return false
+	return withdraw_batch({resource_id: amount})
 
-	var matching: Array[GroundResourcePile] = []
-	var available: int = 0
-	for pile: GroundResourcePile in _piles:
-		if is_instance_valid(pile) and pile.resource_id == resource_id and pile.amount > 0:
-			matching.append(pile)
-			available += pile.amount
-	if available < amount:
+
+func can_withdraw_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_withdraw_plan(amounts)
+	return plan["ok"] as bool
+
+
+func withdraw_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_withdraw_plan(amounts)
+	if not (plan["ok"] as bool):
+		return false
+	return _commit_withdraw_plan(plan["entries"] as Array[Dictionary], &"")
+
+
+func can_reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_reserve_plan(reservation_id, amounts)
+	return plan["ok"] as bool
+
+
+func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_reserve_plan(reservation_id, amounts)
+	if not (plan["ok"] as bool):
 		return false
 
-	matching.sort_custom(_sort_withdraw_piles)
-
 	_is_mutating = true
-	var remaining: int = amount
-	for pile: GroundResourcePile in matching:
-		if remaining <= 0:
-			break
-		var take: int = mini(remaining, pile.amount)
-		var left: int = pile.amount - take
-		remaining -= take
-		if left <= 0:
-			_remove_and_free_pile(pile)
-		else:
-			pile.apply_state(left, pile.elapsed_exposure_sec, pile.decay_accumulator_sec)
+	var entries: Array[Dictionary] = plan["entries"] as Array[Dictionary]
+	for entry: Dictionary in entries:
+		var pile: GroundResourcePile = entry["pile"] as GroundResourcePile
+		var res_id: StringName = entry["resource_id"] as StringName
+		var allocate_amt: int = entry["amount"] as int
+		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
 	_is_mutating = false
+
+	_emit_reservations_changed()
 	_emit_storage_changed()
 	return true
+
+
+func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
+	if is_locked() or reservation_id.is_empty() or not _ledger.has_reservation(reservation_id):
+		return false
+
+	var plan: Dictionary = _build_release_plan(reservation_id, amounts)
+	if not (plan["ok"] as bool):
+		return false
+
+	_is_mutating = true
+	var entries: Array[Dictionary] = plan["entries"] as Array[Dictionary]
+	for entry: Dictionary in entries:
+		var pile_id: int = entry["pile_id"] as int
+		var amt: int = entry["amount"] as int
+		_ledger.deduct_from_pile(pile_id, reservation_id, amt)
+	_is_mutating = false
+
+	_emit_reservations_changed()
+	_emit_storage_changed()
+	return true
+
+
+func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
+	if is_locked() or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return false
+	return withdraw_reserved_batch(reservation_id, {resource_id: amount})
+
+
+func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_withdraw_reserved_plan(reservation_id, amounts)
+	if not (plan["ok"] as bool):
+		return false
+	return _commit_withdraw_plan(plan["entries"] as Array[Dictionary], reservation_id)
 
 
 func step_decay() -> Dictionary:
@@ -278,6 +390,7 @@ func step_decay() -> Dictionary:
 
 	_is_mutating = true
 	var changed: bool = false
+	var res_losses: Array[Dictionary] = []
 	var snapshot: Array[GroundResourcePile] = _piles.duplicate()
 	for pile: GroundResourcePile in snapshot:
 		if not is_instance_valid(pile) or pile.definition == null:
@@ -293,6 +406,7 @@ func step_decay() -> Dictionary:
 			if new_elapsed >= profile.exposure_duration_sec - 0.000001:
 				var expired_amount: int = pile.amount
 				_record_decay(pile.resource_id, expired_amount, losses)
+				res_losses.append_array(_ledger.reconcile_pile_after_decay(pile.pile_id, 0))
 				_remove_and_free_pile(pile)
 				changed = true
 			else:
@@ -315,6 +429,7 @@ func step_decay() -> Dictionary:
 			var remaining_units: int = pile.amount - units_to_lose
 			if units_to_lose > 0:
 				_record_decay(pile.resource_id, units_to_lose, losses)
+				res_losses.append_array(_ledger.reconcile_pile_after_decay(pile.pile_id, remaining_units))
 				changed = true
 			if remaining_units <= 0:
 				_remove_and_free_pile(pile)
@@ -322,8 +437,22 @@ func step_decay() -> Dictionary:
 				pile.apply_state(remaining_units, new_elapsed_grad, accum)
 
 	_is_mutating = false
+	if not res_losses.is_empty():
+		_pending_decay_reservation_losses.append_array(res_losses)
+		_emit_reservations_changed()
 	if changed:
 		_emit_storage_changed()
+	if not _pending_decay_reservation_losses.is_empty() and not is_batch_active():
+		_is_notifying = true
+		var direct: Array[Dictionary] = _pending_decay_reservation_losses.duplicate()
+		_pending_decay_reservation_losses.clear()
+		for item: Dictionary in direct:
+			reservation_lost_to_decay.emit(
+				item["reservation_id"] as StringName,
+				item["resource_id"] as StringName,
+				item["lost_amount"] as int
+			)
+		_is_notifying = false
 	return losses
 
 
@@ -539,11 +668,229 @@ func _compute_merged_state(pile: GroundResourcePile, add_amount: int) -> Diction
 
 
 func _remove_and_free_pile(pile: GroundResourcePile) -> void:
+	if is_instance_valid(pile):
+		_ledger.erase_pile(pile.pile_id)
 	_piles.erase(pile)
 	if is_instance_valid(pile):
 		if pile.get_parent() != null:
 			pile.get_parent().remove_child(pile)
 		pile.free()
+
+
+func _build_withdraw_plan(amounts: Dictionary) -> Dictionary:
+	var parsed: Dictionary = parse_positive_batch(amounts)
+	if not (parsed["ok"] as bool):
+		return {"ok": false, "entries": []}
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+
+	var entries: Array[Dictionary] = []
+	for res_id: StringName in sorted_keys:
+		var req: int = int(items[res_id])
+		var matching: Array[GroundResourcePile] = _collect_sorted_piles_for_resource(res_id)
+		var remaining: int = req
+		for pile: GroundResourcePile in matching:
+			if remaining <= 0:
+				break
+			var pile_free: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
+			if pile_free <= 0:
+				continue
+			var take: int = mini(remaining, pile_free)
+			entries.append({
+				"pile": pile,
+				"resource_id": res_id,
+				"amount": take,
+			})
+			remaining -= take
+		if remaining > 0:
+			return {"ok": false, "entries": []}
+	return {"ok": true, "entries": entries}
+
+
+func _build_reserve_plan(reservation_id: StringName, amounts: Dictionary) -> Dictionary:
+	if reservation_id.is_empty() or _ledger.has_reservation(reservation_id):
+		return {"ok": false, "entries": []}
+	var parsed: Dictionary = parse_positive_batch(amounts)
+	if not (parsed["ok"] as bool):
+		return {"ok": false, "entries": []}
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+
+	var entries: Array[Dictionary] = []
+	for res_id: StringName in sorted_keys:
+		if not _definitions.has(res_id):
+			return {"ok": false, "entries": []}
+		var req: int = int(items[res_id])
+		var matching: Array[GroundResourcePile] = _collect_sorted_piles_for_resource(res_id)
+		var remaining: int = req
+		for pile: GroundResourcePile in matching:
+			if remaining <= 0:
+				break
+			var pile_free: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
+			if pile_free <= 0:
+				continue
+			var allocate_amt: int = mini(remaining, pile_free)
+			entries.append({
+				"pile": pile,
+				"resource_id": res_id,
+				"amount": allocate_amt,
+			})
+			remaining -= allocate_amt
+		if remaining > 0:
+			return {"ok": false, "entries": []}
+	return {"ok": true, "entries": entries}
+
+
+func _build_release_plan(reservation_id: StringName, amounts: Dictionary) -> Dictionary:
+	var entries: Array[Dictionary] = []
+	var matching_piles: Array[GroundResourcePile] = []
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and _ledger.get_pile_reservation_amount(pile.pile_id, reservation_id) > 0:
+			matching_piles.append(pile)
+	matching_piles.sort_custom(_sort_withdraw_piles)
+
+	if amounts.is_empty():
+		for pile: GroundResourcePile in matching_piles:
+			var amt: int = _ledger.get_pile_reservation_amount(pile.pile_id, reservation_id)
+			if amt > 0:
+				entries.append({"pile_id": pile.pile_id, "amount": amt})
+		return {"ok": not entries.is_empty(), "entries": entries}
+
+	var parsed: Dictionary = parse_positive_batch(amounts)
+	if not (parsed["ok"] as bool):
+		return {"ok": false, "entries": []}
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+
+	for res_id: StringName in sorted_keys:
+		var req: int = int(items[res_id])
+		var remaining: int = req
+		for pile: GroundResourcePile in matching_piles:
+			if pile.resource_id != res_id or remaining <= 0:
+				continue
+			var held: int = _ledger.get_pile_reservation_amount(pile.pile_id, reservation_id)
+			var release_amt: int = mini(remaining, held)
+			if release_amt > 0:
+				entries.append({"pile_id": pile.pile_id, "amount": release_amt})
+				remaining -= release_amt
+		if remaining > 0:
+			return {"ok": false, "entries": []}
+	return {"ok": true, "entries": entries}
+
+
+func _build_withdraw_reserved_plan(reservation_id: StringName, amounts: Dictionary) -> Dictionary:
+	if reservation_id.is_empty() or not _ledger.has_reservation(reservation_id):
+		return {"ok": false, "entries": []}
+	var parsed: Dictionary = parse_positive_batch(amounts)
+	if not (parsed["ok"] as bool):
+		return {"ok": false, "entries": []}
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+
+	var entries: Array[Dictionary] = []
+	for res_id: StringName in sorted_keys:
+		var req: int = int(items[res_id])
+		var matching: Array[GroundResourcePile] = _collect_sorted_piles_for_resource(res_id)
+		var remaining: int = req
+		for pile: GroundResourcePile in matching:
+			if remaining <= 0:
+				break
+			var held: int = mini(pile.amount, _ledger.get_pile_reservation_amount(pile.pile_id, reservation_id))
+			if held <= 0:
+				continue
+			var take: int = mini(remaining, held)
+			entries.append({
+				"pile": pile,
+				"resource_id": res_id,
+				"amount": take,
+			})
+			remaining -= take
+		if remaining > 0:
+			return {"ok": false, "entries": []}
+	return {"ok": true, "entries": entries}
+
+
+func _commit_withdraw_plan(
+	entries: Array[Dictionary],
+	deduct_reservation_id: StringName
+) -> bool:
+	_is_mutating = true
+	var ledger_snap: Dictionary = _ledger.snapshot_state()
+	var pile_snapshots: Dictionary = {}
+	var touched_piles: Array[GroundResourcePile] = []
+
+	for entry: Dictionary in entries:
+		var pile: GroundResourcePile = entry["pile"] as GroundResourcePile
+		if not is_instance_valid(pile):
+			continue
+		if not pile_snapshots.has(pile.pile_id):
+			pile_snapshots[pile.pile_id] = {
+				"pile": pile,
+				"amount": pile.amount,
+				"elapsed": pile.elapsed_exposure_sec,
+				"accum": pile.decay_accumulator_sec,
+			}
+			touched_piles.append(pile)
+
+	var commit_ok: bool = true
+	for entry: Dictionary in entries:
+		if not _commit_withdraw_entry(entry, deduct_reservation_id):
+			commit_ok = false
+			break
+
+	if not commit_ok:
+		_ledger.restore_state(ledger_snap)
+		for pile_id_key: Variant in pile_snapshots.keys():
+			var snap: Dictionary = pile_snapshots[pile_id_key] as Dictionary
+			var pile: GroundResourcePile = snap["pile"] as GroundResourcePile
+			if is_instance_valid(pile):
+				pile.apply_state(
+					snap["amount"] as int,
+					snap["elapsed"] as float,
+					snap["accum"] as float
+				)
+		_is_mutating = false
+		return false
+
+	for pile: GroundResourcePile in touched_piles:
+		if is_instance_valid(pile) and pile.amount <= 0:
+			_remove_and_free_pile(pile)
+
+	_is_mutating = false
+	if not deduct_reservation_id.is_empty():
+		_emit_reservations_changed()
+	_emit_storage_changed()
+	return true
+
+
+func _commit_withdraw_entry(
+	entry: Dictionary,
+	deduct_reservation_id: StringName
+) -> bool:
+	var pile: GroundResourcePile = entry["pile"] as GroundResourcePile
+	var take: int = entry["amount"] as int
+	if not is_instance_valid(pile) or take <= 0 or pile.amount < take:
+		return false
+	if not deduct_reservation_id.is_empty():
+		var deducted: int = _ledger.deduct_from_pile(pile.pile_id, deduct_reservation_id, take)
+		if deducted != take:
+			return false
+	else:
+		var free_now: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
+		if free_now < take:
+			return false
+	var next_amount: int = pile.amount - take
+	pile.apply_state(next_amount, pile.elapsed_exposure_sec, pile.decay_accumulator_sec)
+	return true
+
+
+func _collect_sorted_piles_for_resource(resource_id: StringName) -> Array[GroundResourcePile]:
+	var matching: Array[GroundResourcePile] = []
+	for pile: GroundResourcePile in _piles:
+		if is_instance_valid(pile) and pile.resource_id == resource_id and pile.amount > 0:
+			matching.append(pile)
+	matching.sort_custom(_sort_withdraw_piles)
+	return matching
 
 
 func _record_decay(resource_id: StringName, lost_amount: int, step_losses: Dictionary) -> void:

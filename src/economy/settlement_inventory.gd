@@ -5,6 +5,8 @@ extends RefCounted
 ## it never holds a second independent balance that could diverge from camp piles.
 
 signal inventory_changed()
+signal reservations_changed()
+signal reservation_lost_to_decay(reservation_id: StringName, resource_id: StringName, lost_amount: int)
 
 var _storage_source: SettlementStorageSource = null
 var _is_delivering: bool = false
@@ -18,28 +20,71 @@ func _init(storage_source: SettlementStorageSource = null) -> void:
 func set_storage_source(storage_source: SettlementStorageSource) -> void:
 	if _storage_source == storage_source:
 		return
-	if _storage_source != null and _storage_source.storage_changed.is_connected(_on_source_storage_changed):
-		_storage_source.storage_changed.disconnect(_on_source_storage_changed)
+	if _storage_source != null:
+		if _storage_source.storage_changed.is_connected(_on_source_storage_changed):
+			_storage_source.storage_changed.disconnect(_on_source_storage_changed)
+		if _storage_source.reservations_changed.is_connected(_on_source_reservations_changed):
+			_storage_source.reservations_changed.disconnect(_on_source_reservations_changed)
+		if _storage_source.reservation_lost_to_decay.is_connected(_on_source_reservation_lost_to_decay):
+			_storage_source.reservation_lost_to_decay.disconnect(_on_source_reservation_lost_to_decay)
 	_storage_source = storage_source
-	if _storage_source != null and not _storage_source.storage_changed.is_connected(_on_source_storage_changed):
-		_storage_source.storage_changed.connect(_on_source_storage_changed)
+	if _storage_source != null:
+		if not _storage_source.storage_changed.is_connected(_on_source_storage_changed):
+			_storage_source.storage_changed.connect(_on_source_storage_changed)
+		if not _storage_source.reservations_changed.is_connected(_on_source_reservations_changed):
+			_storage_source.reservations_changed.connect(_on_source_reservations_changed)
+		if not _storage_source.reservation_lost_to_decay.is_connected(_on_source_reservation_lost_to_decay):
+			_storage_source.reservation_lost_to_decay.connect(_on_source_reservation_lost_to_decay)
 	inventory_changed.emit()
+	reservations_changed.emit()
 
 
 func get_storage_source() -> SettlementStorageSource:
 	return _storage_source
 
 
-func get_amount(resource_id: StringName) -> int:
+func get_physical_amount(resource_id: StringName) -> int:
 	if _storage_source == null or resource_id.is_empty():
 		return 0
-	return maxi(0, _storage_source.get_amount(resource_id))
+	return maxi(0, _storage_source.get_physical_amount(resource_id))
+
+
+func get_all_physical_amounts() -> Dictionary:
+	if _storage_source == null:
+		return {}
+	return _storage_source.get_all_physical_amounts()
+
+
+func get_reserved_amount(resource_id: StringName) -> int:
+	if _storage_source == null or resource_id.is_empty():
+		return 0
+	return maxi(0, _storage_source.get_reserved_amount(resource_id))
+
+
+func get_all_reserved_amounts() -> Dictionary:
+	if _storage_source == null:
+		return {}
+	return _storage_source.get_all_reserved_amounts()
+
+
+func get_available_amount(resource_id: StringName) -> int:
+	if _storage_source == null or resource_id.is_empty():
+		return 0
+	return maxi(0, _storage_source.get_available_amount(resource_id))
+
+
+func get_all_available_amounts() -> Dictionary:
+	if _storage_source == null:
+		return {}
+	return _storage_source.get_all_available_amounts()
+
+
+func get_amount(resource_id: StringName) -> int:
+	return get_available_amount(resource_id)
 
 
 func get_all_amounts() -> Dictionary:
-	if _storage_source == null:
-		return {}
-	return _storage_source.get_all_amounts()
+	return get_all_available_amounts()
 
 
 func has_amount(resource_id: StringName, required_amount: int) -> bool:
@@ -47,7 +92,37 @@ func has_amount(resource_id: StringName, required_amount: int) -> bool:
 		return false
 	if required_amount == 0:
 		return true
-	return get_amount(resource_id) >= required_amount
+	return get_available_amount(resource_id) >= required_amount
+
+
+func has_amounts(amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.can_withdraw_batch(amounts)
+
+
+func has_reservation(reservation_id: StringName) -> bool:
+	if _storage_source == null or reservation_id.is_empty():
+		return false
+	return _storage_source.has_reservation(reservation_id)
+
+
+func get_reservation_amount(reservation_id: StringName, resource_id: StringName) -> int:
+	if _storage_source == null or reservation_id.is_empty() or resource_id.is_empty():
+		return 0
+	return maxi(0, _storage_source.get_reservation_amount(reservation_id, resource_id))
+
+
+func get_reservation_amounts(reservation_id: StringName) -> Dictionary:
+	if _storage_source == null or reservation_id.is_empty():
+		return {}
+	return _storage_source.get_reservation_amounts(reservation_id)
+
+
+func get_all_reservation_ids() -> Array[StringName]:
+	if _storage_source == null:
+		return []
+	return _storage_source.get_all_reservation_ids()
 
 
 func deposit(resource_id: StringName, amount: int) -> bool:
@@ -60,6 +135,48 @@ func withdraw(resource_id: StringName, amount: int) -> bool:
 	if _storage_source == null or resource_id.is_empty() or amount <= 0:
 		return false
 	return _storage_source.withdraw(resource_id, amount)
+
+
+func can_withdraw_batch(amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.can_withdraw_batch(amounts)
+
+
+func withdraw_batch(amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.withdraw_batch(amounts)
+
+
+func can_reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.can_reserve_batch(reservation_id, amounts)
+
+
+func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.reserve_batch(reservation_id, amounts)
+
+
+func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.release_batch(reservation_id, amounts)
+
+
+func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
+	if _storage_source == null or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return false
+	return _storage_source.withdraw_reserved(reservation_id, resource_id, amount)
+
+
+func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.withdraw_reserved_batch(reservation_id, amounts)
 
 
 func deliver_from_carry_load(carry_load: UnitCarryLoad) -> Dictionary:
@@ -114,3 +231,15 @@ func get_all_decayed() -> Dictionary:
 
 func _on_source_storage_changed() -> void:
 	inventory_changed.emit()
+
+
+func _on_source_reservations_changed() -> void:
+	reservations_changed.emit()
+
+
+func _on_source_reservation_lost_to_decay(
+	reservation_id: StringName,
+	resource_id: StringName,
+	lost_amount: int
+) -> void:
+	reservation_lost_to_decay.emit(reservation_id, resource_id, lost_amount)
