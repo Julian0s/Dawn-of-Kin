@@ -1,6 +1,6 @@
-# Dawn of Kin — T3.0-R3: Proposta Final Consolidada de Arquitetura da T3 (Construção)
+# Dawn of Kin — T3.0-R4: Proposta Consolidada de Arquitetura da T3 (Construção)
 
-**Status:** PROPOSTA ARQUITETURAL REVISADA (T3.0-R3) — somente planejamento documental; nenhuma linha de código T3 implementada.<br>
+**Status:** REVISÃO FINAL DE GOVERNANÇA (T3.0-R4) — somente planejamento documental; nenhuma linha de código T3 implementada.<br>
 **Base Auditada:** Branch `main` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`), tag `t2-complete`.<br>
 **Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md)).<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
@@ -26,10 +26,9 @@ Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da p
    - Regra contábil consistente para materiais reservados nas pilhas, materiais em transporte, materiais no buffer do canteiro e materiais já incorporados na estrutura.
    - O cancelamento jamais poderá criar recursos do nada nem gerar duplicações.
 
-4. **D4 — Custos, dimensões e tempos provisórios (DECIDIDO: Apresentar tabela para aprovação):**
-   - Parâmetros para o **Abrigo Básico** e o **Depósito Rústico**.
+4. **D4 — Custos, dimensões e tempos provisórios (APROVADOS EM 14/11/2026 como valores provisórios sujeitos a balanceamento):**
+   - Parâmetros da tabela T3.0-R3 para o **Abrigo Básico** ($4 \times 4\text{ m}$, 12 madeiras, 6 pedras, 30 s-construtor, máx. 2 construtores) e **Depósito Rústico** ($5 \times 4\text{ m}$, 18 madeiras, 10 pedras, 45 s-construtor, máx. 2 construtores, capacidade 50 madeiras, 50 pedras e 30 alimentos).
    - Valores calibrados com base na capacidade de 20 unidades de peso e nos dados reais da T2 (madeira peso 2, pedra peso 3).
-   - Identificados expressamente como **PROPOSTA — NÃO APROVADO**.
 
 5. **D5 — Depósitos protetores incluídos na própria T3 (DECIDIDO: Escopo da T3):**
    - Implementar depósitos construíveis após o primeiro abrigo funcional, reduzindo ou eliminando a deterioração dos recursos armazenados.
@@ -52,12 +51,12 @@ Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da p
 
 | Requisito / Referência | Realidade no Código da `main` (`f7c2459`) | Inconsistência Corrigida | Solução Arquitetural Proposta *(sujeita à aprovação)* |
 |---|---|---|---|
-| Pesos dos recursos e capacidade de carga (§5, §13 T2) | `wood.tres`: peso **2**; `stone.tres`: peso **3**; `food.tres`: peso **1**; capacidade inicial: **20** de peso. | R1 utilizou peso 3 para madeira e 4 para pedra, calculando pesos irreais (60 e 94). | Tabela recalculada (**PROPOSTA — NÃO APROVADO**): Abrigo = **42 de peso**; Depósito = **66 de peso**. |
+| Pesos dos recursos e capacidade de carga (§5, §13 T2) | `wood.tres`: peso **2**; `stone.tres`: peso **3**; `food.tres`: peso **1**; capacidade inicial: **20** de peso. | R1 utilizou peso 3 para madeira e 4 para pedra, calculando pesos irreais (60 e 94). | Tabela recalculada (**APROVADA em 14/11/2026 como valores provisórios sujeitos a balanceamento**): Abrigo = **42 de peso**; Depósito = **66 de peso**. |
 | Área e dimensões da `CampStorageZone` (§5, D6) | `test_map.tscn`: `zone_bounds_half_extents = Vector2(2.8, 2.2)`. Área efetiva = **5,6 × 4,4 m** (âncora em `(0, 0, 0.5)`). | R1 mencionava 8 × 8 m (valor padrão do script desacoplado da cena). | `PlacementValidator` lê `camp_zone.zone_bounds_half_extents` dinamicamente da instância real na cena. |
 | Funcionamento do `WorldNavigation.request_rebake()` e conectividade (§12, §13 T1) | `parse_source_geometry_data()` e `bake_from_source_geometry_data()` executam de forma **síncrona** na thread chamadora; `find_path()` consulta exclusivamente a malha já assada. | R1 afirmava bake em background; R2 usava `find_path()` na malha antiga sem simular a obra futura. | Validação híbrida proposta: checagem espacial conservadora no *hover* + avaliação em malha candidata na confirmação antes de reservar recursos. |
 | Máscaras de colisão e NavMesh (§12, `src/core/collision_layers.gd`) | `MASK_WORLD_SOLID = MASK_TERRAIN \| MASK_OBSTACLES`. `LAYER_BUILDINGS = 5` reservado. | R1 propunha fundir globalmente `LAYER_BUILDINGS` em `MASK_WORLD_SOLID`, afetando picking e física sem isolamento. | Proposta de `MASK_NAV_STATIC = MASK_TERRAIN \| MASK_OBSTACLES \| MASK_BUILDINGS` específico para bake; picking de obras via consulta dedicada em `MASK_BUILDINGS`. |
 | Contabilidade de estoque físico e reservas (D2, §5) | `SettlementInventory` e `GroundPileManager` controlam apenas saldo físico em pilhas no chão (`deposit_batch`, `withdraw`). | R1 não isolava buffer do canteiro de entregas acumuladas; R2 duplicava trânsito no JSON. | Formalizada a Invariante Contábil Fundamental com parcelas disjuntas e fonte única por item físico. |
-| Política de deterioração com reservas (D2) | `EconomyClockController.step_decay()` atinge pilhas reais pelo tempo. | R1 propunha proteger artificialmente materiais reservados no chão contra desgaste. | **PROPOSTA TÉCNICA — NÃO APROVADO:** pilhas no chão deterioram fisicamente; perda de cota reservada gera reancoragem ou alerta de carência. |
+| Política de deterioração com reservas (D2) | `EconomyClockController.step_decay()` atinge pilhas reais pelo tempo. | R1 propunha proteger artificialmente materiais reservados no chão contra desgaste. | **PENDENTE (NÃO APROVADO):** Alternativa A (reancoragem, recomendada) vs. Alternativa B (perda direta da reserva), preservando `step_decay()`. |
 | Persistência em disco e fontes naturais (D1, P2) | Nenhuma persistência em disco na base atual; `ResourceSource` possui estoque finito por `source_id`. | R2 tinha somas inconsistentes no JSON, dupla referência de trânsito e não persistia `ResourceSource`. | Snapshot consistente sem dupla contagem, incluindo `source_id`/`remaining_amount` das fontes e validação de integridade pré-carga. |
 | Sequenciamento de incrementos (§13) | Base pronta para T3.1. | R1 posicionava canteiros jogáveis antes da validação espacial. | Validação espacial e prévia (T3.2) precedem a colocação jogável e suprimento (T3.3). |
 
@@ -109,18 +108,21 @@ Todas as transferências entre estados contábeis operam sob transações atômi
    - À medida que construtores realizam trabalho $\Delta W$, unidades inteiras são transferidas do buffer para a estrutura:
    - $Q_{\text{buffer\_canteiro}} \mathrel{-}= \Delta M$, $Q_{\text{incorporado}} \mathrel{+}= \Delta M$.
 
-### 3.4. Política de Deterioração com Reservas (PROPOSTA TÉCNICA — NÃO APROVADO)
-Materiais mantidos no chão sofrem desgaste pelo tempo, quer estejam reservados ou não. Proteger artificialmente pilhas reservadas permitiria ao jogador usar obras como "escudo de conservação", violando a coerência do mundo.
+### 3.4. Política de Deterioração com Reservas (ÚLTIMA DECISÃO PENDENTE — NÃO APROVADO)
+Materiais expostos no chão do acampamento continuam sofrendo desgaste pelo tempo por meio de `GroundPileManager.step_decay()`, cujo funcionamento existente da T2 **não será alterado** nem neutralizado artificialmente por reservas. Proteger pilhas no chão por estarem reservadas permitiria usar canteiros como escudo contra deterioração.
 
-**Política Recomendada (PROPOSTA TÉCNICA — NÃO APROVADO):**
-1. O desgaste temporal (`step_decay()`) atinge a pilha física real na `CampStorageZone`.
-2. Se a quantidade total da pilha física cair, a dedução consome primeiro o saldo livre da pilha.
-3. Se a pilha for tão degradada que seu volume total fique inferior ao montante reservado ($Q_{\text{físico}} < Q_{\text{reservado}}$), ocorreu **perda real de material reservado**.
-4. O `GroundPileManager` tenta imediatamente reancorar a reserva pendente em outra pilha física da mesma categoria que possua saldo livre.
-5. Se o assentamento não dispuser de saldo livre em nenhuma pilha, o canteiro é notificado do déficit:
-   - A obra entra no estado `AWAITING_RESOURCES` (Aguardando Suprimentos).
-   - O painel do canteiro e o HUD exibem alerta: *"Faltam materiais no acampamento (perda por exposição)"*.
-   - Viagens de coleta futuras descarregadas no acampamento restauram automaticamente as reservas pendentes prioritárias antes de liberar saldo geral.
+Resta definir como a perda física real em uma pilha afeta os canteiros vinculados. Seguem as duas alternativas para deliberação do proprietário (ambas **NÃO APROVADAS**):
+
+| Aspecto | Alternativa A — Deterioração física com reancoragem *(NÃO APROVADA)* | Alternativa B — Deterioração física com perda direta da reserva *(NÃO APROVADA)* |
+|---|---|---|
+| **Regra de perda na pilha** | A reserva não protege materiais expostos. Se o desgaste reduzir o saldo físico abaixo do reservado, o sistema tenta substituir a falta usando saldo **livre** de outras pilhas da mesma categoria. | A reserva também não protege os materiais. Quando o desgaste atingir uma pilha com reserva, reduz diretamente a reserva da obra correspondente até o limite físico restante, sem reancorar. |
+| **Quando não há saldo substituto** | Se não houver saldo livre em nenhuma outra pilha, a obra afetada entra em pausa (`AWAITING_RESOURCES`) e informa a falta até nova coleta. | A obra entra imediatamente em pausa (`AWAITING_RESOURCES`) até nova coleta restaurar o déficit, mesmo se houver saldo livre em outra pilha. |
+| **Múltiplas obras simultâneas** | Se várias obras perderem reserva e houver saldo livre parcial, a reancoragem segue fila determinística por ordem de criação (`site_id` / timestamp) para evitar disputa caótica. | Cada obra sofre perda estrita vinculada às pilhas em que sua reserva estava alocada; outras obras não perdem suas reservas de outras pilhas nem competem pelo saldo livre na hora do decaimento. |
+| **Prioridade entre reservas e novas obras** | Ao coletar novos recursos, a recomposição de obras pausadas por déficit concorre ou tem prioridade explícita (definível por fila de criação) antes de liberar saldo para novas obras. | Mesma regra de recomposição explícita após nova entrega ou liberação manual; nunca consome automaticamente saldo livre de pilhas não associadas sem ação/regra explícita. |
+| **Impacto no HUD** | HUD exibe déficit apenas quando o estoque livre global da categoria zera e alguma obra pausa; mantém saldo livre consistente com a soma real das pilhas menos reservas ativas. | HUD pode mostrar obra pausada por perda na pilha original enquanto ainda exibe algum saldo livre em outra pilha, exigindo explicação mais clara ao jogador (ou botão de re-suprir). |
+| **Prevenção de duplicação** | A soma $\sum_{c} \text{reserva}(p, c) \le \text{amount}(p)$ é verificada em toda mutação; reancorar apenas move a marcação lógica de uma pilha com sobra livre para o canteiro deficitário, mantendo $Q_{\text{total}}$ conservado. | A dedução na reserva ocorre junto da dedução física em `step_decay()`, reduzindo `materials_reserved_pending` e registrando perda contábil real em $Q_{\text{deteriorado}}(R)$, mantendo $Q_{\text{total}}$ conservado. |
+
+**Recomendação Técnica (NÃO APROVADA):** recomenda-se a **Alternativa A — Deterioração física com reancoragem**, pois evita frustração de UX em que uma obra pausa mesmo havendo madeira ou pedra livre disponível em outra pilha do acampamento, preservando rigorosamente a conservação física e o comportamento intacto de `GroundPileManager.step_decay()`. Entretanto, ambas as alternativas permanecem **NÃO APROVADAS** aguardando decisão expressa do proprietário.
 
 ---
 
@@ -168,7 +170,7 @@ Para evitar que edifícios quebrem a física de unidades ou o raycast de terreno
 
 ---
 
-## 5. Tabela de Custos, Dimensões e Tempos (PROPOSTA — NÃO APROVADO — D4)
+## 5. Tabela de Custos, Dimensões e Tempos (APROVADA EM 14/11/2026 COMO VALORES PROVISÓRIOS — D4)
 
 Os parâmetros foram recalculados com base nos dados reais do projeto:
 - Madeira: peso **2** (`data/resources/wood.tres`).
@@ -190,9 +192,9 @@ Os parâmetros foram recalculados com base nos dados reais do projeto:
 | **Tempo de Coleta Prévia** *(se pilhas vazias)* | Madeira: 6 operações $\times$ 2,5 s = 15 s<br>Pedra: 6 operações $\times$ 3,5 s = 21 s | Madeira: 9 operações $\times$ 2,5 s = 22,5 s<br>Pedra: 10 operações $\times$ 3,5 s = 35 s | Ritmo real das fontes do `TestMap` na T2. |
 | **Esforço de Construção** | **30,0 s-construtor** (**15,0 s** com casal junto) | **45,0 s-construtor** (**22,5 s** com casal junto) | Tempo de trabalho no perímetro após materiais entregues. |
 | **Máximo Construtores** | **2 trabalhadores** | **2 trabalhadores** | Casal inicial sem congestionamento perimetral. |
-| **Função / Benefício** *(PROPOSTA — NÃO APROVADO)* | Residência permanente do casal (conclusão T3). | Protege até **50 madeiras, 50 pedras, 30 alimentos**. Decaimento = **0,0**. *(Capacidade e fator de proteção ainda não homologados)* | Elimina perda por exposição dentro da capacidade proposta. |
+| **Função / Benefício** *(APROVADO — provisório)* | Residência permanente do casal (conclusão T3). | Protege até **50 madeiras, 50 pedras, 30 alimentos**. Decaimento = **0,0**. *(Capacidade provisória aprovada em 14/11/2026, sujeita a balanceamento)* | Elimina perda por exposição dentro da capacidade aprovada. |
 
-> **Aviso de Governança:** Todos os parâmetros numéricos acima (custos, dimensões, tempos, limite de construtores e capacidade/fator de proteção do depósito) permanecem como **PROPOSTA — NÃO APROVADO**, sujeitos à deliberação expressa do proprietário antes da codificação de dados definitivos.
+> **Registro de Governança (14/11/2026):** Todos os valores numéricos desta tabela (dimensões, custos de madeira/pedra, esforço de construção, limite de 2 construtores e capacidade provisória do depósito de 50 madeiras, 50 pedras e 30 alimentos) foram **aprovados pelo proprietário em 14/11/2026 como valores provisórios sujeitos a balanceamento** em testes jogáveis.
 
 ---
 
@@ -216,7 +218,8 @@ O cancelamento de obra em andamento devolve recursos sem gerar duplicações nem
 4. **Materiais Incorporados à Estrutura ($Q_{\text{incorporado}}$):**
    - Materiais fixados sofrem perda por demolição proporcional ao progresso da obra:
      $$M_{\text{recuperado\_incorporado}}(R) = \left\lfloor Q_{\text{incorporado}}(R) \times (1.0 - \text{progresso}) \times \eta_{\text{demolição}} \right\rfloor$$
-   - Onde $\eta_{\text{demolição}} = 0,50$ (**PROPOSTA — NÃO APROVADO**).
+   - Onde a eficiência de recuperação $\eta_{\text{demolição}} = 0,50$ foi **APROVADA em 14/11/2026** como taxa provisória sujeita a balanceamento.
+   - Detalhes técnicos operacionais da logística de retorno (ex.: ordem automática dos trabalhadores ao recolher o saldo recuperado vs. fila de devolução e arredondamentos em cenários de borda) permanecem sujeitos a testes durante a etapa T3.6.
    - O saldo recuperado é somado ao lote de transporte de retorno ao acampamento. A fração restante é contabilizada como $Q_{\text{perda\_demolição}}(R)$.
 
 ### 6.2. Exemplos Concretos de Cancelamento (Abrigo Básico: 12 Madeiras, 6 Pedras)
@@ -347,8 +350,8 @@ Para evitar duplicação contábil, **cada unidade física de recurso aparece em
     { "source_id": "wood_tree_02", "remaining_amount": 8, "has_extracted": true },
     { "source_id": "stone_rock_01", "remaining_amount": 0, "has_extracted": true },
     { "source_id": "stone_rock_02", "remaining_amount": 17, "has_extracted": true },
-    { "source_id": "food_bush_01", "remaining_amount": 20, "has_extracted": false },
-    { "source_id": "food_bush_02", "remaining_amount": 20, "has_extracted": false }
+    { "source_id": "food_bush_01", "remaining_amount": 30, "has_extracted": false },
+    { "source_id": "food_bush_02", "remaining_amount": 30, "has_extracted": false }
   ]
 }
 ```
@@ -404,18 +407,21 @@ A ordem dos incrementos foi reestruturada para garantir que a validação espaci
 
 ---
 
-## 9. Governança e Pontos Pendentes de Aprovação
+## 9. Governança, Aprovações de 14/11/2026 e Pendência Final
 
-As sete decisões estratégicas (**D1–D7**) estão formalmente aprovadas e preservadas. Os parâmetros e políticas técnicas abaixo permanecem como **PROPOSTA — NÃO APROVADO** e dependem de homologação do proprietário antes da codificação:
+### 9.1. Decisões Aprovadas em 14/11/2026
+Além das sete diretrizes estruturais (**D1–D7**) integralmente preservadas, o proprietário aprovou em **14/11/2026**:
+1. **Tabela de Valores Provisórios (D4 — APROVADA como valores provisórios sujeitos a balanceamento):**
+   - **Abrigo Básico (`shelter_basic`):** $4,0 \times 4,0\text{ m}$, 12 madeiras, 6 pedras, 30,0 s-construtor, máximo 2 construtores.
+   - **Depósito Rústico (`storage_depot`):** $5,0 \times 4,0\text{ m}$, 18 madeiras, 10 pedras, 45,0 s-construtor, máximo 2 construtores.
+2. **Capacidade Provisória do Depósito Rústico (D5 — APROVADA como valor provisório sujeito a balanceamento):**
+   - 50 madeiras, 50 pedras e 30 alimentos (com decaimento `0,0` dentro da capacidade).
+3. **Eficiência de Demolição no Cancelamento (D3 — APROVADA como taxa provisória sujeita a balanceamento):**
+   - $\eta_{\text{demolição}} = 0,50$ para recuperação de materiais já incorporados à estrutura física (mantendo a fórmula proporcional da §6.1 e sujeitando apenas detalhes operacionais da logística de retorno aos testes da etapa T3.6).
 
-1. **Custos, Dimensões e Tempos das Construções (D4 — PROPOSTA — NÃO APROVADO):**
-   - Abrigo Básico (`shelter_basic`): $4,0\text{ m} \times 4,0\text{ m}$, 12 Madeiras, 6 Pedras (42 de peso total), 30,0 s-construtor, máximo 2 construtores.
-   - Depósito Rústico (`storage_depot`): $5,0\text{ m} \times 4,0\text{ m}$, 18 Madeiras, 10 Pedras (66 de peso total), 45,0 s-construtor, máximo 2 construtores.
-2. **Capacidade e Proteção do Depósito Rústico (D5 — PROPOSTA — NÃO APROVADO):**
-   - Capacidade de 50 madeiras, 50 pedras e 30 alimentos com fator de decaimento `0,0` (proteção integral até o teto).
-3. **Eficiência de Demolição no Cancelamento (D3 — PROPOSTA — NÃO APROVADO):**
-   - Taxa provisória $\eta_{\text{demolição}} = 0,50$ para recuperação de materiais já incorporados à estrutura física.
-4. **Política Detalhada de Deterioração com Reservas (D2 — PROPOSTA TÉCNICA — NÃO APROVADO):**
-   - Desgaste temporal atinge pilhas físicas reais; perda que atinja cota reservada dispara reancoragem em pilha livre ou estado `AWAITING_RESOURCES` no canteiro.
-5. **Aprovação Arquitetural Final e Autorização de Código:**
-   - Homologação desta revisão **T3.0-R3** (incluindo isolamento de `MASK_NAV_STATIC`, validação híbrida de conectividade e protocolo de persistência com fontes naturais) e autorização expressa para iniciar o incremento **T3.1**.
+### 9.2. Única Decisão Pendente
+- **Política de Deterioração de Materiais Reservados nas Pilhas Expostas (§3.4 — NÃO APROVADO):**
+  - Escolher entre **Alternativa A — Deterioração física com reancoragem** *(recomendada tecnicamente)* ou **Alternativa B — Deterioração física com perda direta da reserva**.
+
+### 9.3. Autorização Condicional da T3.1
+- O proprietário concedeu **autorização condicional** para iniciar o incremento **T3.1 — Contabilidade, Reservas e Saque em Lote** somente **após** a definição expressa da política de deterioração com reservas (§9.2) e a conclusão da conferência documental independente pelo ChatGPT. Nenhuma implementação de código está autorizada antes do cumprimento dessas condições.
