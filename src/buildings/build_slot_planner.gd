@@ -5,8 +5,22 @@ extends RefCounted
 ## exact reach checks, and World3D-isolated occupied position collection.
 
 const PILE_ANGLE_SAMPLES: int = 8
-const HEIGHT_TOLERANCE: float = 2.5
+const HEIGHT_TOLERANCE: float = 0.85
+const NAV_SURFACE_Y_TOLERANCE: float = 0.75
 const REACH_PROBE_HEIGHT: float = 0.55
+
+
+static func _sample_terrain_ground_y(world_pos: Vector3, world_3d: World3D) -> float:
+	if not world_pos.is_finite() or world_3d == null or world_3d.direct_space_state == null:
+		return INF
+	var p0 := Vector3(world_pos.x, world_pos.y + 3.0, world_pos.z)
+	var p1 := Vector3(world_pos.x, world_pos.y - 3.0, world_pos.z)
+	var ray := PhysicsRayQueryParameters3D.create(p0, p1, CollisionLayers.MASK_TERRAIN)
+	ray.hit_from_inside = false
+	var hit: Dictionary = world_3d.direct_space_state.intersect_ray(ray)
+	if hit.is_empty():
+		return INF
+	return (hit["position"] as Vector3).y
 
 
 static func has_clear_physical_access(
@@ -17,16 +31,32 @@ static func has_clear_physical_access(
 ) -> bool:
 	if not from_pos.is_finite() or not to_pos.is_finite():
 		return false
+	if absf(from_pos.y - to_pos.y) > HEIGHT_TOLERANCE:
+		return false
 	if world_3d == null or world_3d.direct_space_state == null:
 		return true
 	var delta_xz := Vector2(to_pos.x - from_pos.x, to_pos.z - from_pos.z)
 	if delta_xz.length_squared() <= 0.0004:
 		return true
+	var space: PhysicsDirectSpaceState3D = world_3d.direct_space_state
 	var p0 := Vector3(from_pos.x, from_pos.y + REACH_PROBE_HEIGHT, from_pos.z)
 	var p1 := Vector3(to_pos.x, to_pos.y + REACH_PROBE_HEIGHT, to_pos.z)
 	var ray := PhysicsRayQueryParameters3D.create(p0, p1, collision_mask)
 	ray.hit_from_inside = true
-	return world_3d.direct_space_state.intersect_ray(ray).is_empty()
+	if not space.intersect_ray(ray).is_empty():
+		return false
+	# Prevent high diagonal rays from flying cleanly over cliff walls or curbs between elevations.
+	if absf(from_pos.y - to_pos.y) > 0.20:
+		var low_y: float = minf(from_pos.y, to_pos.y) + 0.35
+		var low_ray := PhysicsRayQueryParameters3D.create(
+			Vector3(from_pos.x, low_y, from_pos.z),
+			Vector3(to_pos.x, low_y, to_pos.z),
+			collision_mask
+		)
+		low_ray.hit_from_inside = true
+		if not space.intersect_ray(low_ray).is_empty():
+			return false
+	return true
 
 
 static func collect_other_unit_positions(
@@ -159,6 +189,10 @@ static func compute_pile_approach_slot(
 		var snapped: Vector3 = world_nav.snap_to_navmesh(candidate)
 		if not snapped.is_finite() or absf(snapped.y - pile_pos.y) > HEIGHT_TOLERANCE:
 			continue
+		var snap_ground_y: float = _sample_terrain_ground_y(snapped, nav_world_3d)
+		if is_finite(snap_ground_y):
+			if absf(snap_ground_y - pile_pos.y) > HEIGHT_TOLERANCE or absf(snapped.y - snap_ground_y) > NAV_SURFACE_Y_TOLERANCE:
+				continue
 		var snap_pile_dist: float = Vector2(snapped.x - pile_pos.x, snapped.z - pile_pos.z).length()
 		if snap_pile_dist > reach_radius:
 			continue
@@ -169,7 +203,13 @@ static func compute_pile_approach_slot(
 		var resolved_dist: float = Vector2(resolved.x - pile_pos.x, resolved.z - pile_pos.z).length()
 		if resolved_dist > reach_radius:
 			continue
-		if not has_clear_physical_access(resolved, pile_pos, nav_world_3d):
+		var access_origin: Vector3 = resolved
+		var resolved_ground_y: float = _sample_terrain_ground_y(resolved, nav_world_3d)
+		if is_finite(resolved_ground_y):
+			if absf(resolved_ground_y - pile_pos.y) > HEIGHT_TOLERANCE or absf(resolved.y - resolved_ground_y) > NAV_SURFACE_Y_TOLERANCE:
+				continue
+			access_origin = Vector3(resolved.x, resolved_ground_y, resolved.z)
+		if not has_clear_physical_access(access_origin, pile_pos, nav_world_3d):
 			continue
 
 		var travel_dist: float = _path_length(path_res.path)
@@ -232,6 +272,10 @@ static func compute_site_perimeter_slot(
 			var snapped: Vector3 = world_nav.snap_to_navmesh(raw_pt)
 			if not snapped.is_finite() or absf(snapped.y - site_pos.y) > HEIGHT_TOLERANCE:
 				continue
+			var snap_ground_y: float = _sample_terrain_ground_y(snapped, nav_world_3d)
+			if is_finite(snap_ground_y):
+				if absf(snap_ground_y - site_pos.y) > HEIGHT_TOLERANCE or absf(snapped.y - snap_ground_y) > NAV_SURFACE_Y_TOLERANCE:
+					continue
 			if _distance_to_rect(snapped, rect) > reach_tolerance:
 				continue
 
@@ -239,7 +283,13 @@ static func compute_site_perimeter_slot(
 			if not _is_unit_connected_to_path(unit_pos, path_res, world_nav):
 				continue
 			var resolved: Vector3 = path_res.resolved_target
-			if not is_unit_in_site_dropoff_range(resolved, site, reach_tolerance, nav_world_3d):
+			var access_origin: Vector3 = resolved
+			var resolved_ground_y: float = _sample_terrain_ground_y(resolved, nav_world_3d)
+			if is_finite(resolved_ground_y):
+				if absf(resolved_ground_y - site_pos.y) > HEIGHT_TOLERANCE or absf(resolved.y - resolved_ground_y) > NAV_SURFACE_Y_TOLERANCE:
+					continue
+				access_origin = Vector3(resolved.x, resolved_ground_y, resolved.z)
+			if not is_unit_in_site_dropoff_range(access_origin, site, reach_tolerance, nav_world_3d):
 				continue
 
 			var travel_dist: float = _path_length(path_res.path)

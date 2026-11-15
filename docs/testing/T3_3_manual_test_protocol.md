@@ -50,8 +50,8 @@ Executar na raiz do worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`:
 - **B2 — Ciclo físico completo com 1 trabalhador (saque na pilha, peso e entrega):**
   - Ação: Com um canteiro criado (`Abrigo Básico`) e pilhas reservadas no acampamento, selecionar `LeaderA` e clicar com botão direito (`RMB`) sobre o canteiro. Observar até concluir todas as viagens.
   - Evidência esperada: `LeaderA` caminha até uma pilha física específica que contém recursos reservados, reduz a pilha física ao retirar conforme capacidade/peso da mochila (desacelerando proporcionalmente enquanto carregado), leva ao perímetro do canteiro e descarrega no buffer (`Buf` sobe em passos reais, `Res`/`Tr` atualizam). Ao atingir `Buf 12/12` e `Buf 6/6`, o painel muda para `"Estado: Suprido e pronto para construção (T3.4)"` e **não** inicia barra de progresso nem transforma em edifício concluído.
-  - Resultado: `[ ] aprovado  [ ] reprovado  [x] não testado`
-  - Campo de observações opcionais: ``
+  - Resultado: `[ ] aprovado  [x] reprovado  [ ] não testado`
+  - Campo de observações opcionais: `Reprovado na T3.3-R1 com canteiro no platô próximo à rampa (personagem preso na lateral da rampa e suprimento incompleto). Corrigido em código e validado em janela real na T3.3-R2 (docs/testing/T3_3_R2_plateau_navigation_diagnostic.md); aguardando reteste manual pelo proprietário.`
 
 ### C. Organização de Trabalhadores (Regra D9), Concorrência e Interrupções
 - **C1 — Regra D9 com 2 trabalhadores (1 transportador + 1 construtor em espera):**
@@ -94,6 +94,6 @@ Executar na raiz do worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`:
 ---
 
 ## 3. Resumo Final do Avaliador
-- **Resoluções testadas:** `Pendente`
-- **Veredito geral:** `[ ] Aprovado  [ ] Aprovado com ressalvas  [ ] Reprovado  [x] Aguardando execução manual`
-- **Observações gerais opcionais:** `Protocolo gerado em 15/11/2026 após implementação e validação automatizada da T3.3; aguardando execução visual/manual pelo proprietário.`
+- **Resoluções testadas:** `Pendente (reteste após T3.3-R2)`
+- **Veredito geral:** `[ ] Aprovado  [ ] Aprovado com ressalvas  [x] Reprovado  [ ] Aguardando execução manual`
+- **Observações gerais opcionais:** `Item B2 reprovado na rodada manual da T3.3-R1 (navegação lateral da rampa no platô e interrupção do abastecimento); itens seguintes (C1–D2) permanecem pendentes. Correções da T3.3-R2 implementadas e verificadas em reprodução renderizada (`docs/testing/T3_3_R2_plateau_navigation_diagnostic.md`); aguardando reteste manual de B2 e prosseguimento de C1–D2 pelo proprietário.`

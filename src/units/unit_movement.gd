@@ -20,6 +20,7 @@ enum SpeedContext {
 const ARRIVAL_TOLERANCE_XZ: float = 0.25
 const ARRIVAL_TOLERANCE_Y: float = 1.0
 const WAYPOINT_ARRIVAL_XZ: float = 0.20
+const WAYPOINT_VERTICAL_TOLERANCE_Y: float = 0.65
 const AGENT_PATH_DESIRED_DISTANCE: float = 0.45
 const AGENT_TARGET_DESIRED_DISTANCE: float = 0.25
 const AGENT_PATH_MAX_DISTANCE: float = 2.0
@@ -362,7 +363,7 @@ func _resolve_steer_point() -> Vector3:
 	var body_pos: Vector3 = _body.global_position
 	while _active_path_index < _active_path.size() - 1:
 		var wp: Vector3 = _active_path[_active_path_index]
-		var same_vertical_band: bool = absf(body_pos.y - wp.y) <= ARRIVAL_TOLERANCE_Y
+		var same_vertical_band: bool = absf(body_pos.y - wp.y) <= WAYPOINT_VERTICAL_TOLERANCE_Y
 		if same_vertical_band and _distance_xz(body_pos, wp) <= WAYPOINT_ARRIVAL_XZ:
 			_active_path_index += 1
 		else:
@@ -384,7 +385,7 @@ func _refresh_active_path() -> void:
 		var body_pos: Vector3 = _body.global_position
 		while _active_path_index < _active_path.size() - 1:
 			var wp: Vector3 = _active_path[_active_path_index]
-			if absf(body_pos.y - wp.y) <= ARRIVAL_TOLERANCE_Y and _distance_xz(body_pos, wp) <= WAYPOINT_ARRIVAL_XZ:
+			if absf(body_pos.y - wp.y) <= WAYPOINT_VERTICAL_TOLERANCE_Y and _distance_xz(body_pos, wp) <= WAYPOINT_ARRIVAL_XZ:
 				_active_path_index += 1
 			else:
 				break

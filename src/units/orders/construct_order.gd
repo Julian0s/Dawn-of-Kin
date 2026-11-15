@@ -525,7 +525,10 @@ func _update_moving_to_site_dropoff(movement: UnitMovement) -> void:
 		UnitMovement.MoveState.ARRIVED:
 			movement.stop_movement()
 			_handle_site_dropoff_arrival(movement)
-		UnitMovement.MoveState.FAILED_STUCK, UnitMovement.MoveState.FAILED_INVALID:
+		UnitMovement.MoveState.FAILED_STUCK:
+			movement.stop_movement()
+			_handle_site_dropoff_arrival(movement)
+		UnitMovement.MoveState.FAILED_INVALID:
 			movement.stop_movement()
 			_finish_failed(REASON_SITE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:
@@ -545,22 +548,29 @@ func _handle_site_dropoff_arrival(movement: UnitMovement) -> void:
 	_retry_site_dropoff_or_fail(movement)
 
 
-func _retry_site_dropoff_or_fail(movement: UnitMovement) -> void:
-	if _approach_retries < MAX_APPROACH_RETRIES:
-		_approach_retries += 1
-		var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
-		var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
-			_unit.global_position,
-			site,
-			_world_nav,
-			occupied
-		)
-		if bool(slot_res.get("valid", false)):
-			resolved_target = slot_res["position"] as Vector3
-			if movement.begin_move_to(resolved_target):
-				_unit.set_order_state(self, Unit.State.TRANSPORTING)
-				return
+func _retry_perimeter_slot_move(movement: UnitMovement, target_state: Unit.State) -> bool:
+	if _approach_retries >= MAX_APPROACH_RETRIES:
+		return false
+	_approach_retries += 1
+	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
+	var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
+		_unit.global_position,
+		site,
+		_world_nav,
+		occupied
+	)
+	if not bool(slot_res.get("valid", false)):
+		return false
+	resolved_target = slot_res["position"] as Vector3
+	if not movement.begin_move_to(resolved_target):
+		return false
+	_unit.set_order_state(self, target_state)
+	return true
 
+
+func _retry_site_dropoff_or_fail(movement: UnitMovement) -> void:
+	if _retry_perimeter_slot_move(movement, Unit.State.TRANSPORTING):
+		return
 	_finish_failed(REASON_SITE_UNREACHABLE)
 
 
@@ -627,7 +637,20 @@ func _update_moving_to_builder_slot(movement: UnitMovement) -> void:
 		UnitMovement.MoveState.ARRIVED:
 			movement.stop_movement()
 			_enter_builder_standby(movement)
-		UnitMovement.MoveState.FAILED_STUCK, UnitMovement.MoveState.FAILED_INVALID:
+		UnitMovement.MoveState.FAILED_STUCK:
+			movement.stop_movement()
+			if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+				_unit.global_position,
+				site,
+				ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+				_get_world_3d()
+			):
+				_enter_builder_standby(movement)
+			elif site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
+				_advance_by_role(movement)
+			elif not _retry_perimeter_slot_move(movement, Unit.State.MOVING):
+				_finish_failed(REASON_SITE_UNREACHABLE)
+		UnitMovement.MoveState.FAILED_INVALID:
 			movement.stop_movement()
 			_finish_failed(REASON_SITE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:
@@ -712,7 +735,13 @@ func _update_waiting_for_peer_supply(movement: UnitMovement) -> void:
 			movement.stop_movement()
 			resolved_target = Vector3(INF, INF, INF)
 			_unit.set_order_state(self, Unit.State.WORKING)
-		UnitMovement.MoveState.FAILED_STUCK, UnitMovement.MoveState.FAILED_INVALID:
+		UnitMovement.MoveState.FAILED_STUCK:
+			movement.stop_movement()
+			if not site.has_active_peer_transport_for_site(_unit):
+				_advance_by_role(movement)
+			elif not _retry_perimeter_slot_move(movement, Unit.State.MOVING):
+				_finish_failed(REASON_SITE_UNREACHABLE)
+		UnitMovement.MoveState.FAILED_INVALID:
 			movement.stop_movement()
 			_finish_failed(REASON_SITE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:

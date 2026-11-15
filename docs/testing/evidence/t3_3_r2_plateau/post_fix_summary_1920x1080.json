@@ -1,0 +1,215 @@
+{
+	"adapter_name": "Intel(R) UHD Graphics 620",
+	"captured_moments": {
+		"01_plateau_preview_valid.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/01_plateau_preview_valid.png",
+		"02_site_created.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/02_site_created.png",
+		"03_pickup_start.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/03_pickup_start.png",
+		"04_ramp_foot_approach.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/04_ramp_foot_approach.png",
+		"05_ramp_climb.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/05_ramp_climb.png",
+		"07_first_trip_delivery.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/07_first_trip_delivery.png",
+		"08_subsequent_trips.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/08_subsequent_trips.png",
+		"09_post_fix_completed_standby.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/09_post_fix_completed_standby.png",
+		"scenario_A_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_A_final.png",
+		"scenario_B_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_B_final.png",
+		"scenario_C_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_C_final.png",
+		"scenario_D_detour.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_D_detour.png",
+		"scenario_D_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_D_final.png",
+		"scenario_E_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1920x1080/post_fix/scenario_E_final.png"
+	},
+	"mode": "post_fix",
+	"resolution": "1920x1080",
+	"scenarios": {
+		"A": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"frames": 189,
+			"lateral_wall_collisions": 0,
+			"passed": true,
+			"trips_completed": 3
+		},
+		"B": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"frames": 1929,
+			"lateral_samples": [],
+			"lateral_wall_collisions": 0,
+			"max_y_reached": 2.002,
+			"passed": true,
+			"selected_targets": [
+				[
+					-0.687,
+					0.5,
+					1.05
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				],
+				[
+					0.102,
+					0.5,
+					-1.574
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				],
+				[
+					0.061,
+					0.5,
+					-0.378
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				]
+			],
+			"trips_completed": 3
+		},
+		"C": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"final_unit_pos": [
+				12.083,
+				1.784,
+				-12.75
+			],
+			"frames": 1655,
+			"lateral_samples": [],
+			"lateral_wall_collisions": 0,
+			"max_y_reached": 1.784,
+			"passed": true,
+			"selected_targets": [
+				[
+					-0.687,
+					0.5,
+					1.05
+				],
+				[
+					12.285,
+					2.24,
+					-12.75
+				],
+				[
+					0.0,
+					0.5,
+					-1.58
+				],
+				[
+					12.285,
+					2.24,
+					-12.75
+				],
+				[
+					-0.042,
+					0.5,
+					-0.379
+				],
+				[
+					12.285,
+					2.24,
+					-12.75
+				]
+			],
+			"trips_completed": 3
+		},
+		"D": {
+			"carry_seeded": true,
+			"construct_failed_reason": "",
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"direct_nav_path": [
+				[
+					9.5,
+					0.5,
+					-9.8
+				],
+				[
+					4.5,
+					0.5,
+					-11.25
+				],
+				[
+					4.5,
+					0.5,
+					-11.25
+				],
+				[
+					4.75,
+					0.5,
+					-12.75
+				],
+				[
+					6.75,
+					0.75,
+					-13.026
+				],
+				[
+					11.004,
+					1.895,
+					-13.614
+				],
+				[
+					13.25,
+					2.5,
+					-13.924
+				],
+				[
+					13.301,
+					2.5,
+					-13.931
+				],
+				[
+					13.5,
+					2.5,
+					-13.959
+				],
+				[
+					13.8,
+					2.5,
+					-14.0
+				]
+			],
+			"lateral_samples": [],
+			"lateral_wall_collisions": 0,
+			"move_failed_reason": "",
+			"passed": true,
+			"path_crosses_lateral_wall": false,
+			"path_min_x": 4.5,
+			"trips_completed": 3,
+			"unit_min_x_detour": 4.583
+		},
+		"E": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reasons": [],
+			"frames": 1763,
+			"lateral_samples": [],
+			"lateral_wall_collisions": 0,
+			"passed": true,
+			"saw_builder_promoted": true,
+			"saw_builder_standby": true,
+			"saw_d9_roles": true
+		}
+	},
+	"window_size": [
+		1920,
+		1080
+	]
+}

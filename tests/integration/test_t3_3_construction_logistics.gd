@@ -23,7 +23,14 @@ const SITE_POS_A := Vector3(-6.0, 0.0, 1.5)
 const SITE_POS_B := Vector3(0.37, 0.0, -13.19)
 
 
+func before_each() -> void:
+	Engine.physics_ticks_per_second = 180
+	Engine.time_scale = 3.0
+
+
 func after_each() -> void:
+	Engine.time_scale = 1.0
+	Engine.physics_ticks_per_second = 60
 	_release_all_inputs()
 
 
@@ -881,6 +888,165 @@ func test_08_r1_interrupted_transporter_does_not_stall_replacement_or_touch_buil
 		await wait_physics_frames(1)
 		resume_f += 1
 	assert_true(site.is_fully_supplied(), "Re-issuing original interrupted worker must deliver its held claim and reach 100% supply")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_09_r2_plateau_ramp_detour_and_elevated_slot_filtering() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var worker: Unit = (ctx["units"] as Array[Unit])[0]
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var plateau_edge_pos := Vector3(15.2, 2.0, -11.2)
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, plateau_edge_pos)
+	assert_true(bool(res.get("ok", false)), "Plateau ramp-edge shelter placement must succeed")
+	var site: ConstructionSite = res["site"] as ConstructionSite
+	await wait_physics_frames(2)
+	await _wait_nav_ready(nav)
+
+	# 1. Verify lower ground below the 2m plateau cliff never satisfies site dropoff or slot selection.
+	var site_world: World3D = site.get_world_3d()
+	assert_not_null(site_world)
+	assert_false(
+		BuildSlotPlanner.is_unit_in_site_dropoff_range(
+			Vector3(15.2, 0.0, -8.5),
+			site,
+			ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+			site_world
+		),
+		"Lower ground below 2m plateau drop-off must never count as valid site dropoff range"
+	)
+	var cliff_slot: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(Vector3(15.2, 0.0, -7.5), site, nav)
+	assert_true(bool(cliff_slot.get("valid", false)))
+	var cliff_slot_pos: Vector3 = cliff_slot["position"] as Vector3
+	assert_true(cliff_slot_pos.y >= 1.4, "Resolved perimeter slot for plateau site must stay elevated (got y=%.3f)" % cliff_slot_pos.y)
+
+	# 2. Verify forced lateral approach South of ramp routes west around ramp foot (x <= 5.0) with 0 lateral Ramp wall hits.
+	var lateral_start := Vector3(9.5, 0.0, -9.8)
+	worker.global_position = lateral_start
+	await wait_physics_frames(2)
+	var ramp_top_target := Vector3(13.8, 2.0, -14.0)
+	var path_res: WorldNavigation.PathResult = nav.find_path(lateral_start, ramp_top_target)
+	assert_true(path_res.reachable, "Plateau must be reachable from lateral south of ramp")
+	var min_path_x: float = 999.0
+	var crosses_lateral_wall: bool = false
+	for pt: Vector3 in path_res.path:
+		min_path_x = minf(min_path_x, pt.x)
+		if pt.x > 5.4 and pt.z >= -12.35 and pt.z <= -11.35 and pt.y < 0.7:
+			crosses_lateral_wall = true
+	assert_false(crosses_lateral_wall, "NavMesh path must never cross Terrain/Ramp lateral wall at z=-12.0")
+	assert_true(min_path_x <= 5.0, "NavMesh path must detour around ramp foot x<=5.0 (min_x=%.3f)" % min_path_x)
+
+	var move_ord := MoveOrder.new(ramp_top_target)
+	worker.issue_order(move_ord)
+	var lateral_hits: int = 0
+	var min_unit_x: float = worker.global_position.x
+	var move_f: int = 0
+	while move_ord.is_active() and move_f < 900:
+		await wait_physics_frames(1)
+		move_f += 1
+		min_unit_x = minf(min_unit_x, worker.global_position.x)
+		for ci: int in range(worker.get_slide_collision_count()):
+			var kc: KinematicCollision3D = worker.get_slide_collision(ci)
+			if kc != null and kc.get_collider() != null and String(kc.get_collider().get("name")) == "Ramp" and absf(kc.get_normal().y) < 0.707:
+				lateral_hits += 1
+	assert_eq(move_ord.status, UnitOrder.Status.SUCCEEDED)
+	assert_eq(lateral_hits, 0, "Worker detouring around ramp must have 0 lateral collisions with Ramp")
+	assert_true(min_unit_x <= 5.0, "Worker physical detour must round ramp foot x<=5.0 (min_x=%.3f)" % min_unit_x)
+
+	# 3. Complete full plateau logistics from camp (12 wood, 6 stone) with 0 lateral wall collisions.
+	worker.global_position = camp.global_position + Vector3(-1.5, 0.0, 2.0)
+	await wait_physics_frames(2)
+	var supply_ord := ConstructOrder.new(site, camp)
+	worker.issue_order(supply_ord)
+	var sim_f: int = 0
+	var supply_lateral_hits: int = 0
+	while not site.is_fully_supplied() and sim_f < 2800:
+		await wait_physics_frames(1)
+		sim_f += 1
+		for ci: int in range(worker.get_slide_collision_count()):
+			var kc: KinematicCollision3D = worker.get_slide_collision(ci)
+			if kc != null and kc.get_collider() != null and String(kc.get_collider().get("name")) == "Ramp" and absf(kc.get_normal().y) < 0.707:
+				supply_lateral_hits += 1
+		if supply_ord.status == UnitOrder.Status.FAILED:
+			break
+
+	assert_true(site.is_fully_supplied(), "Plateau ramp-edge site must reach 100% physical supply")
+	assert_eq(supply_lateral_hits, 0, "Repeated plateau trips must have 0 lateral collisions with Ramp")
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_10_r2_plateau_two_worker_roles_promotion_and_full_supply() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var w1: Unit = units[0]
+	var w2: Unit = units[1] if units.size() >= 2 else _spawn_extra_worker(ctx["main"] as MainScene, nav, "R2_PeerW2", camp.global_position + Vector3(2.5, 0.0, 2.5))
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(15.2, 2.0, -11.2))
+	assert_true(bool(res.get("ok", false)))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+	await wait_physics_frames(2)
+	await _wait_nav_ready(nav)
+
+	var o1 := ConstructOrder.new(site, camp)
+	var o2 := ConstructOrder.new(site, camp)
+	w1.issue_order(o1)
+	w2.issue_order(o2)
+	assert_eq(site.get_worker_role(w1), ConstructionSite.WorkerRole.TRANSPORTER)
+	assert_eq(site.get_worker_role(w2), ConstructionSite.WorkerRole.BUILDER)
+
+	var saw_builder_standby: bool = false
+	var interrupted_w1: bool = false
+	var saw_builder_promoted: bool = false
+	var lateral_hits: int = 0
+	var sim_f: int = 0
+	while not site.is_fully_supplied() and sim_f < 2800:
+		await wait_physics_frames(1)
+		sim_f += 1
+		if o2.is_active() and o2.get_phase() == ConstructOrder.Phase.BUILDER_STANDBY:
+			saw_builder_standby = true
+		if not interrupted_w1 and saw_builder_standby and o1.trips_completed >= 1 and w1.get_carry_load().is_empty():
+			interrupted_w1 = true
+			w1.issue_order(MoveOrder.new(Vector3(-4.0, 0.0, 2.0)))
+			await wait_physics_frames(2)
+			var promoted_role: ConstructionSite.WorkerRole = site.get_worker_role(w2)
+			saw_builder_promoted = (
+				promoted_role == ConstructionSite.WorkerRole.SOLO_SUPPLIER
+				or promoted_role == ConstructionSite.WorkerRole.TRANSPORTER
+			)
+		for u: Unit in [w1, w2]:
+			for ci: int in range(u.get_slide_collision_count()):
+				var kc: KinematicCollision3D = u.get_slide_collision(ci)
+				if kc != null and kc.get_collider() != null and String(kc.get_collider().get("name")) == "Ramp" and absf(kc.get_normal().y) < 0.707:
+					lateral_hits += 1
+		if o2.status == UnitOrder.Status.FAILED:
+			break
+
+	assert_true(saw_builder_standby, "Secondary worker must reach elevated BUILDER_STANDBY perimeter on plateau")
+	assert_true(saw_builder_promoted, "Interrupting primary TRANSPORTER must promote plateau BUILDER to supply")
+	assert_eq(o2.failure_reason, "", "Promoted plateau worker must complete supply without failing (got '%s')" % o2.failure_reason)
+	assert_true(site.is_fully_supplied(), "Two-worker plateau supply after promotion must reach 100%")
+	assert_eq(lateral_hits, 0, "Two-worker plateau supply must have 0 lateral collisions against Ramp")
 	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
 	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
 

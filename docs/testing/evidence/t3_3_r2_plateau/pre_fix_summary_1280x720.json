@@ -1,0 +1,1615 @@
+{
+	"adapter_name": "Intel(R) UHD Graphics 620",
+	"captured_moments": {
+		"01_plateau_preview_valid.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/01_plateau_preview_valid.png",
+		"02_site_created.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/02_site_created.png",
+		"03_pickup_start.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/03_pickup_start.png",
+		"04_ramp_foot_approach.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/04_ramp_foot_approach.png",
+		"05_ramp_climb.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/05_ramp_climb.png",
+		"07_first_trip_delivery.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/07_first_trip_delivery.png",
+		"08_subsequent_trips.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/08_subsequent_trips.png",
+		"09_pre_fix_failure_state.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/09_pre_fix_failure_state.png",
+		"scenario_A_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/scenario_A_final.png",
+		"scenario_B_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/scenario_B_final.png",
+		"scenario_C_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/scenario_C_final.png",
+		"scenario_D_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/scenario_D_final.png",
+		"scenario_E_final.png": "C:/Projetos/Dawn_of_Kin_wt_t3_3_construction/docs/testing/evidence/t3_3_r2_plateau/1280x720/pre_fix/scenario_E_final.png"
+	},
+	"mode": "pre_fix",
+	"resolution": "1280x720",
+	"scenarios": {
+		"A": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"frames": 189,
+			"lateral_wall_collisions": 0,
+			"passed": true,
+			"trips_completed": 3
+		},
+		"B": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"frames": 1873,
+			"lateral_samples": [
+				{
+					"col_pos": [
+						6.044,
+						0.251,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 340,
+					"normal": [
+						-0.094,
+						0.376,
+						0.922
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.033,
+						0.001,
+						-11.628
+					]
+				},
+				{
+					"col_pos": [
+						6.143,
+						0.275,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 344,
+					"normal": [
+						-0.079,
+						0.316,
+						0.945
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.134,
+						0.001,
+						-11.619
+					]
+				},
+				{
+					"col_pos": [
+						6.228,
+						0.295,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 348,
+					"normal": [
+						-0.066,
+						0.265,
+						0.962
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.22,
+						0.001,
+						-11.613
+					]
+				},
+				{
+					"col_pos": [
+						6.298,
+						0.312,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 352,
+					"normal": [
+						-0.056,
+						0.223,
+						0.973
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.346,
+						0.239,
+						-11.737
+					]
+				},
+				{
+					"col_pos": [
+						5.974,
+						0.234,
+						-12.002
+					],
+					"collider": "Ramp",
+					"frame": 1060,
+					"normal": [
+						-0.104,
+						0.418,
+						0.903
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						5.947,
+						0.001,
+						-11.638
+					]
+				},
+				{
+					"col_pos": [
+						6.074,
+						0.258,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1064,
+					"normal": [
+						-0.089,
+						0.358,
+						0.93
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.066,
+						0.001,
+						-11.625
+					]
+				},
+				{
+					"col_pos": [
+						6.175,
+						0.282,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1068,
+					"normal": [
+						-0.074,
+						0.297,
+						0.952
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.169,
+						0.001,
+						-11.617
+					]
+				},
+				{
+					"col_pos": [
+						6.26,
+						0.303,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1072,
+					"normal": [
+						-0.062,
+						0.246,
+						0.967
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.254,
+						0.001,
+						-11.611
+					]
+				},
+				{
+					"col_pos": [
+						6.097,
+						0.264,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1732,
+					"normal": [
+						-0.086,
+						0.344,
+						0.935
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.098,
+						0.001,
+						-11.618
+					]
+				},
+				{
+					"col_pos": [
+						6.236,
+						0.297,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1736,
+					"normal": [
+						-0.065,
+						0.261,
+						0.963
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.237,
+						0.001,
+						-11.607
+					]
+				},
+				{
+					"col_pos": [
+						6.339,
+						0.322,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1740,
+					"normal": [
+						-0.05,
+						0.199,
+						0.979
+					],
+					"target": [
+						15.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.388,
+						0.245,
+						-11.732
+					]
+				}
+			],
+			"lateral_wall_collisions": 11,
+			"max_y_reached": 2.002,
+			"passed": true,
+			"selected_targets": [
+				[
+					-0.687,
+					0.5,
+					1.05
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				],
+				[
+					0.102,
+					0.5,
+					-1.574
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				],
+				[
+					0.062,
+					0.5,
+					-0.378
+				],
+				[
+					15.65,
+					2.5,
+					-12.9
+				]
+			],
+			"trips_completed": 3
+		},
+		"C": {
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"failure_reason": "",
+			"final_unit_pos": [
+				12.039,
+				1.773,
+				-12.5
+			],
+			"frames": 1606,
+			"lateral_samples": [
+				{
+					"col_pos": [
+						6.017,
+						0.244,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 340,
+					"normal": [
+						-0.098,
+						0.392,
+						0.915
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.005,
+						0.001,
+						-11.631
+					]
+				},
+				{
+					"col_pos": [
+						6.044,
+						0.251,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 341,
+					"normal": [
+						-0.094,
+						0.376,
+						0.922
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.033,
+						0.001,
+						-11.628
+					]
+				},
+				{
+					"col_pos": [
+						6.12,
+						0.269,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 344,
+					"normal": [
+						-0.083,
+						0.33,
+						0.94
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.11,
+						0.001,
+						-11.621
+					]
+				},
+				{
+					"col_pos": [
+						6.208,
+						0.29,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 348,
+					"normal": [
+						-0.069,
+						0.277,
+						0.958
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.2,
+						0.001,
+						-11.614
+					]
+				},
+				{
+					"col_pos": [
+						6.282,
+						0.308,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 352,
+					"normal": [
+						-0.058,
+						0.233,
+						0.971
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.275,
+						0.001,
+						-11.609
+					]
+				},
+				{
+					"col_pos": [
+						6.043,
+						0.251,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 952,
+					"normal": [
+						-0.094,
+						0.376,
+						0.922
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.034,
+						0.001,
+						-11.628
+					]
+				},
+				{
+					"col_pos": [
+						6.149,
+						0.276,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 956,
+					"normal": [
+						-0.078,
+						0.313,
+						0.947
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.142,
+						0.001,
+						-11.619
+					]
+				},
+				{
+					"col_pos": [
+						6.238,
+						0.297,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 960,
+					"normal": [
+						-0.065,
+						0.259,
+						0.964
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.232,
+						0.001,
+						-11.612
+					]
+				},
+				{
+					"col_pos": [
+						6.034,
+						0.248,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1512,
+					"normal": [
+						-0.095,
+						0.382,
+						0.919
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.038,
+						0.001,
+						-11.628
+					]
+				},
+				{
+					"col_pos": [
+						6.187,
+						0.285,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1516,
+					"normal": [
+						-0.073,
+						0.29,
+						0.954
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.191,
+						0.001,
+						-11.615
+					]
+				},
+				{
+					"col_pos": [
+						6.304,
+						0.313,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1520,
+					"normal": [
+						-0.055,
+						0.22,
+						0.974
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.362,
+						0.241,
+						-11.736
+					]
+				}
+			],
+			"lateral_wall_collisions": 11,
+			"max_y_reached": 1.781,
+			"passed": true,
+			"selected_targets": [
+				[
+					-0.687,
+					0.5,
+					1.05
+				],
+				[
+					12.286,
+					2.286,
+					-12.5
+				],
+				[
+					0.01,
+					0.5,
+					-1.58
+				],
+				[
+					12.286,
+					2.286,
+					-12.5
+				],
+				[
+					-0.033,
+					0.5,
+					-0.379
+				],
+				[
+					12.286,
+					2.286,
+					-12.5
+				]
+			],
+			"trips_completed": 3
+		},
+		"D": {
+			"carry_seeded": true,
+			"construct_failed_reason": "",
+			"delivered": {
+				"stone": 6,
+				"wood": 12
+			},
+			"direct_nav_path": [
+				[
+					9.5,
+					0.5,
+					-9.8
+				],
+				[
+					6.5,
+					0.5,
+					-11.5
+				],
+				[
+					6.75,
+					0.75,
+					-12.5
+				],
+				[
+					8.75,
+					1.5,
+					-12.926
+				],
+				[
+					11.677,
+					2.151,
+					-13.548
+				],
+				[
+					13.25,
+					2.5,
+					-13.883
+				],
+				[
+					13.308,
+					2.5,
+					-13.895
+				],
+				[
+					13.5,
+					2.5,
+					-13.936
+				],
+				[
+					13.8,
+					2.5,
+					-14.0
+				]
+			],
+			"lateral_samples": [
+				{
+					"col_pos": [
+						6.599,
+						0.384,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 44,
+					"normal": [
+						-0.011,
+						0.042,
+						0.999
+					],
+					"target": [
+						13.8,
+						2.5,
+						-14.0
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.595,
+						0.001,
+						-11.599
+					]
+				},
+				{
+					"col_pos": [
+						6.599,
+						0.384,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 44,
+					"normal": [
+						-0.011,
+						0.042,
+						0.999
+					],
+					"target": [
+						13.8,
+						2.5,
+						-14.0
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.595,
+						0.001,
+						-11.599
+					]
+				},
+				{
+					"col_pos": [
+						6.032,
+						0.248,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 932,
+					"normal": [
+						-0.096,
+						0.383,
+						0.919
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.02,
+						0.001,
+						-11.63
+					]
+				},
+				{
+					"col_pos": [
+						6.132,
+						0.272,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 936,
+					"normal": [
+						-0.081,
+						0.322,
+						0.943
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.123,
+						0.001,
+						-11.62
+					]
+				},
+				{
+					"col_pos": [
+						6.219,
+						0.293,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 940,
+					"normal": [
+						-0.068,
+						0.271,
+						0.96
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.211,
+						0.001,
+						-11.613
+					]
+				},
+				{
+					"col_pos": [
+						6.291,
+						0.31,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 944,
+					"normal": [
+						-0.057,
+						0.228,
+						0.972
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.34,
+						0.237,
+						-11.737
+					]
+				},
+				{
+					"col_pos": [
+						5.988,
+						0.238,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1580,
+					"normal": [
+						-0.102,
+						0.409,
+						0.907
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						5.99,
+						0.001,
+						-11.633
+					]
+				},
+				{
+					"col_pos": [
+						6.148,
+						0.276,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1584,
+					"normal": [
+						-0.078,
+						0.313,
+						0.947
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.153,
+						0.001,
+						-11.618
+					]
+				},
+				{
+					"col_pos": [
+						6.276,
+						0.307,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1588,
+					"normal": [
+						-0.059,
+						0.237,
+						0.97
+					],
+					"target": [
+						14.65,
+						2.5,
+						-12.9
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.279,
+						0.001,
+						-11.609
+					]
+				}
+			],
+			"lateral_wall_collisions": 9,
+			"move_failed_reason": "",
+			"passed": false,
+			"path_crosses_lateral_wall": true,
+			"path_min_x": 6.5,
+			"trips_completed": 3,
+			"unit_min_x_detour": 6.577
+		},
+		"E": {
+			"delivered": {
+				"stone": 6,
+				"wood": 10
+			},
+			"failure_reasons": [
+				"2339381446469:site_unreachable"
+			],
+			"frames": 1772,
+			"lateral_samples": [
+				{
+					"col_pos": [
+						6.036,
+						0.249,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 200,
+					"normal": [
+						-0.095,
+						0.38,
+						0.92
+					],
+					"target": [
+						14.1,
+						2.5,
+						-14.05
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.045,
+						0.001,
+						-11.627
+					]
+				},
+				{
+					"col_pos": [
+						6.202,
+						0.289,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 204,
+					"normal": [
+						-0.07,
+						0.281,
+						0.957
+					],
+					"target": [
+						14.1,
+						2.5,
+						-14.05
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.209,
+						0.001,
+						-11.613
+					]
+				},
+				{
+					"col_pos": [
+						6.325,
+						0.318,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 208,
+					"normal": [
+						-0.052,
+						0.207,
+						0.977
+					],
+					"target": [
+						14.1,
+						2.5,
+						-14.05
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.381,
+						0.247,
+						-11.736
+					]
+				},
+				{
+					"col_pos": [
+						6.043,
+						0.251,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 340,
+					"normal": [
+						-0.094,
+						0.376,
+						0.922
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.032,
+						0.001,
+						-11.628
+					]
+				},
+				{
+					"col_pos": [
+						6.142,
+						0.274,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 344,
+					"normal": [
+						-0.079,
+						0.316,
+						0.945
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.134,
+						0.001,
+						-11.619
+					]
+				},
+				{
+					"col_pos": [
+						6.227,
+						0.295,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 348,
+					"normal": [
+						-0.066,
+						0.265,
+						0.962
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.22,
+						0.001,
+						-11.613
+					]
+				},
+				{
+					"col_pos": [
+						6.297,
+						0.312,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 352,
+					"normal": [
+						-0.056,
+						0.223,
+						0.973
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.346,
+						0.239,
+						-11.737
+					]
+				},
+				{
+					"col_pos": [
+						6.09,
+						0.262,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 988,
+					"normal": [
+						-0.087,
+						0.348,
+						0.934
+					],
+					"target": [
+						14.1,
+						2.5,
+						-14.05
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.099,
+						0.001,
+						-11.622
+					]
+				},
+				{
+					"col_pos": [
+						6.244,
+						0.299,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 992,
+					"normal": [
+						-0.064,
+						0.256,
+						0.965
+					],
+					"target": [
+						14.1,
+						2.5,
+						-14.05
+					],
+					"unit": "LeaderA",
+					"unit_pos": [
+						6.25,
+						0.001,
+						-11.61
+					]
+				},
+				{
+					"col_pos": [
+						5.985,
+						0.237,
+						-12.002
+					],
+					"collider": "Ramp",
+					"frame": 1020,
+					"normal": [
+						-0.103,
+						0.412,
+						0.905
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						5.968,
+						0.001,
+						-11.629
+					]
+				},
+				{
+					"col_pos": [
+						6.097,
+						0.264,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1024,
+					"normal": [
+						-0.086,
+						0.344,
+						0.935
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.084,
+						0.001,
+						-11.618
+					]
+				},
+				{
+					"col_pos": [
+						6.194,
+						0.287,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1028,
+					"normal": [
+						-0.072,
+						0.286,
+						0.955
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.184,
+						0.001,
+						-11.61
+					]
+				},
+				{
+					"col_pos": [
+						6.275,
+						0.306,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1032,
+					"normal": [
+						-0.059,
+						0.238,
+						0.969
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.266,
+						0.001,
+						-11.604
+					]
+				},
+				{
+					"col_pos": [
+						5.974,
+						0.234,
+						-12.002
+					],
+					"collider": "Ramp",
+					"frame": 1584,
+					"normal": [
+						-0.104,
+						0.418,
+						0.903
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						5.962,
+						0.001,
+						-11.621
+					]
+				},
+				{
+					"col_pos": [
+						6.133,
+						0.272,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1588,
+					"normal": [
+						-0.08,
+						0.322,
+						0.943
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.128,
+						0.001,
+						-11.605
+					]
+				},
+				{
+					"col_pos": [
+						6.262,
+						0.303,
+						-12.001
+					],
+					"collider": "Ramp",
+					"frame": 1592,
+					"normal": [
+						-0.061,
+						0.245,
+						0.968
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.258,
+						0.001,
+						-11.595
+					]
+				},
+				{
+					"col_pos": [
+						6.357,
+						0.326,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1596,
+					"normal": [
+						-0.047,
+						0.188,
+						0.981
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1600,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1604,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1608,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1612,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1616,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1620,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1624,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				},
+				{
+					"col_pos": [
+						6.375,
+						0.33,
+						-12.0
+					],
+					"collider": "Ramp",
+					"frame": 1628,
+					"normal": [
+						-0.044,
+						0.177,
+						0.983
+					],
+					"target": [
+						12.286,
+						2.286,
+						-12.5
+					],
+					"unit": "LeaderB",
+					"unit_pos": [
+						6.352,
+						0.001,
+						-11.59
+					]
+				}
+			],
+			"lateral_wall_collisions": 62,
+			"passed": false,
+			"saw_builder_promoted": true,
+			"saw_builder_standby": true,
+			"saw_d9_roles": true
+		}
+	},
+	"window_size": [
+		1280,
+		720
+	]
+}

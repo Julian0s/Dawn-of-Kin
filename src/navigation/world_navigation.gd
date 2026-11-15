@@ -236,6 +236,7 @@ func request_rebake() -> void:
 	var nav_mesh: NavigationMesh = _create_configured_navmesh()
 	var source_data: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
 	NavigationServer3D.parse_source_geometry_data(nav_mesh, source_data, source_root)
+	_append_sloped_terrain_side_curbs(source_root, source_data)
 	_store_static_geometry_cache(source_root, source_data)
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_data)
 	_last_bake_ms = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
@@ -456,6 +457,7 @@ func _prepare_candidate_build_inputs(candidate_boxes: Array[Dictionary]) -> Dict
 		source_data.append_arrays(_cached_static_vertices, _cached_static_indices)
 	else:
 		NavigationServer3D.parse_source_geometry_data(cand_nav, source_data, source_root)
+		_append_sloped_terrain_side_curbs(source_root, source_data)
 		_store_static_geometry_cache(source_root, source_data)
 
 	for box_entry: Dictionary in candidate_boxes:
@@ -581,6 +583,89 @@ func _create_configured_navmesh() -> NavigationMesh:
 		Vector3(map_bounds.size.x, BAKE_HEIGHT_Y, map_bounds.size.y)
 	)
 	return nav_mesh
+
+
+static func _append_sloped_terrain_side_curbs(
+	source_root: Node,
+	source_data: NavigationMeshSourceGeometryData3D
+) -> void:
+	if source_root == null or source_data == null:
+		return
+	const CURB_WIDTH: float = 0.40
+	const CURB_START_INSET: float = 0.05
+	const CURB_TOP_INSET: float = 0.15
+	const CURB_MIN_LEN: float = 0.50
+	const CURB_BOTTOM_MARGIN: float = 0.50
+	const CURB_TOP_MARGIN: float = 0.90
+	const CURB_LATERAL_OVERLAP: float = 0.02
+
+	var queue: Array[Node] = [source_root]
+	var head: int = 0
+	while head < queue.size():
+		var node: Node = queue[head]
+		head += 1
+		for child: Node in node.get_children():
+			queue.append(child)
+		if not (node is StaticBody3D):
+			continue
+		var body: StaticBody3D = node as StaticBody3D
+		if (body.collision_layer & CollisionLayers.MASK_TERRAIN) == 0:
+			continue
+
+		for child: Node in body.get_children():
+			if not (child is CollisionShape3D):
+				continue
+			var col_shape: CollisionShape3D = child as CollisionShape3D
+			if col_shape.disabled or not (col_shape.shape is BoxShape3D):
+				continue
+			var xf: Transform3D = col_shape.global_transform
+			var b: Basis = xf.basis.orthonormalized()
+			var up_axis: Vector3 = b.y if b.y.y >= 0.0 else -b.y
+			# Process walkable sloped slabs (approx 5..45 degrees) whose sides drop onto lower terrain.
+			if up_axis.y > 0.996 or up_axis.y < 0.707:
+				continue
+
+			var scale_vec: Vector3 = xf.basis.get_scale().abs()
+			var box_size: Vector3 = (col_shape.shape as BoxShape3D).size * scale_vec
+			var slope_axis: Vector3 = b.x
+			var slope_half: float = box_size.x * 0.5
+			var lat_half: float = box_size.z * 0.5
+			if absf(b.z.y) > absf(b.x.y):
+				slope_axis = b.z
+				slope_half = box_size.z * 0.5
+				lat_half = box_size.x * 0.5
+			if slope_axis.y < 0.0:
+				slope_axis = -slope_axis
+
+			var horiz_up := Vector3(slope_axis.x, 0.0, slope_axis.z)
+			if horiz_up.length_squared() <= 0.0001:
+				continue
+			horiz_up = horiz_up.normalized()
+			var horiz_lat: Vector3 = horiz_up.cross(Vector3.UP).normalized()
+			var curb_basis := Basis(horiz_up, Vector3.UP, horiz_lat)
+
+			var top_center: Vector3 = col_shape.global_position + up_axis * (box_size.y * 0.5)
+			var foot_pos: Vector3 = top_center - slope_axis * slope_half
+			var crest_pos: Vector3 = top_center + slope_axis * slope_half
+			var horiz_len: float = Vector2(crest_pos.x - foot_pos.x, crest_pos.z - foot_pos.z).length()
+			if horiz_len <= CURB_START_INSET + CURB_MIN_LEN:
+				continue
+
+			var u_start: float = CURB_START_INSET
+			var u_end: float = maxf(u_start + CURB_MIN_LEN, horiz_len - CURB_TOP_INSET)
+			var curb_len: float = u_end - u_start
+			var y_min: float = minf(foot_pos.y, crest_pos.y) - CURB_BOTTOM_MARGIN
+			var y_max: float = maxf(foot_pos.y, crest_pos.y) + CURB_TOP_MARGIN
+			var curb_height: float = y_max - y_min
+			var center_y: float = (y_min + y_max) * 0.5
+			var foot_xz := Vector3(foot_pos.x, 0.0, foot_pos.z)
+			var mid_u: float = (u_start + u_end) * 0.5
+			var curb_faces: PackedVector3Array = _build_box_faces(Vector3(curb_len, curb_height, CURB_WIDTH))
+
+			for side: float in [-1.0, 1.0]:
+				var lat_offset: float = (lat_half + CURB_WIDTH * 0.5 - CURB_LATERAL_OVERLAP) * side
+				var curb_origin := foot_xz + horiz_up * mid_u + horiz_lat * lat_offset + Vector3(0.0, center_y, 0.0)
+				source_data.add_faces(curb_faces, Transform3D(curb_basis, curb_origin))
 
 
 static func _build_box_faces(size: Vector3) -> PackedVector3Array:
