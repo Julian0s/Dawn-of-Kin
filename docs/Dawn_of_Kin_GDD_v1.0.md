@@ -244,18 +244,18 @@
 
 ## 16. Instrução de handoff para o Antigravity
 
-**Estado histórico e missão atual:** o marco **T1 — Fundação RTS** foi concluído e aprovado (`t1-complete`, commit `2808799`). A missão atual utiliza este GDD como fonte de verdade para planejar e, somente após aprovação explícita dos rascunhos técnicos e de arquitetura, implementar incrementalmente o marco **T2 — Trabalho e recursos**.
+**Estado histórico e governança:** o marco **T1 — Fundação RTS** foi concluído e aprovado (`t1-complete`, commit `2808799`). O marco **T2 — Trabalho e Recursos** foi concluído e formalmente aprovado pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`). Na fase **T3 — Construção**, a etapa **T3.1 — Contabilidade, Reservas e Saque em Lote** foi concluída e integrada na `main` (`ceb3f71`), e a etapa **T3.2 — Validação Espacial, Área Reservada e Prévia sem Grid** foi concluída, testada manualmente (11/11) e formalmente aprovada pelo proprietário em 15/11/2026 (`f2110b6`). A etapa subsequente **T3.3 — Canteiro de Obra e Suprimento Físico** e todas as fases posteriores (**T3.4 a T8**) continuam estritamente planejadas e bloqueadas sem autorização específica prévia de implementação.
 
-**Regras de execução:**
+**Regras permanentes de execução:**
 
-1. Trabalhar em passos pequenos, testáveis e reversíveis; preservar integralmente o núcleo da T1 e não implementar T3–T8 antes da validação da T2.
-2. Preservar funcionalidades já existentes; antes de mudanças estruturais, registrar o estado do Git e explicar o plano.
+1. Trabalhar em passos pequenos, testáveis e reversíveis; preservar integralmente o núcleo da T1, T2 e os avanços aprovados da T3, sem implementar etapas posteriores sem autorização explícita do proprietário.
+2. Preservar funcionalidades já existentes; antes de mudanças estruturais, registrar o estado do Git e submeter plano revisável para aprovação.
 3. Preferir código modular, nomes claros, cenas reutilizáveis e dados desacoplados de UI.
 4. Separar comportamento de protótipo de decisões fechadas; qualquer valor temporário (pesos, taxas, prazos de deterioração, limites) deve estar documentado e parametrizado.
 5. Executar testes e informar arquivos alterados, comandos usados, resultados, limitações e próximos passos.
 6. Não produzir ativos finais de arte até definição de orçamento visual e validação do núcleo RTS.
 
-**Resultado esperado na fase T2:** sobre a base isométrica validada da T1, permitir que o casal protagonista (sem ferramentas ou estruturas humanas pré-construídas) colete madeira, pedra e alimentos com peso e porcentagem de carga (`0%`–`100%`), retorne automaticamente ao acampamento ao atingir a capacidade (ou não caber mais 1 unidade) e forme/agrupe pilhas físicas individuais no acampamento sujeitas à exposição configurável, mantendo o estoque coletivo exatamente sincronizado com as pilhas válidas do acampamento e preparando a base modular para armazéns protetores construíveis na `T3+`.
+**Registro histórico da entrega T2 (concluída em 14/11/2026):** sobre a base isométrica validada da T1, permitiu que o casal protagonista (sem ferramentas ou estruturas humanas pré-construídas) colete madeira, pedra e alimentos com peso e porcentagem de carga (`0%`–`100%`), retorne automaticamente ao acampamento ao atingir a capacidade (ou não caber mais 1 unidade) e forme/agrupe pilhas físicas individuais no acampamento sujeitas à exposição configurável, mantendo o estoque coletivo exatamente sincronizado com as pilhas válidas do acampamento e preparando a base modular para armazéns protetores construíveis na `T3+`.
 
 ---
 

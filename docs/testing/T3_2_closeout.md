@@ -88,13 +88,15 @@ A revisão dos arquivos implementados foi realizada de forma independente pelo C
 ## 6. Resultados de Desempenho e Limitações Aceitas
 
 Medições reportadas no benchmark `1920×1080` (Intel UHD Graphics 620, `gl_compatibility`, warmup + 32 confirmações):
-- **Hover contínuo:** avaliação $p50 = 0,77\text{ ms}$, $p95 = 2,12\text{ ms}$; frametime $p50 = 8,35\text{ ms}$, $p95 = 13,77\text{ ms}$.
-- **Confirmação na thread principal:** tempo gasto na thread principal reduzido para $p50 \approx 6,6\text{–}13,5\text{ ms}$ e $p95 \le 21,9\text{ ms}$ (redução drástica frente ao baseline síncrono inicial de $92\text{–}135\text{ ms}$).
-- **Impacto no frametime durante confirmações assíncronas:** $p50 = 6,87\text{ ms}$, $p95 = 15,89\text{ ms}$, máximo $24,6\text{ ms}$ (**0 quadros $> 30\text{ ms}$ e 0 quadros $> 100\text{ ms}$**).
+- **Hover contínuo:** avaliação $p50 = 0,77\text{ ms}$, média $0,95\text{ ms}$, $p95 = 2,12\text{ ms}$; frametime durante hover $p50 = 8,35\text{ ms}$, $p95 = 13,77\text{ ms}$.
+- **Confirmação na thread principal:** tempo gasto na thread principal reduzido para $p50 = 13,55\text{ ms}$ (média $13,05\text{ ms}$) e $p95 = 21,92\text{ ms}$ (máximo $21,95\text{ ms}$; em medição prévia sob clock mais elevado registrou $p50 = 6,57\text{ ms}$, $p95 = 15,32\text{ ms}$), reduzindo drasticamente o bloqueio da thread principal frente ao baseline síncrono inicial de $p50 = 92,09\text{ ms}$ e $p95 = 134,71\text{ ms}$.
+- **Impacto no frametime durante confirmações assíncronas:** $p50 = 6,87\text{ ms}$, média $7,67\text{ ms}$, $p95 = 15,89\text{ ms}$, máximo $24,60\text{ ms}$ (**0 quadros $> 30\text{ ms}$ e 0 quadros $> 100\text{ ms}$**).
+- **Tempo de execução do worker thread (`worker_bake`):** $p50 = 89,99\text{ ms}$, média $92,76\text{ ms}$, $p95 = 163,01\text{ ms}$, máximo $180,84\text{ ms}$ (em medição prévia registrou $p50 = 46,87\text{ ms}$, $p95 = 99,52\text{ ms}$).
+- **Tempo total de parede até o callback (`async_confirm_wall_ms`):** $p50 = 106,40\text{ ms}$, média $108,32\text{ ms}$, $p95 = 185,98\text{ ms}$, máximo $192,43\text{ ms}$ (em medição prévia registrou $p50 = 55,52\text{ ms}$, $p95 = 119,55\text{ ms}$).
 
 ### Limitações Conhecidas Aceitas no Encerramento
-1. **Latência de Parede Assíncrona:** o worker thread leva entre ~56 ms e 186 ms ($p50\text{–}p95$) para concluir o bake da região no hardware integrado; durante esse intervalo, o controlador bloqueia novas confirmações duplicadas, aceita cancelamento imediato e revalida o estado ao retornar.
-2. **Custo do Fallback Síncrono:** caso o modo assíncrono seja desabilitado, o bake síncrono na thread principal consome de ~37 ms a 79 ms ($p50$) no `TestMap` ($64 \times 64\text{ m}$).
+1. **Latência de Parede da Confirmação Assíncrona:** a confirmação assíncrona requer entre ~106 ms e 186 ms de tempo total de parede ($p50\text{–}p95$; variando entre ~56 ms e 120 ms sob clock mais alto) até que o worker thread finalize o bake Recast e o callback seja processado na thread principal. Durante esse intervalo em voo, a prévia mantém-se responsiva, `is_confirm_pending()` bloqueia cliques duplicados, cancelamentos por `Esc`/`RMB` ou troca de edifício são processados imediatamente, e o estado é revalidado no retorno prevenindo aceitação de dados obsoletos.
+2. **Custo do Fallback Síncrono:** caso o modo assíncrono seja deliberadamente desativado (`use_async_confirm = false`), o bake síncrono completo na thread principal consome de $p50 = 37,31\text{ ms}$ a $79,44\text{ ms}$ ($p95 = 48,52\text{ ms}$ a $116,31\text{ ms}$) no `TestMap` ($64 \times 64\text{ m}$).
 3. **Escalaridade em Mapas Maiores:** se regiões futuras crescerem substancialmente além de $64 \times 64\text{ m}$ (T4/T5), será recomendável implementar particionamento regional ou recorte via `filter_baking_aabb`.
 4. **Acoplamento à API de Navegação:** a detecção de obsolescência assume que modificações na geometria de navegação ocorram pelos métodos públicos de `WorldNavigation`.
 

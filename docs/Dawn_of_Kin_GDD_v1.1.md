@@ -343,7 +343,7 @@
 | T8 — Primeiro contato | Regras de capítulo 2, 1–2 encontros, comunidades simuladas (com nomes próprios pré-gerados e persistentes) | Encontros só são possíveis após filho jovem |
 | **Economia salarial / pessoal (futura)** | Remuneração de moradores/famílias e compra de roupas/produtos comunitários | **Marco ABERTO** (`PROPOSTA FUTURA`; não iniciar nem alocar sem aprovação própria) |
 
-**Prioridade absoluta:** concluir formalmente o aceite da **T2** (incluindo decisão do proprietário sobre o comportamento em bateria DC) e entregar **T3** antes de implementar nascimento, diplomacia ou mundo grande.
+**Prioridade absoluta:** com o aceite formal da **T2** concluído em 14/11/2026 e os avanços **T3.1** e **T3.2** aprovados em 15/11/2026, entregar incrementalmente a **T3** antes de implementar nascimento, diplomacia ou mundo grande.
 
 ---
 
@@ -361,7 +361,7 @@
 
 ## 15. Riscos e pendências reais
 
-- **Validação da T2:** os 21 itens do protocolo manual [T2_manual_test_protocol.md](testing/T2_manual_test_protocol.md) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto"). O benchmark em tomada CA (B1.1) registrou `p95 = 9,757 ms` e `0` quadros `> 100 ms` (critério atendido), enquanto em bateria DC (B1) registrou `p95 = 33,038 ms` e `0` quadros `> 100 ms` (critério de `p95` não atendido em bateria). Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 e a autorização de aceite formal do marco permanecem pendentes de decisão expressa do proprietário.
+- **Validação da T2 (concluída e aprovada em 14/11/2026):** os 21 itens do protocolo manual [T2_manual_test_protocol.md](testing/T2_manual_test_protocol.md) foram executados e aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto"). O benchmark em tomada CA (B1.1) registrou `p95 = 9,757 ms` e `0` quadros `> 100 ms` (critério atendido), enquanto em bateria DC (B1) registrou `p95 = 33,038 ms` e `0` quadros `> 100 ms` (critério de `p95` não atendido em bateria). Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a classificação do desempenho em DC como limitação aceitável para encerrar a T2 foi formalizada e o marco T2 foi formalmente aprovado e encerrado pelo proprietário em 14/11/2026 (`t2-complete`).
 - **ABERTO (marca):** nome comercial *Dawn of Kin* exige pesquisa de disponibilidade e marca antes de lançamento.
 - **ABERTO (família):** taxa de envelhecimento e nascimento, lógica de afinidade, casamentos autônomos e viuvez, e integração de parceiros vindos de outras comunidades.
 - **ABERTO (herança visual e corpos):** intensidade das variações hereditárias, eventual influência de avós/gerações anteriores e limites numéricos de altura e constituição física.
