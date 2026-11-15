@@ -68,7 +68,8 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			world_nav,
 			_camp_storage_zone,
 			_ground_pile_manager,
-			self
+			self,
+			_units_root
 		)
 	if _placement_test_overlay != null and _placement_controller != null:
 		_placement_test_overlay.configure(

@@ -45,7 +45,9 @@ class CandidateSession extends RefCounted:
 	var map_rid: RID = RID()
 	var region_rid: RID = RID()
 	var navigation_mesh: NavigationMesh = null
+	var prepare_ms: float = 0.0
 	var bake_ms: float = 0.0
+	var server_sync_ms: float = 0.0
 	var polygon_count: int = 0
 
 	func _notification(what: int) -> void:
@@ -82,7 +84,9 @@ class CandidateSession extends RefCounted:
 
 	func get_bake_metrics() -> Dictionary:
 		return {
+			"prepare_ms": prepare_ms,
 			"bake_ms": bake_ms,
+			"server_sync_ms": server_sync_ms,
 			"polygon_count": polygon_count,
 		}
 
@@ -97,6 +101,13 @@ class CandidateSession extends RefCounted:
 		valid = false
 
 
+class AsyncBakeToken extends RefCounted:
+	var cancelled: bool = false
+
+	func cancel() -> void:
+		cancelled = true
+
+
 @export var source_root_path: NodePath = ^".."
 @export var auto_bake_on_ready: bool = true
 @export var map_bounds: Rect2 = Rect2(-32.0, -32.0, 64.0, 64.0)
@@ -108,6 +119,11 @@ var _sync_min_map_iteration: int = 1
 var _sync_min_region_iteration: int = 1
 var _last_bake_ms: float = 0.0
 var _last_sync_ms: float = 0.0
+var _cached_static_vertices: PackedFloat32Array = PackedFloat32Array()
+var _cached_static_indices: PackedInt32Array = PackedInt32Array()
+var _cached_static_source_id: int = 0
+var _cached_static_bounds: Rect2 = Rect2()
+var _has_static_geometry_cache: bool = false
 
 
 func _ready() -> void:
@@ -147,7 +163,21 @@ func is_navigation_ready() -> bool:
 
 
 func set_map_bounds(bounds: Rect2) -> void:
+	if not map_bounds.is_equal_approx(bounds):
+		invalidate_static_geometry_cache()
 	map_bounds = bounds
+
+
+func invalidate_static_geometry_cache() -> void:
+	_has_static_geometry_cache = false
+	_cached_static_vertices = PackedFloat32Array()
+	_cached_static_indices = PackedInt32Array()
+	_cached_static_source_id = 0
+	_cached_static_bounds = Rect2()
+
+
+func has_static_geometry_cache() -> bool:
+	return _has_static_geometry_cache
 
 
 func get_map_bounds() -> Rect2:
@@ -187,6 +217,7 @@ func request_rebake() -> void:
 	var nav_mesh: NavigationMesh = _create_configured_navmesh()
 	var source_data: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
 	NavigationServer3D.parse_source_geometry_data(nav_mesh, source_data, source_root)
+	_store_static_geometry_cache(source_root, source_data)
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_data)
 	_last_bake_ms = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
 
@@ -291,17 +322,93 @@ static func query_path_on_map(
 ## Caller should call session.dispose() when done (also auto-freed on reference drop).
 func create_candidate_session(candidate_boxes: Array[Dictionary]) -> CandidateSession:
 	var session := CandidateSession.new()
+	var prep: Dictionary = _prepare_candidate_build_inputs(candidate_boxes)
+	if not (prep.get("ok", false) as bool):
+		session.reason = String(prep.get("reason", "candidate_prep_failed"))
+		return session
+
+	var cand_nav: NavigationMesh = prep["nav_mesh"] as NavigationMesh
+	var source_data: NavigationMeshSourceGeometryData3D = prep["source_data"] as NavigationMeshSourceGeometryData3D
+	var prepare_ms: float = float(prep.get("prepare_ms", 0.0))
+
+	var bake_start_usec: int = Time.get_ticks_usec()
+	NavigationServer3D.bake_from_source_geometry_data(cand_nav, source_data)
+	var bake_ms: float = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
+	return _finalize_candidate_session(cand_nav, prepare_ms, bake_ms)
+
+
+## Runs the isolated candidate NavMesh bake on a background worker thread and invokes
+## on_complete(session) on the main thread once ready, preventing main-thread bake stalls.
+func create_candidate_session_async(
+	candidate_boxes: Array[Dictionary],
+	on_complete: Callable
+) -> AsyncBakeToken:
+	var token := AsyncBakeToken.new()
+	var prep: Dictionary = _prepare_candidate_build_inputs(candidate_boxes)
+	if not (prep.get("ok", false) as bool):
+		var err_session := CandidateSession.new()
+		err_session.reason = String(prep.get("reason", "candidate_prep_failed"))
+		if on_complete.is_valid():
+			on_complete.call(err_session)
+		return token
+
+	var cand_nav: NavigationMesh = prep["nav_mesh"] as NavigationMesh
+	var source_data: NavigationMeshSourceGeometryData3D = prep["source_data"] as NavigationMeshSourceGeometryData3D
+	var prepare_ms: float = float(prep.get("prepare_ms", 0.0))
+	var bake_start_usec: int = Time.get_ticks_usec()
+
+	var finish_cb: Callable = func() -> void:
+		var elapsed_bake_ms: float = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
+		if token.cancelled or not is_instance_valid(self) or not is_inside_tree():
+			return
+		var session: CandidateSession = _finalize_candidate_session(cand_nav, prepare_ms, elapsed_bake_ms)
+		if on_complete.is_valid():
+			on_complete.call(session)
+		else:
+			session.dispose()
+
+	NavigationServer3D.bake_from_source_geometry_data_async(cand_nav, source_data, finish_cb)
+	return token
+
+
+func _store_static_geometry_cache(source_root: Node, source_data: NavigationMeshSourceGeometryData3D) -> void:
+	if source_root == null or not is_instance_valid(source_root) or source_data == null:
+		invalidate_static_geometry_cache()
+		return
+	var verts: PackedFloat32Array = source_data.get_vertices()
+	var indices: PackedInt32Array = source_data.get_indices()
+	if verts.is_empty():
+		invalidate_static_geometry_cache()
+		return
+	_cached_static_vertices = verts
+	_cached_static_indices = indices
+	_cached_static_source_id = source_root.get_instance_id()
+	_cached_static_bounds = map_bounds
+	_has_static_geometry_cache = true
+
+
+func _prepare_candidate_build_inputs(candidate_boxes: Array[Dictionary]) -> Dictionary:
 	var source_root: Node = get_node_or_null(source_root_path)
 	if source_root == null:
 		source_root = get_parent()
-	if source_root == null:
-		session.reason = "missing_source_root"
-		return session
+	if source_root == null or not is_instance_valid(source_root):
+		return {"ok": false, "reason": "missing_source_root"}
 
-	var start_usec: int = Time.get_ticks_usec()
+	var prep_start_usec: int = Time.get_ticks_usec()
 	var cand_nav: NavigationMesh = _create_configured_navmesh()
 	var source_data := NavigationMeshSourceGeometryData3D.new()
-	NavigationServer3D.parse_source_geometry_data(cand_nav, source_data, source_root)
+
+	var cache_valid: bool = (
+		_has_static_geometry_cache
+		and _cached_static_source_id == source_root.get_instance_id()
+		and _cached_static_bounds.is_equal_approx(map_bounds)
+		and not _cached_static_vertices.is_empty()
+	)
+	if cache_valid:
+		source_data.append_arrays(_cached_static_vertices, _cached_static_indices)
+	else:
+		NavigationServer3D.parse_source_geometry_data(cand_nav, source_data, source_root)
+		_store_static_geometry_cache(source_root, source_data)
 
 	for box_entry: Dictionary in candidate_boxes:
 		var box_pos: Variant = box_entry.get("position")
@@ -318,13 +425,29 @@ func create_candidate_session(candidate_boxes: Array[Dictionary]) -> CandidateSe
 		var faces: PackedVector3Array = _build_box_faces(Vector3(s.x, total_height, s.z))
 		source_data.add_faces(faces, Transform3D(Basis.IDENTITY, box_center))
 
-	NavigationServer3D.bake_from_source_geometry_data(cand_nav, source_data)
-	session.bake_ms = float(Time.get_ticks_usec() - start_usec) / 1000.0
-	session.polygon_count = cand_nav.get_polygon_count()
-	if session.polygon_count == 0:
+	var prepare_ms: float = float(Time.get_ticks_usec() - prep_start_usec) / 1000.0
+	return {
+		"ok": true,
+		"nav_mesh": cand_nav,
+		"source_data": source_data,
+		"prepare_ms": prepare_ms,
+	}
+
+
+func _finalize_candidate_session(
+	cand_nav: NavigationMesh,
+	prepare_ms: float,
+	bake_ms: float
+) -> CandidateSession:
+	var session := CandidateSession.new()
+	session.prepare_ms = prepare_ms
+	session.bake_ms = bake_ms
+	session.polygon_count = cand_nav.get_polygon_count() if cand_nav != null else 0
+	if cand_nav == null or session.polygon_count == 0:
 		session.reason = "empty_candidate_navmesh"
 		return session
 
+	var sync_start_usec: int = Time.get_ticks_usec()
 	var cand_map_rid: RID = NavigationServer3D.map_create()
 	var cand_reg_rid: RID = NavigationServer3D.region_create()
 	if not cand_map_rid.is_valid() or not cand_reg_rid.is_valid():
@@ -356,6 +479,7 @@ func create_candidate_session(candidate_boxes: Array[Dictionary]) -> CandidateSe
 		session.reason = "candidate_region_attach_failed"
 		return session
 
+	session.server_sync_ms = float(Time.get_ticks_usec() - sync_start_usec) / 1000.0
 	session.map_rid = cand_map_rid
 	session.region_rid = cand_reg_rid
 	session.navigation_mesh = cand_nav

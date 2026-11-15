@@ -48,6 +48,9 @@ class ValidationContext extends RefCounted:
 	var units: Array[Unit] = []
 	var resource_sources: Array[ResourceSource] = []
 	var connectivity_checkpoints: Array[Vector3] = []
+	var region_root_id: int = 0
+	var units_root_id: int = 0
+	var has_region_scope: bool = false
 
 	static func from_region(
 		region_root: Node,
@@ -56,13 +59,20 @@ class ValidationContext extends RefCounted:
 		p_pile_manager: GroundPileManager = null,
 		p_units: Array[Unit] = [],
 		p_sources: Array[ResourceSource] = [],
-		p_checkpoints: Array[Vector3] = []
+		p_checkpoints: Array[Vector3] = [],
+		p_units_root: Node = null,
+		p_piles_root: Node = null
 	) -> ValidationContext:
 		var ctx := ValidationContext.new()
 		ctx.world_navigation = p_world_navigation
 		ctx.camp_storage_zone = p_camp_zone
 		ctx.ground_pile_manager = p_pile_manager
 		ctx.connectivity_checkpoints = p_checkpoints.duplicate()
+		ctx.has_region_scope = (region_root != null and is_instance_valid(region_root))
+		if ctx.has_region_scope:
+			ctx.region_root_id = region_root.get_instance_id()
+		if p_units_root != null and is_instance_valid(p_units_root):
+			ctx.units_root_id = p_units_root.get_instance_id()
 
 		if region_root is Node3D and (region_root as Node3D).is_inside_tree():
 			ctx.world_3d = (region_root as Node3D).get_world_3d()
@@ -76,41 +86,112 @@ class ValidationContext extends RefCounted:
 			var bounds_var: Variant = region_root.call("get_map_bounds")
 			if bounds_var is Rect2:
 				ctx.region_bounds = bounds_var as Rect2
-		elif p_world_navigation != null:
+		elif p_world_navigation != null and is_instance_valid(p_world_navigation):
 			ctx.region_bounds = p_world_navigation.get_map_bounds()
 
-		var tree: SceneTree = null
-		if region_root != null and region_root.is_inside_tree():
-			tree = region_root.get_tree()
-		elif p_world_navigation != null and p_world_navigation.is_inside_tree():
-			tree = p_world_navigation.get_tree()
-
+		var seen_units: Dictionary = {}
 		if not p_units.is_empty():
-			ctx.units = p_units.duplicate()
-		elif tree != null:
-			for raw_node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
-				if raw_node is Unit and is_instance_valid(raw_node):
-					ctx.units.append(raw_node as Unit)
+			for u: Unit in p_units:
+				_append_scoped_unit(ctx.units, seen_units, u, ctx.world_3d)
+		elif p_units_root != null and is_instance_valid(p_units_root):
+			_collect_scoped_units_recursive(p_units_root, ctx.units, seen_units, ctx.world_3d)
+			if ctx.has_region_scope:
+				_collect_scoped_units_recursive(region_root, ctx.units, seen_units, ctx.world_3d)
+		elif ctx.has_region_scope:
+			if region_root.has_method("get_units"):
+				var region_units_var: Variant = region_root.call("get_units")
+				if region_units_var is Array:
+					for item: Variant in region_units_var as Array:
+						if item is Unit:
+							_append_scoped_unit(ctx.units, seen_units, item as Unit, ctx.world_3d)
+			_collect_scoped_units_recursive(region_root, ctx.units, seen_units, ctx.world_3d)
+			var parent_node: Node = region_root.get_parent()
+			if parent_node is MainScene and ctx.units.is_empty():
+				for main_u: Unit in (parent_node as MainScene).get_units():
+					_append_scoped_unit(ctx.units, seen_units, main_u, ctx.world_3d)
 
+		var seen_sources: Dictionary = {}
 		if not p_sources.is_empty():
-			ctx.resource_sources = p_sources.duplicate()
-		elif region_root != null and region_root.has_method("get_resource_sources"):
-			var region_sources_var: Variant = region_root.call("get_resource_sources")
-			if region_sources_var is Array:
-				for item: Variant in region_sources_var as Array:
-					if item is ResourceSource and is_instance_valid(item):
-						ctx.resource_sources.append(item as ResourceSource)
-		elif tree != null:
-			for raw_src: Node in tree.get_nodes_in_group(ResourceSource.GROUP_RESOURCE_SOURCES):
-				if raw_src is ResourceSource and is_instance_valid(raw_src):
-					ctx.resource_sources.append(raw_src as ResourceSource)
+			for s: ResourceSource in p_sources:
+				_append_scoped_source(ctx.resource_sources, seen_sources, s, ctx.world_3d)
+		elif ctx.has_region_scope:
+			if region_root.has_method("get_resource_sources"):
+				var region_sources_var: Variant = region_root.call("get_resource_sources")
+				if region_sources_var is Array:
+					for item: Variant in region_sources_var as Array:
+						if item is ResourceSource:
+							_append_scoped_source(ctx.resource_sources, seen_sources, item as ResourceSource, ctx.world_3d)
+			else:
+				_collect_scoped_sources_recursive(region_root, ctx.resource_sources, seen_sources, ctx.world_3d)
 
-		if tree != null:
-			for raw_pile: Node in tree.get_nodes_in_group(GroundResourcePile.GROUP_GROUND_PILES):
-				if raw_pile is GroundResourcePile and is_instance_valid(raw_pile):
-					ctx.extra_piles.append(raw_pile as GroundResourcePile)
+		var seen_piles: Dictionary = {}
+		if p_piles_root != null and is_instance_valid(p_piles_root):
+			_collect_scoped_piles_recursive(p_piles_root, ctx.extra_piles, seen_piles, ctx.world_3d)
+		if ctx.has_region_scope:
+			if region_root.has_method("get_ground_piles"):
+				var region_piles_var: Variant = region_root.call("get_ground_piles")
+				if region_piles_var is Array:
+					for item: Variant in region_piles_var as Array:
+						if item is GroundResourcePile:
+							_append_scoped_pile(ctx.extra_piles, seen_piles, item as GroundResourcePile, ctx.world_3d)
+			_collect_scoped_piles_recursive(region_root, ctx.extra_piles, seen_piles, ctx.world_3d)
 
 		return ctx
+
+	static func _matches_world(node: Node, expected_world: World3D) -> bool:
+		if node == null or not is_instance_valid(node):
+			return false
+		if expected_world != null and node is Node3D and (node as Node3D).is_inside_tree():
+			return (node as Node3D).get_world_3d() == expected_world
+		return true
+
+	static func _append_scoped_unit(out: Array[Unit], seen: Dictionary, unit_node: Unit, expected_world: World3D) -> void:
+		if not _matches_world(unit_node, expected_world):
+			return
+		var uid: int = unit_node.get_instance_id()
+		if not seen.has(uid):
+			seen[uid] = true
+			out.append(unit_node)
+
+	static func _collect_scoped_units_recursive(root_node: Node, out: Array[Unit], seen: Dictionary, expected_world: World3D) -> void:
+		if root_node == null or not is_instance_valid(root_node):
+			return
+		if root_node is Unit:
+			_append_scoped_unit(out, seen, root_node as Unit, expected_world)
+		for child: Node in root_node.get_children():
+			_collect_scoped_units_recursive(child, out, seen, expected_world)
+
+	static func _append_scoped_source(out: Array[ResourceSource], seen: Dictionary, source_node: ResourceSource, expected_world: World3D) -> void:
+		if not _matches_world(source_node, expected_world):
+			return
+		var sid: int = source_node.get_instance_id()
+		if not seen.has(sid):
+			seen[sid] = true
+			out.append(source_node)
+
+	static func _collect_scoped_sources_recursive(root_node: Node, out: Array[ResourceSource], seen: Dictionary, expected_world: World3D) -> void:
+		if root_node == null or not is_instance_valid(root_node):
+			return
+		if root_node is ResourceSource:
+			_append_scoped_source(out, seen, root_node as ResourceSource, expected_world)
+		for child: Node in root_node.get_children():
+			_collect_scoped_sources_recursive(child, out, seen, expected_world)
+
+	static func _append_scoped_pile(out: Array[GroundResourcePile], seen: Dictionary, pile_node: GroundResourcePile, expected_world: World3D) -> void:
+		if not _matches_world(pile_node, expected_world):
+			return
+		var pid: int = pile_node.get_instance_id()
+		if not seen.has(pid):
+			seen[pid] = true
+			out.append(pile_node)
+
+	static func _collect_scoped_piles_recursive(root_node: Node, out: Array[GroundResourcePile], seen: Dictionary, expected_world: World3D) -> void:
+		if root_node == null or not is_instance_valid(root_node):
+			return
+		if root_node is GroundResourcePile:
+			_append_scoped_pile(out, seen, root_node as GroundResourcePile, expected_world)
+		for child: Node in root_node.get_children():
+			_collect_scoped_piles_recursive(child, out, seen, expected_world)
 
 
 class ValidationResult extends RefCounted:
@@ -121,7 +202,11 @@ class ValidationResult extends RefCounted:
 	var used_candidate_navmesh: bool = false
 	var accessible_perimeter_points: Array[Vector3] = []
 	var evaluation_usec: int = 0
+	var main_thread_usec: int = 0
+	var candidate_prepare_ms: float = 0.0
 	var candidate_bake_ms: float = 0.0
+	var candidate_sync_ms: float = 0.0
+	var connectivity_query_ms: float = 0.0
 
 
 func validate_hover(
@@ -175,10 +260,71 @@ func validate_confirm(
 	context: ValidationContext
 ) -> ValidationResult:
 	var started_usec: int = Time.get_ticks_usec()
+	var job: Dictionary = _prepare_confirm_job(definition, raw_position, context, started_usec)
+	if not (job["proceed"] as bool):
+		return job["result"] as ValidationResult
+
+	var world_nav: WorldNavigation = context.world_navigation
+	var candidate_boxes: Array[Dictionary] = job["candidate_boxes"] as Array[Dictionary]
+	var session: WorldNavigation.CandidateSession = world_nav.create_candidate_session(candidate_boxes)
+	var finalize_res: ValidationResult = _complete_confirm_with_session(
+		definition,
+		job,
+		session,
+		started_usec,
+		0
+	)
+	return finalize_res
+
+
+## Non-blocking confirmation check: performs spatial pre-checks and anchor collection
+## synchronously, runs Recast candidate NavMesh baking on a worker thread, then verifies
+## candidate connectivity on completion and invokes on_complete(result).
+func validate_confirm_async(
+	definition: BuildingDefinition,
+	raw_position: Vector3,
+	context: ValidationContext,
+	on_complete: Callable
+) -> WorldNavigation.AsyncBakeToken:
+	var started_usec: int = Time.get_ticks_usec()
+	var job: Dictionary = _prepare_confirm_job(definition, raw_position, context, started_usec)
+	if not (job["proceed"] as bool):
+		var sync_fail: ValidationResult = job["result"] as ValidationResult
+		sync_fail.main_thread_usec = sync_fail.evaluation_usec
+		if on_complete.is_valid():
+			on_complete.call(sync_fail)
+		return null
+
+	var world_nav: WorldNavigation = context.world_navigation
+	var candidate_boxes: Array[Dictionary] = job["candidate_boxes"] as Array[Dictionary]
+	var pre_main_usec: int = Time.get_ticks_usec() - started_usec
+
+	return world_nav.create_candidate_session_async(
+		candidate_boxes,
+		func(session: WorldNavigation.CandidateSession) -> void:
+			var final_res: ValidationResult = _complete_confirm_with_session(
+				definition,
+				job,
+				session,
+				started_usec,
+				pre_main_usec
+			)
+			if on_complete.is_valid():
+				on_complete.call(final_res)
+	)
+
+
+func _prepare_confirm_job(
+	definition: BuildingDefinition,
+	raw_position: Vector3,
+	context: ValidationContext,
+	started_usec: int
+) -> Dictionary:
 	var result: ValidationResult = _validate_spatial_base(definition, raw_position, context)
 	if not result.valid:
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
-		return result
+		result.main_thread_usec = result.evaluation_usec
+		return {"proceed": false, "result": result}
 
 	var space_state: PhysicsDirectSpaceState3D = _resolve_space_state(context)
 	var bounds: Rect2 = _resolve_region_bounds(context)
@@ -195,7 +341,8 @@ func validate_confirm(
 	if not hub_origin.is_finite():
 		_fail_result(result, REASON_PERIMETER_UNREACHABLE, "Posição inválida: sem acesso válido ao perímetro de montagem.")
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
-		return result
+		result.main_thread_usec = result.evaluation_usec
+		return {"proceed": false, "result": result}
 
 	# Collect pre-placement reachable anchors BEFORE candidate baking so we only preserve
 	# connectivity that already existed on the current navigable region.
@@ -258,16 +405,57 @@ func validate_confirm(
 			"size": Vector3(definition.footprint_size.x, definition.visual_height, definition.footprint_size.y),
 		}
 	]
-	var session: WorldNavigation.CandidateSession = world_nav.create_candidate_session(candidate_boxes)
-	result.used_candidate_navmesh = true
-	result.candidate_bake_ms = session.bake_ms
 
-	if not session.is_valid():
-		session.dispose()
+	return {
+		"proceed": true,
+		"result": result,
+		"space_state": space_state,
+		"bounds": bounds,
+		"center_pos": center_pos,
+		"hub_origin": hub_origin,
+		"pre_camp_target": pre_camp_target,
+		"pre_unit_targets": pre_unit_targets,
+		"pre_source_groups": pre_source_groups,
+		"pre_checkpoints": pre_checkpoints,
+		"pre_corridor_probes": pre_corridor_probes,
+		"candidate_boxes": candidate_boxes,
+	}
+
+
+func _complete_confirm_with_session(
+	definition: BuildingDefinition,
+	job: Dictionary,
+	session: WorldNavigation.CandidateSession,
+	started_usec: int,
+	pre_main_usec: int
+) -> ValidationResult:
+	var post_start_usec: int = Time.get_ticks_usec()
+	var result: ValidationResult = job["result"] as ValidationResult
+	var space_state: PhysicsDirectSpaceState3D = job["space_state"] as PhysicsDirectSpaceState3D
+	var bounds: Rect2 = job["bounds"] as Rect2
+	var center_pos: Vector3 = job["center_pos"] as Vector3
+	var hub_origin: Vector3 = job["hub_origin"] as Vector3
+	var pre_camp_target: Vector3 = job["pre_camp_target"] as Vector3
+	var pre_unit_targets: Array[Vector3] = job["pre_unit_targets"] as Array[Vector3]
+	var pre_source_groups: Array[Array] = job["pre_source_groups"] as Array[Array]
+	var pre_checkpoints: Array[Vector3] = job["pre_checkpoints"] as Array[Vector3]
+	var pre_corridor_probes: Array[Vector3] = job["pre_corridor_probes"] as Array[Vector3]
+
+	result.used_candidate_navmesh = true
+	if session != null:
+		result.candidate_prepare_ms = session.prepare_ms
+		result.candidate_bake_ms = session.bake_ms
+		result.candidate_sync_ms = session.server_sync_ms
+
+	if session == null or not session.is_valid():
+		if session != null:
+			session.dispose()
 		_fail_result(result, REASON_CORRIDOR_BLOCKED, "Posição inválida: falha ao validar malha de navegação candidata.")
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
+		result.main_thread_usec = pre_main_usec + (Time.get_ticks_usec() - post_start_usec) if pre_main_usec > 0 else result.evaluation_usec
 		return result
 
+	var query_start_usec: int = Time.get_ticks_usec()
 	var candidate_perimeter: Array[Vector3] = _collect_accessible_perimeter_on_candidate(
 		definition,
 		center_pos,
@@ -278,9 +466,11 @@ func validate_confirm(
 	)
 	result.accessible_perimeter_points = candidate_perimeter
 	if candidate_perimeter.size() < MIN_ACCESSIBLE_PERIMETER_POINTS:
+		result.connectivity_query_ms = float(Time.get_ticks_usec() - query_start_usec) / 1000.0
 		session.dispose()
 		_fail_result(result, REASON_PERIMETER_UNREACHABLE, "Posição inválida: perímetro de trabalho inacessível após ocupação.")
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
+		result.main_thread_usec = pre_main_usec + (Time.get_ticks_usec() - post_start_usec) if pre_main_usec > 0 else result.evaluation_usec
 		return result
 
 	var connectivity_ok: bool = _verify_candidate_connectivity(
@@ -292,17 +482,20 @@ func validate_confirm(
 		pre_checkpoints,
 		pre_corridor_probes
 	)
+	result.connectivity_query_ms = float(Time.get_ticks_usec() - query_start_usec) / 1000.0
 	session.dispose()
 
 	if not connectivity_ok:
 		_fail_result(result, REASON_CORRIDOR_BLOCKED, "Posição inválida: bloquearia corredor ou acesso de navegação.")
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
+		result.main_thread_usec = pre_main_usec + (Time.get_ticks_usec() - post_start_usec) if pre_main_usec > 0 else result.evaluation_usec
 		return result
 
 	result.valid = true
 	result.reason_code = &""
 	result.reason_text = ""
 	result.evaluation_usec = Time.get_ticks_usec() - started_usec
+	result.main_thread_usec = pre_main_usec + (Time.get_ticks_usec() - post_start_usec) if pre_main_usec > 0 else result.evaluation_usec
 	return result
 
 
@@ -388,7 +581,7 @@ func _validate_spatial_base(
 		_fail_result(result, REASON_PILE_OVERLAP, "Posição inválida: há pilhas de materiais neste local.")
 		return result
 
-	if _overlaps_units(space_state, _body_box, shape_xform, definition, resolved_pos, context.units):
+	if _overlaps_units(space_state, _body_box, shape_xform, definition, resolved_pos, context):
 		_fail_result(result, REASON_UNIT_OVERLAP, "Posição inválida: há trabalhadores na área da construção.")
 		return result
 
@@ -498,7 +691,7 @@ func _overlaps_units(
 	shape_xform: Transform3D,
 	definition: BuildingDefinition,
 	center_pos: Vector3,
-	units: Array[Unit]
+	context: ValidationContext
 ) -> bool:
 	var unit_hits: Array[Dictionary] = _intersect_box(
 		space_state,
@@ -508,10 +701,16 @@ func _overlaps_units(
 		false,
 		true
 	)
-	if not unit_hits.is_empty():
-		return true
+	for hit: Dictionary in unit_hits:
+		var col: Variant = hit.get("collider")
+		if col is Unit:
+			var hit_unit: Unit = col as Unit
+			if not context.has_region_scope or context.units.has(hit_unit) or _is_node_inside_region_scope(hit_unit, context):
+				return true
+		else:
+			return true
 	var half: Vector2 = definition.get_half_extents()
-	for unit_node: Unit in units:
+	for unit_node: Unit in context.units:
 		if unit_node == null or not is_instance_valid(unit_node) or not unit_node.is_inside_tree():
 			continue
 		var u_pos: Vector3 = unit_node.global_position
@@ -519,6 +718,18 @@ func _overlaps_units(
 			continue
 		if absf(u_pos.x - center_pos.x) < (half.x + 0.35) and absf(u_pos.z - center_pos.z) < (half.y + 0.35):
 			return true
+	return false
+
+
+static func _is_node_inside_region_scope(node: Node, context: ValidationContext) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	var cursor: Node = node
+	while cursor != null:
+		var cid: int = cursor.get_instance_id()
+		if cid == context.region_root_id or (context.units_root_id != 0 and cid == context.units_root_id):
+			return true
+		cursor = cursor.get_parent()
 	return false
 
 
