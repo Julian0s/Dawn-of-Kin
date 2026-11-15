@@ -17,12 +17,18 @@ signal placement_rejected(
 )
 signal hover_state_changed(valid: bool, reason_text: String, world_position: Vector3)
 
+const DYNAMIC_HOVER_REFRESH_INTERVAL_SEC: float = 0.12
+
+@export var use_async_confirm: bool = true
+
 var _camera_rig: RtsCameraRig = null
 var _region_root: Node = null
 var _world_navigation: WorldNavigation = null
 var _camp_storage_zone: CampStorageZone = null
 var _ground_pile_manager: GroundPileManager = null
 var _preview_parent: Node3D = null
+var _units_root: Node = null
+var _piles_root: Node = null
 var _connectivity_checkpoints: Array[Vector3] = []
 
 var _validator: PlacementValidator = PlacementValidator.new()
@@ -32,9 +38,14 @@ var _preview: PlacementPreview = null
 var _active: bool = false
 var _active_definition: BuildingDefinition = null
 var _left_click_armed: bool = false
+var _confirm_in_flight: bool = false
+var _confirm_generation: int = 0
+var _active_confirm_token: WorldNavigation.AsyncBakeToken = null
 var _last_pointer_pos: Vector2 = Vector2.ZERO
 var _has_pointer_pos: bool = false
 var _pointer_dirty: bool = false
+var _world_dirty: bool = false
+var _dynamic_refresh_elapsed_sec: float = 0.0
 var _last_camera_focus: Vector2 = Vector2(INF, INF)
 var _last_camera_zoom: float = INF
 var _last_ground_y: float = 0.0
@@ -49,6 +60,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_cancel_pending_confirm()
+	_disconnect_world_signals()
 	if _preview != null and is_instance_valid(_preview):
 		_preview.visible = false
 		_preview.queue_free()
@@ -57,7 +70,7 @@ func _exit_tree() -> void:
 	_active_definition = null
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not _active or _active_definition == null:
 		set_process(false)
 		return
@@ -73,8 +86,13 @@ func _process(_delta: float) -> void:
 			_last_camera_zoom = zoom
 			cam_moved = true
 
-	if _pointer_dirty or cam_moved:
+	_dynamic_refresh_elapsed_sec += maxf(delta, 0.0)
+	var periodic_due: bool = _dynamic_refresh_elapsed_sec >= DYNAMIC_HOVER_REFRESH_INTERVAL_SEC
+
+	if _pointer_dirty or cam_moved or _world_dirty or periodic_due:
 		_pointer_dirty = false
+		_world_dirty = false
+		_dynamic_refresh_elapsed_sec = 0.0
 		update_preview_at_screen_pos(_last_pointer_pos)
 
 
@@ -84,15 +102,31 @@ func configure(
 	world_navigation: WorldNavigation,
 	camp_storage_zone: CampStorageZone = null,
 	ground_pile_manager: GroundPileManager = null,
-	preview_parent: Node3D = null
+	preview_parent: Node3D = null,
+	units_root: Node = null,
+	piles_root: Node = null
 ) -> void:
+	_disconnect_world_signals()
 	_camera_rig = camera_rig
 	_region_root = region_root
 	_world_navigation = world_navigation
 	_camp_storage_zone = camp_storage_zone
 	_ground_pile_manager = ground_pile_manager
 	_preview_parent = preview_parent if preview_parent != null else (region_root as Node3D)
+	_units_root = units_root
+	_piles_root = piles_root
+	_connect_world_signals()
 	_ensure_preview_node()
+
+
+func set_units_root(units_root: Node) -> void:
+	_units_root = units_root
+	_world_dirty = true
+
+
+func set_piles_root(piles_root: Node) -> void:
+	_piles_root = piles_root
+	_world_dirty = true
 
 
 func set_connectivity_checkpoints(checkpoints: Array[Vector3]) -> void:
@@ -107,11 +141,14 @@ func start_placement(definition: BuildingDefinition) -> bool:
 	if definition == null or not definition.is_valid():
 		return false
 
+	_cancel_pending_confirm()
 	_ensure_preview_node()
 	_active = true
 	_active_definition = definition
 	_left_click_armed = false
 	_last_hover_result = null
+	_world_dirty = false
+	_dynamic_refresh_elapsed_sec = 0.0
 	_last_camera_focus = Vector2(INF, INF)
 	_last_camera_zoom = INF
 	set_process(true)
@@ -135,11 +172,13 @@ func start_placement(definition: BuildingDefinition) -> bool:
 func cancel_placement() -> void:
 	if not _active:
 		return
+	_cancel_pending_confirm()
 	var cancelled_def: BuildingDefinition = _active_definition
 	_active = false
 	_active_definition = null
 	_left_click_armed = false
 	_pointer_dirty = false
+	_world_dirty = false
 	set_process(false)
 	if _preview != null and is_instance_valid(_preview):
 		_preview.hide_preview()
@@ -148,6 +187,10 @@ func cancel_placement() -> void:
 
 func is_placement_active() -> bool:
 	return _active and _active_definition != null
+
+
+func is_confirm_pending() -> bool:
+	return _confirm_in_flight
 
 
 func get_active_definition() -> BuildingDefinition:
@@ -178,8 +221,23 @@ func build_validation_context() -> PlacementValidator.ValidationContext:
 		_ground_pile_manager,
 		[],
 		[],
-		_connectivity_checkpoints
+		_connectivity_checkpoints,
+		_units_root,
+		_piles_root
 	)
+
+
+func invalidate_hover() -> void:
+	_world_dirty = true
+
+
+func force_refresh_preview() -> PlacementValidator.ValidationResult:
+	if not is_placement_active() or not _has_pointer_pos:
+		return null
+	_pointer_dirty = false
+	_world_dirty = false
+	_dynamic_refresh_elapsed_sec = 0.0
+	return update_preview_at_screen_pos(_last_pointer_pos)
 
 
 ## Returns true if the input event was exclusively consumed by placement mode.
@@ -255,35 +313,101 @@ func confirm_at_screen_pos(screen_pos: Vector2) -> PlacementValidator.Validation
 
 
 func confirm_at_world_pos(world_pos: Vector3) -> PlacementValidator.ValidationResult:
-	if not is_placement_active():
+	if not is_placement_active() or _confirm_in_flight:
 		return null
 
 	var target_def: BuildingDefinition = _active_definition
 	var ctx: PlacementValidator.ValidationContext = build_validation_context()
-	var result: PlacementValidator.ValidationResult = _validator.validate_confirm(target_def, world_pos, ctx)
-	_last_confirm_result = result
+	if not use_async_confirm:
+		var sync_result: PlacementValidator.ValidationResult = _validator.validate_confirm(target_def, world_pos, ctx)
+		_apply_confirm_outcome(target_def, world_pos, sync_result)
+		return sync_result
 
-	if result.valid:
+	_confirm_in_flight = true
+	_confirm_generation += 1
+	var req_generation: int = _confirm_generation
+	var sync_returned: Array[PlacementValidator.ValidationResult] = [null]
+
+	_active_confirm_token = _validator.validate_confirm_async(
+		target_def,
+		world_pos,
+		ctx,
+		func(async_result: PlacementValidator.ValidationResult) -> void:
+			sync_returned[0] = async_result
+			if not is_instance_valid(self) or not is_inside_tree():
+				return
+			if req_generation != _confirm_generation:
+				return
+			_confirm_in_flight = false
+			_active_confirm_token = null
+			if not is_placement_active() or _active_definition != target_def:
+				return
+			_apply_confirm_outcome(target_def, world_pos, async_result)
+	)
+
+	if _active_confirm_token == null:
+		_confirm_in_flight = false
+	return sync_returned[0]
+
+
+func _apply_confirm_outcome(
+	target_def: BuildingDefinition,
+	world_pos: Vector3,
+	result: PlacementValidator.ValidationResult
+) -> void:
+	_last_confirm_result = result
+	if result != null and result.valid:
 		_last_ground_y = result.resolved_position.y
 		_active = false
 		_active_definition = null
 		_left_click_armed = false
 		_pointer_dirty = false
+		_world_dirty = false
 		set_process(false)
 		_ensure_preview_node()
 		if _preview != null:
 			_preview.show_confirmation_pulse(target_def, result.resolved_position)
 		placement_confirmed.emit(target_def, result.resolved_position, result)
-		return result
+		return
 
 	_ensure_preview_node()
+	var reason_txt: String = result.reason_text if result != null else "Posição inválida."
 	if _preview != null:
-		var display_pos: Vector3 = result.resolved_position if result.resolved_position.is_finite() else world_pos
+		var display_pos: Vector3 = result.resolved_position if (result != null and result.resolved_position.is_finite()) else world_pos
 		if display_pos.is_finite():
 			_preview.show_preview(target_def, display_pos, false)
-	hover_state_changed.emit(false, result.reason_text, world_pos)
+	hover_state_changed.emit(false, reason_txt, world_pos)
 	placement_rejected.emit(target_def, world_pos, result)
-	return result
+
+
+func _cancel_pending_confirm() -> void:
+	_confirm_generation += 1
+	_confirm_in_flight = false
+	if _active_confirm_token != null:
+		_active_confirm_token.cancel()
+		_active_confirm_token = null
+
+
+func _connect_world_signals() -> void:
+	if _ground_pile_manager != null and is_instance_valid(_ground_pile_manager):
+		if not _ground_pile_manager.storage_changed.is_connected(_on_world_state_invalidated):
+			_ground_pile_manager.storage_changed.connect(_on_world_state_invalidated)
+	if _world_navigation != null and is_instance_valid(_world_navigation):
+		if not _world_navigation.navigation_ready.is_connected(_on_world_state_invalidated):
+			_world_navigation.navigation_ready.connect(_on_world_state_invalidated)
+
+
+func _disconnect_world_signals() -> void:
+	if _ground_pile_manager != null and is_instance_valid(_ground_pile_manager):
+		if _ground_pile_manager.storage_changed.is_connected(_on_world_state_invalidated):
+			_ground_pile_manager.storage_changed.disconnect(_on_world_state_invalidated)
+	if _world_navigation != null and is_instance_valid(_world_navigation):
+		if _world_navigation.navigation_ready.is_connected(_on_world_state_invalidated):
+			_world_navigation.navigation_ready.disconnect(_on_world_state_invalidated)
+
+
+func _on_world_state_invalidated() -> void:
+	_world_dirty = true
 
 
 func _ensure_preview_node() -> void:
