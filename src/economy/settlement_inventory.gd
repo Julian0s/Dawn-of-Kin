@@ -125,6 +125,28 @@ func get_all_reservation_ids() -> Array[StringName]:
 	return _storage_source.get_all_reservation_ids()
 
 
+func get_reserved_pile_entries(
+	reservation_id: StringName,
+	resource_id: StringName = &"",
+	reference_pos: Vector3 = Vector3(INF, INF, INF)
+) -> Array[Dictionary]:
+	if _storage_source is GroundPileManager:
+		return (_storage_source as GroundPileManager).get_reserved_pile_entries(
+			reservation_id,
+			resource_id,
+			reference_pos
+		)
+	var result: Array[Dictionary] = []
+	if _storage_source == null or not _storage_source.has_method("get_reserved_pile_entries"):
+		return result
+	var raw: Variant = _storage_source.call("get_reserved_pile_entries", reservation_id, resource_id, reference_pos)
+	if raw is Array:
+		for item: Variant in raw as Array:
+			if item is Dictionary:
+				result.append(item as Dictionary)
+	return result
+
+
 func deposit(resource_id: StringName, amount: int) -> bool:
 	if _storage_source == null or resource_id.is_empty() or amount <= 0:
 		return false
@@ -177,6 +199,65 @@ func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) ->
 	if _storage_source == null:
 		return false
 	return _storage_source.withdraw_reserved_batch(reservation_id, amounts)
+
+
+func withdraw_reserved_from_pile_to_carry_load(
+	pile_id: int,
+	reservation_id: StringName,
+	resource_def: ResourceDefinition,
+	requested_amount: int,
+	carry_load: UnitCarryLoad
+) -> int:
+	if _is_delivering or _storage_source == null or carry_load == null:
+		return 0
+	if reservation_id.is_empty() or resource_def == null or not resource_def.is_valid() or requested_amount <= 0:
+		return 0
+
+	var capacity_room: int = carry_load.get_max_additional_units(resource_def)
+	var actual: int = mini(requested_amount, capacity_room)
+	if actual <= 0:
+		return 0
+
+	var uses_targeted_pile: bool = _storage_source.has_method("withdraw_reserved_from_pile")
+	if uses_targeted_pile and pile_id <= 0:
+		return 0
+
+	var snapshot: Dictionary = carry_load.get_all_amounts()
+	var weights_backup: Dictionary = carry_load.get_all_unit_weights()
+
+	_is_delivering = true
+	carry_load.begin_batch()
+	var added_ok: bool = carry_load.add_units(resource_def, actual)
+	if not added_ok:
+		carry_load.restore_load_snapshot(snapshot, weights_backup)
+		carry_load.end_batch(true)
+		_is_delivering = false
+		return 0
+
+	_storage_source.begin_batch()
+	var withdrawn: bool = false
+	if uses_targeted_pile:
+		withdrawn = bool(_storage_source.call(
+			"withdraw_reserved_from_pile",
+			pile_id,
+			reservation_id,
+			resource_def.resource_id,
+			actual
+		))
+	else:
+		withdrawn = _storage_source.withdraw_reserved(reservation_id, resource_def.resource_id, actual)
+
+	if not withdrawn:
+		carry_load.restore_load_snapshot(snapshot, weights_backup)
+		_storage_source.end_batch(true)
+		carry_load.end_batch(true)
+		_is_delivering = false
+		return 0
+
+	_storage_source.end_batch(false)
+	carry_load.end_batch(false)
+	_is_delivering = false
+	return actual
 
 
 func deliver_from_carry_load(carry_load: UnitCarryLoad) -> Dictionary:

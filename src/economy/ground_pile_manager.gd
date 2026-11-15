@@ -196,6 +196,58 @@ func get_piles_for_resource(resource_id: StringName) -> Array[GroundResourcePile
 	return result
 
 
+func get_pile_world_position(pile: GroundResourcePile) -> Vector3:
+	if pile == null or not is_instance_valid(pile):
+		return Vector3.ZERO
+	if pile.is_inside_tree():
+		return pile.global_position
+	return _piles_local_to_world(pile.position)
+
+
+func get_reserved_pile_entries(
+	reservation_id: StringName,
+	resource_id: StringName = &"",
+	reference_pos: Vector3 = Vector3(INF, INF, INF)
+) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	if reservation_id.is_empty() or not _ledger.has_reservation(reservation_id):
+		return entries
+
+	var use_ref_pos: bool = is_finite(reference_pos.x) and is_finite(reference_pos.z)
+	for pile: GroundResourcePile in _piles:
+		if not is_instance_valid(pile) or pile.amount <= 0:
+			continue
+		if not resource_id.is_empty() and pile.resource_id != resource_id:
+			continue
+		var reserved_on_pile: int = mini(
+			pile.amount,
+			_ledger.get_pile_reservation_amount(pile.pile_id, reservation_id)
+		)
+		if reserved_on_pile <= 0:
+			continue
+		var world_pos: Vector3 = get_pile_world_position(pile)
+		var dist_sq: float = 0.0
+		if use_ref_pos:
+			var delta: Vector2 = Vector2(world_pos.x - reference_pos.x, world_pos.z - reference_pos.z)
+			dist_sq = delta.length_squared()
+		entries.append({
+			"pile_id": pile.pile_id,
+			"pile": pile,
+			"resource_id": pile.resource_id,
+			"reserved_amount": reserved_on_pile,
+			"pile_amount": pile.amount,
+			"elapsed_exposure_sec": pile.elapsed_exposure_sec,
+			"world_pos": world_pos,
+			"distance_sq": dist_sq,
+		})
+
+	if use_ref_pos:
+		entries.sort_custom(_sort_reserved_entries_by_distance)
+	else:
+		entries.sort_custom(_sort_reserved_entries_by_exposure)
+	return entries
+
+
 func get_pile_by_id(pile_id: int) -> GroundResourcePile:
 	for pile: GroundResourcePile in _piles:
 		if is_instance_valid(pile) and pile.pile_id == pile_id:
@@ -358,6 +410,30 @@ func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) ->
 	if not (plan["ok"] as bool):
 		return false
 	return _commit_withdraw_plan(plan["entries"] as Array[Dictionary], reservation_id)
+
+
+func withdraw_reserved_from_pile(
+	pile_id: int,
+	reservation_id: StringName,
+	resource_id: StringName,
+	amount: int
+) -> bool:
+	if is_locked() or pile_id <= 0 or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return false
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	if pile == null or not is_instance_valid(pile):
+		return false
+	if pile.resource_id != resource_id or pile.amount < amount:
+		return false
+	var held: int = _ledger.get_pile_reservation_amount(pile_id, reservation_id)
+	if held < amount:
+		return false
+	var entries: Array[Dictionary] = [{
+		"pile": pile,
+		"resource_id": resource_id,
+		"amount": amount,
+	}]
+	return _commit_withdraw_plan(entries, reservation_id)
 
 
 func step_decay() -> Dictionary:
@@ -936,3 +1012,19 @@ func _sort_withdraw_piles(a: GroundResourcePile, b: GroundResourcePile) -> bool:
 	if not is_equal_approx(a.elapsed_exposure_sec, b.elapsed_exposure_sec):
 		return a.elapsed_exposure_sec > b.elapsed_exposure_sec
 	return a.pile_id < b.pile_id
+
+
+func _sort_reserved_entries_by_distance(a: Dictionary, b: Dictionary) -> bool:
+	var dist_a: float = float(a.get("distance_sq", 0.0))
+	var dist_b: float = float(b.get("distance_sq", 0.0))
+	if absf(dist_a - dist_b) > 0.0001:
+		return dist_a < dist_b
+	return _sort_reserved_entries_by_exposure(a, b)
+
+
+func _sort_reserved_entries_by_exposure(a: Dictionary, b: Dictionary) -> bool:
+	var exp_a: float = float(a.get("elapsed_exposure_sec", 0.0))
+	var exp_b: float = float(b.get("elapsed_exposure_sec", 0.0))
+	if not is_equal_approx(exp_a, exp_b):
+		return exp_a > exp_b
+	return int(a.get("pile_id", 0)) < int(b.get("pile_id", 0))
