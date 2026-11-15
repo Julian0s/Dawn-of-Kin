@@ -123,6 +123,13 @@ func _collect_non_button_controls_blocking_mouse(node: Control) -> Array[String]
 	return bad
 
 
+func _wait_for_confirm_settled(placement: PlacementController, max_frames: int = 90) -> void:
+	var frames: int = 0
+	while placement.is_confirm_pending() and frames < max_frames:
+		await wait_process_frames(1)
+		frames += 1
+
+
 func test_01_overlay_triggers_preview_sizes_hover_feedback_confirm_and_zero_side_effects() -> void:
 	var ctx: Dictionary = await _spawn_main_in_viewport()
 	var vp: SubViewport = ctx["vp"] as SubViewport
@@ -190,6 +197,7 @@ func test_01_overlay_triggers_preview_sizes_hover_feedback_confirm_and_zero_side
 	var child_count_before: int = test_map.get_child_count()
 	var poly_before: int = nav.navigation_mesh.get_polygon_count()
 	await _push_mouse_click(vp, MOUSE_BUTTON_LEFT, free_screen)
+	await _wait_for_confirm_settled(placement)
 
 	assert_false(placement.is_placement_active(), "Valid LMB confirm must exit placement mode")
 	assert_eq(confirmed_events.size(), 1, "Valid LMB click must emit placement_confirmed")
@@ -343,6 +351,109 @@ func test_03_camera_controls_during_placement_and_layout_two_resolutions() -> vo
 		assert_false(bar_rect.intersects(stock_rect), "Placement bar must not overlap stockpile HUD at %s" % str(test_size))
 		assert_false(bar_rect.intersects(unit_rect), "Placement bar must not overlap selected unit HUD at %s" % str(test_size))
 		assert_false(status_rect.intersects(stock_rect), "Placement status banner must not overlap stockpile HUD at %s" % str(test_size))
+
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_04_dynamic_world_hover_updates_with_stationary_cursor_and_midflight_cancel() -> void:
+	var ctx: Dictionary = await _spawn_main_in_viewport()
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var main_root: MainScene = ctx["main"] as MainScene
+	var camera: Camera3D = ctx["camera"] as Camera3D
+	var placement: PlacementController = ctx["placement"] as PlacementController
+	var overlay: PlacementTestOverlay = ctx["overlay"] as PlacementTestOverlay
+	var test_map: TestMap = ctx["test_map"] as TestMap
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var leader_a: Unit = units[0]
+
+	var confirmed_defs: Array[BuildingDefinition] = []
+	placement.placement_confirmed.connect(func(def: BuildingDefinition, _pos: Vector3, _res: PlacementValidator.ValidationResult) -> void:
+		confirmed_defs.append(def)
+	)
+
+	await _push_key_press(vp, KEY_F6)
+	assert_true(placement.is_placement_active())
+
+	# Hover cursor once over open spot (-6.0, 0.0, 1.5) and keep mouse + camera completely stationary!
+	var free_world := Vector3(-6.0, 0.0, 1.5)
+	var free_screen: Vector2 = camera.unproject_position(free_world)
+	_push_mouse_motion(vp, free_screen)
+	await wait_process_frames(2)
+	var preview: PlacementPreview = placement.get_preview()
+	assert_true(preview.is_valid_state(), "Hover should start valid green over open terrain")
+
+	# 1. Worker moves into stationary hovered footprint -> preview flips invalid automatically!
+	var orig_pos: Vector3 = leader_a.global_position
+	leader_a.global_position = free_world
+	await wait_physics_frames(2)
+	for _i: int in range(12):
+		await get_tree().create_timer(0.02).timeout
+	assert_false(preview.is_valid_state(), "Worker entering stationary footprint must flip preview invalid")
+	assert_string_contains(overlay.get_status_detail_text().to_lower(), "trabalhadores")
+
+	# Worker leaves stationary hovered footprint -> preview flips back valid automatically!
+	leader_a.global_position = orig_pos
+	await wait_physics_frames(2)
+	for _i: int in range(12):
+		await get_tree().create_timer(0.02).timeout
+	assert_true(preview.is_valid_state(), "Worker leaving stationary footprint must flip preview back to valid")
+
+	# 2. Physical pile appears then disappears inside stationary footprint -> preview flips red then green!
+	var dyn_pile := GroundResourcePile.new()
+	test_map.add_child(dyn_pile)
+	dyn_pile.configure_initial(950, main_root.WOOD_DEFINITION, 6, free_world)
+	for _i: int in range(12):
+		await get_tree().create_timer(0.02).timeout
+	assert_false(preview.is_valid_state(), "Pile appearing inside stationary footprint must flip preview invalid")
+	assert_string_contains(overlay.get_status_detail_text().to_lower(), "pilhas")
+
+	dyn_pile.queue_free()
+	await wait_process_frames(2)
+	for _i: int in range(12):
+		await get_tree().create_timer(0.02).timeout
+	assert_true(preview.is_valid_state(), "Pile disappearing inside stationary footprint must restore valid green")
+
+	# 3. Natural resource stops blocking area while cursor stays stationary over FoodBush01.
+	var bush: ResourceSource = null
+	for src: ResourceSource in test_map.get_resource_sources():
+		if src.source_id == &"food_bush_01":
+			bush = src
+			break
+	assert_not_null(bush)
+	var bush_world := Vector3(-11.5, 0.0, 4.5)
+	var bush_screen: Vector2 = camera.unproject_position(bush_world)
+	_push_mouse_motion(vp, bush_screen)
+	await wait_process_frames(2)
+	assert_false(preview.is_valid_state(), "Natural resource under stationary cursor must start invalid")
+
+	bush.queue_free()
+	await wait_physics_frames(2)
+	for _i: int in range(12):
+		await get_tree().create_timer(0.02).timeout
+	assert_true(preview.is_valid_state(), "Removing blocking resource under stationary cursor must update preview to valid")
+
+	# 4. Trigger valid async confirmation, then press Esc mid-flight -> must abort cleanly with 0 confirmed events!
+	_push_mouse_motion(vp, free_screen)
+	await wait_process_frames(2)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = free_screen
+	press.global_position = free_screen
+	vp.push_input(press, false)
+	await wait_process_frames(1)
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = free_screen
+	release.global_position = free_screen
+	vp.push_input(release, false)
+	await _push_key_press(vp, KEY_ESCAPE)
+	await _wait_for_confirm_settled(placement)
+	await wait_process_frames(6)
+	assert_false(placement.is_placement_active())
+	assert_eq(confirmed_defs.size(), 0, "Esc during async confirm must cancel cleanly without confirming")
 
 	vp.queue_free()
 	await wait_process_frames(2)

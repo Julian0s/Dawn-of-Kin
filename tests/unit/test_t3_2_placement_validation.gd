@@ -245,10 +245,10 @@ func test_03_terrain_bounds_obstacles_resources_piles_and_units_rejections() -> 
 	assert_gt(float(checked_sources), 2.0, "TestMap must provide multiple resource sources to test")
 
 	# 6. Physical GroundResourcePile overlap:
-	#    Create a standalone GroundResourcePile outside CampStorageZone on free terrain.
+	#    Create a standalone GroundResourcePile outside CampStorageZone inside region test_map.
 	var free_spot := Vector3(0.37, 0.0, -13.19)
 	var standalone_pile := GroundResourcePile.new()
-	add_test_child(standalone_pile)
+	test_map.add_child(standalone_pile)
 	standalone_pile.configure_initial(901, WOOD_DEF, 5, free_spot)
 	await wait_process_frames(1)
 
@@ -272,17 +272,16 @@ func test_03_terrain_bounds_obstacles_resources_piles_and_units_rejections() -> 
 	assert_false(managed_pile_hit.valid, "Managed pile must still block placement even without CampStorageZone")
 	assert_eq(managed_pile_hit.reason_code, PlacementValidator.REASON_PILE_OVERLAP)
 
-	# 7. Unit overlap (instantiate real unit scene at free_spot).
+	# 7. Unit overlap (instantiate real unit scene inside region test_map at free_spot).
 	var dummy_unit: Unit = UNIT_SCENE.instantiate() as Unit
 	dummy_unit.position = free_spot
-	add_test_child(dummy_unit)
+	test_map.add_child(dummy_unit)
 	await wait_physics_frames(1)
 	var ctx_with_unit := PlacementValidator.ValidationContext.from_region(
 		test_map,
 		nav,
 		camp_zone,
-		pile_manager,
-		[dummy_unit]
+		pile_manager
 	)
 	var unit_hit := validator.validate_hover(SHELTER_DEF, free_spot, ctx_with_unit)
 	assert_false(unit_hit.valid, "Unit inside footprint must reject placement")
@@ -407,3 +406,81 @@ func test_05_safe_invalid_inputs_unready_nav_and_zero_economy_side_effects() -> 
 	assert_eq(pile_manager.get_piles().size(), 1, "T3.2 confirm must not create or remove piles")
 
 	pile_manager.cleanup()
+
+
+func test_06_region_isolation_two_regions_and_async_confirm_parity() -> void:
+	# Region A: TestMap with CampStorageZone inside SubViewport A (own_world_3d)
+	var vp_a := SubViewport.new()
+	vp_a.own_world_3d = true
+	vp_a.size = Vector2i(256, 256)
+	add_test_child(vp_a)
+	var map_a: TestMap = TEST_MAP_SCENE.instantiate() as TestMap
+	vp_a.add_child(map_a)
+	var nav_a: WorldNavigation = map_a.get_navigation()
+	assert_true(await _wait_for_navigation_ready(nav_a), "Region A navigation must become ready")
+
+	# Region B: flat region WITHOUT CampStorageZone inside SubViewport B (own_world_3d),
+	# carrying its own Unit & GroundResourcePile sitting at (0.37, 0.0, -13.19) — the exact coordinate free in Region A!
+	var vp_b := SubViewport.new()
+	vp_b.own_world_3d = true
+	vp_b.size = Vector2i(256, 256)
+	add_test_child(vp_b)
+	var region_b := Node3D.new()
+	region_b.name = "RegionB"
+	vp_b.add_child(region_b)
+	_add_static_box(
+		region_b,
+		"FloorB",
+		Vector3(0.0, -0.5, 0.0),
+		Vector3(48.0, 1.0, 48.0),
+		CollisionLayers.MASK_TERRAIN
+	)
+	var nav_b := WorldNavigation.new()
+	nav_b.set_map_bounds(Rect2(-24.0, -24.0, 48.0, 48.0))
+	region_b.add_child(nav_b)
+	assert_true(await _wait_for_navigation_ready(nav_b), "Region B navigation must become ready")
+
+	var foreign_unit: Unit = UNIT_SCENE.instantiate() as Unit
+	foreign_unit.position = Vector3(0.37, 0.0, -13.19)
+	region_b.add_child(foreign_unit)
+
+	var foreign_pile := GroundResourcePile.new()
+	region_b.add_child(foreign_pile)
+	foreign_pile.configure_initial(999, WOOD_DEF, 8, Vector3(0.37, 0.0, -13.19))
+
+	await wait_physics_frames(2)
+
+	var validator := PlacementValidator.new()
+	var ctx_a := PlacementValidator.ValidationContext.from_region(map_a, nav_a, map_a.get_camp_storage_zone())
+	var ctx_b := PlacementValidator.ValidationContext.from_region(region_b, nav_b, null)
+
+	# Region A context must NOT pick up Region B's unit/pile at (0.37, 0.0, -13.19).
+	assert_false(ctx_a.units.has(foreign_unit), "Region A context must exclude units belonging to Region B")
+	assert_false(ctx_a.extra_piles.has(foreign_pile), "Region A context must exclude piles belonging to Region B")
+	var hover_a := validator.validate_hover(SHELTER_DEF, Vector3(0.37, 0.0, -13.19), ctx_a)
+	assert_true(hover_a.valid, "Region A must stay valid despite objects at same coords in Region B: %s" % hover_a.reason_text)
+
+	# Region B context MUST see its own objects (so (0.37, 0, -13.19) rejects in B), while (0.0, 0.0, 0.5) — which is CampStorageZone in A — is VALID in B!
+	var blocked_b := validator.validate_hover(SHELTER_DEF, Vector3(0.37, 0.0, -13.19), ctx_b)
+	assert_false(blocked_b.valid, "Region B must still detect its own pile/unit")
+	var free_b := validator.validate_hover(SHELTER_DEF, Vector3(0.0, 0.0, 0.5), ctx_b)
+	assert_true(free_b.valid, "Region B without CampStorageZone must stay valid at A's camp coordinate: %s" % free_b.reason_text)
+
+	# Async confirmation parity on Region A using cached static geometry.
+	var async_results: Array[PlacementValidator.ValidationResult] = []
+	validator.validate_confirm_async(
+		DEPOT_DEF,
+		Vector3(0.37, 0.0, -13.19),
+		ctx_a,
+		func(res: PlacementValidator.ValidationResult) -> void:
+			async_results.append(res)
+	)
+	var wait_f: int = 0
+	while async_results.is_empty() and wait_f < 120:
+		await wait_process_frames(1)
+		wait_f += 1
+	assert_eq(async_results.size(), 1, "Async confirm callback must fire once")
+	if async_results.size() == 1:
+		var ares: PlacementValidator.ValidationResult = async_results[0]
+		assert_true(ares.valid, "Async confirm on valid spot must match sync validity: %s" % ares.reason_text)
+		assert_true(ares.used_candidate_navmesh)
