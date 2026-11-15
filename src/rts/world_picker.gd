@@ -28,6 +28,54 @@ func pick_at_screen_pos(
 	return pick_along_ray(space_state, ray_origin, ray_dir, max_distance)
 
 
+func pick_terrain_at_screen_pos(
+	camera: Camera3D,
+	screen_pos: Vector2,
+	max_distance: float = DEFAULT_MAX_RAY_DISTANCE
+) -> PickResult:
+	if camera == null or not camera.is_inside_tree() or not screen_pos.is_finite():
+		return PickResult.none()
+
+	var world_3d: World3D = camera.get_world_3d()
+	if world_3d == null:
+		return PickResult.none()
+
+	var space_state: PhysicsDirectSpaceState3D = world_3d.direct_space_state
+	if space_state == null:
+		return PickResult.none()
+
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_pos)
+	var ray_dir: Vector3 = camera.project_ray_normal(screen_pos)
+	return pick_terrain_along_ray(space_state, ray_origin, ray_dir, max_distance)
+
+
+func pick_terrain_along_ray(
+	space_state: PhysicsDirectSpaceState3D,
+	ray_origin: Vector3,
+	ray_dir: Vector3,
+	max_distance: float = DEFAULT_MAX_RAY_DISTANCE
+) -> PickResult:
+	if space_state == null or not ray_origin.is_finite() or not ray_dir.is_finite():
+		return PickResult.none()
+	if ray_dir.length_squared() < 0.000001 or max_distance <= 0.0:
+		return PickResult.none()
+
+	var norm_dir: Vector3 = ray_dir.normalized()
+	var ray_end: Vector3 = ray_origin + norm_dir * max_distance
+	var terrain_query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+		ray_origin,
+		ray_end,
+		CollisionLayers.MASK_TERRAIN
+	)
+	terrain_query.collide_with_areas = false
+	terrain_query.collide_with_bodies = true
+	var hit: Dictionary = space_state.intersect_ray(terrain_query)
+	if hit.is_empty():
+		return PickResult.none()
+	var hit_pos: Vector3 = hit["position"] as Vector3
+	return PickResult.from_ground(hit_pos, _safe_hit_normal(hit), hit.get("collider"))
+
+
 func pick_along_ray(
 	space_state: PhysicsDirectSpaceState3D,
 	ray_origin: Vector3,

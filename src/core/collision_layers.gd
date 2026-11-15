@@ -19,3 +19,6 @@ const MASK_RESOURCES: int = 1 << (LAYER_RESOURCES - 1)
 
 ## Ground and solid world geometry used by unit bodies and ground picking.
 const MASK_WORLD_SOLID: int = MASK_TERRAIN | MASK_OBSTACLES
+
+## Static geometry layers included when baking navigation meshes (includes buildings).
+const MASK_NAV_STATIC: int = MASK_TERRAIN | MASK_OBSTACLES | MASK_BUILDINGS

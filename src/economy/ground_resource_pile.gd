@@ -4,6 +4,8 @@ extends Node3D
 ## Has zero per-frame _process/_physics_process logic; decay and stock are managed centrally
 ## by GroundPileManager. Visuals use lightweight shadowless primitive meshes.
 
+const GROUP_GROUND_PILES: StringName = &"ground_resource_piles"
+
 var pile_id: int = 0
 var resource_id: StringName = &""
 var definition: ResourceDefinition = null
@@ -18,6 +20,7 @@ var _mesh_instances: Array[MeshInstance3D] = []
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
+	add_to_group(GROUP_GROUND_PILES)
 
 
 func configure_initial(

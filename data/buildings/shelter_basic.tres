@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/buildings/building_definition.gd" id="1_bld_def"]
+
+[resource]
+script = ExtResource("1_bld_def")
+definition_id = &"shelter_basic"
+display_name = "Abrigo Básico"
+footprint_size = Vector2(4, 4)
+visual_height = 3.0
+costs = {
+&"stone": 6,
+&"wood": 12
+}
+build_work_required_sec = 30.0
+max_builders = 2
+storage_capacities = {}

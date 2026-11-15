@@ -39,6 +39,64 @@ class PathResult extends RefCounted:
 		return status == QueryStatus.OK
 
 
+class CandidateSession extends RefCounted:
+	var valid: bool = false
+	var reason: String = ""
+	var map_rid: RID = RID()
+	var region_rid: RID = RID()
+	var navigation_mesh: NavigationMesh = null
+	var bake_ms: float = 0.0
+	var polygon_count: int = 0
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_PREDELETE:
+			if region_rid.is_valid():
+				NavigationServer3D.free_rid(region_rid)
+				region_rid = RID()
+			if map_rid.is_valid():
+				NavigationServer3D.free_rid(map_rid)
+				map_rid = RID()
+			navigation_mesh = null
+			valid = false
+
+	func is_valid() -> bool:
+		return valid and map_rid.is_valid() and region_rid.is_valid()
+
+	func snap_to_navmesh(world_pos: Vector3) -> Vector3:
+		if not is_valid() or not world_pos.is_finite():
+			return world_pos
+		return NavigationServer3D.map_get_closest_point(map_rid, world_pos)
+
+	func find_path(from_pos: Vector3, to_pos: Vector3, optimize: bool = true) -> PathResult:
+		if not is_valid():
+			var err_res := PathResult.new()
+			err_res.status = QueryStatus.NOT_READY
+			err_res.reachable = false
+			err_res.resolved_target = from_pos
+			err_res.reason = reason if not reason.is_empty() else "candidate_session_invalid"
+			return err_res
+		return WorldNavigation.query_path_on_map(map_rid, from_pos, to_pos, optimize)
+
+	func is_position_reachable(from_pos: Vector3, to_pos: Vector3) -> bool:
+		return find_path(from_pos, to_pos).reachable
+
+	func get_bake_metrics() -> Dictionary:
+		return {
+			"bake_ms": bake_ms,
+			"polygon_count": polygon_count,
+		}
+
+	func dispose() -> void:
+		if region_rid.is_valid():
+			NavigationServer3D.free_rid(region_rid)
+			region_rid = RID()
+		if map_rid.is_valid():
+			NavigationServer3D.free_rid(map_rid)
+			map_rid = RID()
+		navigation_mesh = null
+		valid = false
+
+
 @export var source_root_path: NodePath = ^".."
 @export var auto_bake_on_ready: bool = true
 @export var map_bounds: Rect2 = Rect2(-32.0, -32.0, 64.0, 64.0)
@@ -90,6 +148,10 @@ func is_navigation_ready() -> bool:
 
 func set_map_bounds(bounds: Rect2) -> void:
 	map_bounds = bounds
+
+
+func get_map_bounds() -> Rect2:
+	return map_bounds
 
 
 func get_last_bake_metrics() -> Dictionary:
@@ -157,14 +219,23 @@ func snap_to_navmesh(world_pos: Vector3) -> Vector3:
 ## Queries a path from from_pos to to_pos and distinguishes geometric projection
 ## from actual reachability across connected navigable regions.
 func find_path(from_pos: Vector3, to_pos: Vector3, optimize: bool = true) -> PathResult:
-	var result: PathResult = PathResult.new()
 	if not _is_ready:
-		result.status = QueryStatus.NOT_READY
-		result.reachable = false
-		result.resolved_target = from_pos
-		result.reason = "navigation_not_ready"
-		return result
+		var not_ready := PathResult.new()
+		not_ready.status = QueryStatus.NOT_READY
+		not_ready.reachable = false
+		not_ready.resolved_target = from_pos
+		not_ready.reason = "navigation_not_ready"
+		return not_ready
+	return query_path_on_map(get_navigation_map(), from_pos, to_pos, optimize)
 
+
+static func query_path_on_map(
+	map_rid: RID,
+	from_pos: Vector3,
+	to_pos: Vector3,
+	optimize: bool = true
+) -> PathResult:
+	var result: PathResult = PathResult.new()
 	if not from_pos.is_finite() or not to_pos.is_finite():
 		result.status = QueryStatus.INVALID_QUERY
 		result.reachable = false
@@ -172,7 +243,6 @@ func find_path(from_pos: Vector3, to_pos: Vector3, optimize: bool = true) -> Pat
 		result.reason = "non_finite_coordinates"
 		return result
 
-	var map_rid: RID = get_navigation_map()
 	if not map_rid.is_valid():
 		result.status = QueryStatus.NOT_READY
 		result.reachable = false
@@ -216,6 +286,83 @@ func find_path(from_pos: Vector3, to_pos: Vector3, optimize: bool = true) -> Pat
 	return result
 
 
+## Creates an isolated temporary NavigationServer3D map/region baked with the current
+## region geometry plus candidate building blocker boxes, without altering the active navmesh.
+## Caller should call session.dispose() when done (also auto-freed on reference drop).
+func create_candidate_session(candidate_boxes: Array[Dictionary]) -> CandidateSession:
+	var session := CandidateSession.new()
+	var source_root: Node = get_node_or_null(source_root_path)
+	if source_root == null:
+		source_root = get_parent()
+	if source_root == null:
+		session.reason = "missing_source_root"
+		return session
+
+	var start_usec: int = Time.get_ticks_usec()
+	var cand_nav: NavigationMesh = _create_configured_navmesh()
+	var source_data := NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(cand_nav, source_data, source_root)
+
+	for box_entry: Dictionary in candidate_boxes:
+		var box_pos: Variant = box_entry.get("position")
+		var box_size: Variant = box_entry.get("size")
+		if not (box_pos is Vector3) or not (box_size is Vector3):
+			continue
+		var p: Vector3 = box_pos as Vector3
+		var s: Vector3 = box_size as Vector3
+		if not p.is_finite() or not s.is_finite() or s.x <= 0.0 or s.y <= 0.0 or s.z <= 0.0:
+			continue
+		# Extend slightly below floor surface (0.3 m) so Recast has zero bottom gap against slopes/ground.
+		var total_height: float = s.y + 0.3
+		var box_center := Vector3(p.x, p.y - 0.3 + total_height * 0.5, p.z)
+		var faces: PackedVector3Array = _build_box_faces(Vector3(s.x, total_height, s.z))
+		source_data.add_faces(faces, Transform3D(Basis.IDENTITY, box_center))
+
+	NavigationServer3D.bake_from_source_geometry_data(cand_nav, source_data)
+	session.bake_ms = float(Time.get_ticks_usec() - start_usec) / 1000.0
+	session.polygon_count = cand_nav.get_polygon_count()
+	if session.polygon_count == 0:
+		session.reason = "empty_candidate_navmesh"
+		return session
+
+	var cand_map_rid: RID = NavigationServer3D.map_create()
+	var cand_reg_rid: RID = NavigationServer3D.region_create()
+	if not cand_map_rid.is_valid() or not cand_reg_rid.is_valid():
+		if cand_reg_rid.is_valid():
+			NavigationServer3D.free_rid(cand_reg_rid)
+		if cand_map_rid.is_valid():
+			NavigationServer3D.free_rid(cand_map_rid)
+		session.reason = "failed_to_allocate_candidate_rids"
+		return session
+
+	NavigationServer3D.map_set_use_async_iterations(cand_map_rid, false)
+	NavigationServer3D.map_set_up(cand_map_rid, Vector3.UP)
+	NavigationServer3D.map_set_cell_size(cand_map_rid, cand_nav.cell_size)
+	NavigationServer3D.map_set_cell_height(cand_map_rid, cand_nav.cell_height)
+	NavigationServer3D.map_set_active(cand_map_rid, true)
+
+	NavigationServer3D.region_set_use_async_iterations(cand_reg_rid, false)
+	NavigationServer3D.region_set_map(cand_reg_rid, cand_map_rid)
+	NavigationServer3D.region_set_navigation_mesh(cand_reg_rid, cand_nav)
+
+	NavigationServer3D.map_force_update(cand_map_rid)
+	if NavigationServer3D.map_get_iteration_id(cand_map_rid) == 0:
+		NavigationServer3D.map_force_update(cand_map_rid)
+
+	var attached_regions: Array[RID] = NavigationServer3D.map_get_regions(cand_map_rid)
+	if attached_regions.is_empty() or not attached_regions.has(cand_reg_rid):
+		NavigationServer3D.free_rid(cand_reg_rid)
+		NavigationServer3D.free_rid(cand_map_rid)
+		session.reason = "candidate_region_attach_failed"
+		return session
+
+	session.map_rid = cand_map_rid
+	session.region_rid = cand_reg_rid
+	session.navigation_mesh = cand_nav
+	session.valid = true
+	return session
+
+
 func is_position_reachable(from_pos: Vector3, to_pos: Vector3) -> bool:
 	return find_path(from_pos, to_pos).reachable
 
@@ -256,12 +403,34 @@ func _create_configured_navmesh() -> NavigationMesh:
 	nav_mesh.agent_max_slope = DEFAULT_AGENT_MAX_SLOPE
 	nav_mesh.region_min_size = DEFAULT_REGION_MIN_SIZE
 	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
-	nav_mesh.geometry_collision_mask = CollisionLayers.MASK_WORLD_SOLID
+	nav_mesh.geometry_collision_mask = CollisionLayers.MASK_NAV_STATIC
 	nav_mesh.filter_baking_aabb = AABB(
 		Vector3(map_bounds.position.x, BAKE_MIN_Y, map_bounds.position.y),
 		Vector3(map_bounds.size.x, BAKE_HEIGHT_Y, map_bounds.size.y)
 	)
 	return nav_mesh
+
+
+static func _build_box_faces(size: Vector3) -> PackedVector3Array:
+	var hx: float = size.x * 0.5
+	var hy: float = size.y * 0.5
+	var hz: float = size.z * 0.5
+	var p000 := Vector3(-hx, -hy, -hz)
+	var p100 := Vector3(hx, -hy, -hz)
+	var p110 := Vector3(hx, hy, -hz)
+	var p010 := Vector3(-hx, hy, -hz)
+	var p001 := Vector3(-hx, -hy, hz)
+	var p101 := Vector3(hx, -hy, hz)
+	var p111 := Vector3(hx, hy, hz)
+	var p011 := Vector3(-hx, hy, hz)
+	return PackedVector3Array([
+		p010, p110, p111, p010, p111, p011,
+		p000, p101, p100, p000, p001, p101,
+		p001, p011, p111, p001, p111, p101,
+		p000, p100, p110, p000, p110, p010,
+		p100, p101, p111, p100, p111, p110,
+		p000, p010, p011, p000, p011, p001,
+	])
 
 
 static func _distance_xz(a: Vector3, b: Vector3) -> float:
