@@ -6,14 +6,14 @@
 **Uso:** minuta de referência de produto para revisão do proprietário antes de substituir a v1.0 em `AGENTS.md`  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
-> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental não promovida aguardando aprovação formal do proprietário**. O documento [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) é a fonte normativa vigente e recebeu as atualizações e decisões aprovadas pelo proprietário. A fase **T2** encontra-se oficialmente concluída e aprovada; a etapa **T3.1** foi a única implementação autorizada até aqui, permanecendo as etapas posteriores (**T3.2+**) estritamente sem autorização de implementação.
+> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental não promovida aguardando aprovação formal do proprietário**. O documento [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) é a fonte normativa vigente e recebeu as atualizações e decisões aprovadas pelo proprietário. A fase **T2** encontra-se oficialmente concluída e aprovada; na fase **T3**, a etapa **T3.1 — Contabilidade, Reservas e Saque em Lote** foi **IMPLEMENTADA, AUDITADA E APROVADA PELO PROPRIETÁRIO EM 15/11/2026** (branch `feature/t3-1-reservations`, commit técnico final `b05e8e682b686f1a1afb4cc0a1c2accbb20adc82`), permanecendo as etapas posteriores (**T3.2+**) estritamente sem autorização de implementação.
 >
 > **Regra de leitura:** **DECIDIDO** = aprovado pelo proprietário; **PROPOSTA** / **PROPOSTA TÉCNICA** / **PROPOSTA FUTURA** = sugestão técnica ou de design para avaliação, não compromisso fechado; **ABERTO** = depende de definição futura e não deve ser presumido na implementação.
 >
 > **Estado real observado do projeto em 14/11/2026:**
 > - **T1 — Fundação RTS:** **concluída e aprovada** (`t1-complete`, commit `2808799`, 90 testes automatizados e 1.607 asserções).
 > - **T2 — Trabalho e Recursos (`T2.0`–`T2.6` + `B1`):** **concluída e aprovada** pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes e 21/21 itens manuais aprovados), com limitação de desempenho em bateria DC aceita como não bloqueante para a T2.
-> - **T3 — Construção:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`), com autorização exclusiva para implementação incremental da etapa **T3.1** (`feature/t3-1-reservations`); etapas `T3.2` em diante continuam sem autorização de implementação.
+> - **T3 — Construção:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`); etapa **T3.1** concluída e formalmente aprovada pelo proprietário em 15/11/2026; etapas `T3.2` em diante continuam estritamente bloqueadas sem autorização de implementação.
 
 ---
 
