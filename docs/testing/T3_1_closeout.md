@@ -88,7 +88,7 @@ A etapa T3.1 cobriu exclusivamente a infraestrutura econômica transacional nece
 ## 6. Limitações Conhecidas
 
 1. **Desempenho em Bateria DC (Intel UHD 620):**
-   - Conforme aceito formalmente no encerramento da T2, o hardware sob bateria apresenta mediana de $p95 = 33,038\text{ ms}$ (`55,80 FPS`), enquanto em tomada CA atende à meta formal com $p95 = 9,757\text{ ms}$ (`147,33 FPS`). Essa característica é do hardware e do renderer `gl_compatibility`, não tendo sido alterada pela T3.1.
+   - Conforme aceito formalmente no encerramento da T2, o hardware sob bateria apresenta mediana de $p95 = 33,038\text{ ms}$ (`55,80 FPS`), enquanto em tomada CA atende à meta formal com $p95 = 9,757\text{ ms}$ (`147,33 FPS`). As medições realizadas na Intel UHD 620 apresentaram resultados diferentes entre alimentação por tomada CA e bateria DC. A causa específica dessa diferença não foi isolada. A limitação em bateria foi aceita pelo proprietário no encerramento da T2. A T3.1 não realizou novo benchmark de desempenho que permita atribuir causalidade.
 2. **Saques Reservados em Backends sem Snapshot:**
    - Backends personalizados que não implementem `_create_rollback_snapshot()` nem forneçam sobrescrita própria de `withdraw_reserved_batch()` terão saques compostos rejeitados preventivamente (`fail-safe`), exigindo saques unitários ou implementação do gancho de reversão.
 
