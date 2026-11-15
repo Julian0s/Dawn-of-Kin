@@ -1,0 +1,427 @@
+# Dawn of Kin — T3.0-R4: Proposta Consolidada de Arquitetura da T3 (Construção)
+
+**Status:** REVISÃO FINAL DE GOVERNANÇA (T3.0-R4) — somente planejamento documental; nenhuma linha de código T3 implementada.<br>
+**Base Auditada:** Branch `main` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`), tag `t2-complete`.<br>
+**Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md)).<br>
+**Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
+
+---
+
+## 1. As Sete Decisões Aprovadas pelo Proprietário (D1 a D7)
+
+Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da proposta inicial T3.0, estabelecendo os seguintes direcionamentos vinculantes que permanecem integralmente preservados nesta revisão:
+
+1. **D1 — Persistência em disco na T3 (DECIDIDO: P2):**
+   - As construções e o estado econômico relevante do assentamento deverão ser salvos em disco já na T3.
+   - Persistência mínima versionada (`schema_version = 1`), compatível com o futuro `SaveManager` da T4.
+   - Garantir consistência estrita entre construções concluídas, canteiros ativos, progresso, reservas, estoque físico e materiais em trânsito, impedindo duplicação ou perda após carregamento.
+   - Não antecipar calendário, ciclo dia/noite ou outros sistemas previstos para a T4.
+
+2. **D2 — Transporte físico dos materiais até o canteiro (DECIDIDO: Reserva e Transporte Físico):**
+   - Ao posicionar uma obra, os materiais necessários são **reservados no estoque existente**, sem consumo instantâneo.
+   - Os trabalhadores retiram materiais das pilhas físicas do acampamento, transportam-nos respeitando peso unitário e capacidade individual de carga (`UnitCarryLoad`, com desaceleração conforme carga validada na T2) e descarregam no canteiro.
+   - A construção progride conforme materiais são disponibilizados no canteiro, consumindo-os proporcionalmente ao progresso de montagem.
+
+3. **D3 — Cancelamento com reembolso proporcional (DECIDIDO: Proporcional ao trabalho restante):**
+   - Regra contábil consistente para materiais reservados nas pilhas, materiais em transporte, materiais no buffer do canteiro e materiais já incorporados na estrutura.
+   - O cancelamento jamais poderá criar recursos do nada nem gerar duplicações.
+
+4. **D4 — Custos, dimensões e tempos provisórios (APROVADOS EM 14/11/2026 como valores provisórios sujeitos a balanceamento):**
+   - Parâmetros da tabela T3.0-R3 para o **Abrigo Básico** ($4 \times 4\text{ m}$, 12 madeiras, 6 pedras, 30 s-construtor, máx. 2 construtores) e **Depósito Rústico** ($5 \times 4\text{ m}$, 18 madeiras, 10 pedras, 45 s-construtor, máx. 2 construtores, capacidade 50 madeiras, 50 pedras e 30 alimentos).
+   - Valores calibrados com base na capacidade de 20 unidades de peso e nos dados reais da T2 (madeira peso 2, pedra peso 3).
+
+5. **D5 — Depósitos protetores incluídos na própria T3 (DECIDIDO: Escopo da T3):**
+   - Implementar depósitos construíveis após o primeiro abrigo funcional, reduzindo ou eliminando a deterioração dos recursos armazenados.
+   - Preservar uma autoridade única de estoque (`SettlementInventory`), distinguindo materiais expostos e protegidos sem duplicar saldos.
+
+6. **D6 — Construção na CampStorageZone (DECIDIDO: Opção A — Área das pilhas reservada):**
+   - Edifícios e canteiros não podem ocupar o interior da `CampStorageZone` durante a T3.
+   - Prévia indica rejeição clara quando a posição interceptar a zona reservada.
+   - Preservar acessos às pilhas, pontos de descarga e corredores de navegação, sem impor quadrículas visíveis ao mapa.
+
+7. **D7 — Interface de construção (DECIDIDO: Opção A — Botão Construir com painel retrátil):**
+   - Botão discreto **Construir** no canto inferior direito.
+   - Painel retrátil contendo os edifícios disponíveis.
+   - Prévia de posicionamento no terreno (verde/vermelha com motivo de rejeição), confirmação por clique esquerdo e cancelamento por `Esc` ou clique direito.
+   - Painel contextual de canteiro com progresso e botão de cancelamento, sem sobrepor HUDs existentes.
+
+---
+
+## 2. Matriz GDD × Código Real (`main`) × Correções Técnicas (T3.0-R3)
+
+| Requisito / Referência | Realidade no Código da `main` (`f7c2459`) | Inconsistência Corrigida | Solução Arquitetural Proposta *(sujeita à aprovação)* |
+|---|---|---|---|
+| Pesos dos recursos e capacidade de carga (§5, §13 T2) | `wood.tres`: peso **2**; `stone.tres`: peso **3**; `food.tres`: peso **1**; capacidade inicial: **20** de peso. | R1 utilizou peso 3 para madeira e 4 para pedra, calculando pesos irreais (60 e 94). | Tabela recalculada (**APROVADA em 14/11/2026 como valores provisórios sujeitos a balanceamento**): Abrigo = **42 de peso**; Depósito = **66 de peso**. |
+| Área e dimensões da `CampStorageZone` (§5, D6) | `test_map.tscn`: `zone_bounds_half_extents = Vector2(2.8, 2.2)`. Área efetiva = **5,6 × 4,4 m** (âncora em `(0, 0, 0.5)`). | R1 mencionava 8 × 8 m (valor padrão do script desacoplado da cena). | `PlacementValidator` lê `camp_zone.zone_bounds_half_extents` dinamicamente da instância real na cena. |
+| Funcionamento do `WorldNavigation.request_rebake()` e conectividade (§12, §13 T1) | `parse_source_geometry_data()` e `bake_from_source_geometry_data()` executam de forma **síncrona** na thread chamadora; `find_path()` consulta exclusivamente a malha já assada. | R1 afirmava bake em background; R2 usava `find_path()` na malha antiga sem simular a obra futura. | Validação híbrida proposta: checagem espacial conservadora no *hover* + avaliação em malha candidata na confirmação antes de reservar recursos. |
+| Máscaras de colisão e NavMesh (§12, `src/core/collision_layers.gd`) | `MASK_WORLD_SOLID = MASK_TERRAIN \| MASK_OBSTACLES`. `LAYER_BUILDINGS = 5` reservado. | R1 propunha fundir globalmente `LAYER_BUILDINGS` em `MASK_WORLD_SOLID`, afetando picking e física sem isolamento. | Proposta de `MASK_NAV_STATIC = MASK_TERRAIN \| MASK_OBSTACLES \| MASK_BUILDINGS` específico para bake; picking de obras via consulta dedicada em `MASK_BUILDINGS`. |
+| Contabilidade de estoque físico e reservas (D2, §5) | `SettlementInventory` e `GroundPileManager` controlam apenas saldo físico em pilhas no chão (`deposit_batch`, `withdraw`). | R1 não isolava buffer do canteiro de entregas acumuladas; R2 duplicava trânsito no JSON. | Formalizada a Invariante Contábil Fundamental com parcelas disjuntas e fonte única por item físico. |
+| Política de deterioração com reservas (D2) | `EconomyClockController.step_decay()` atinge pilhas reais pelo tempo. | R1 propunha proteger artificialmente materiais reservados no chão contra desgaste. | **PENDENTE (NÃO APROVADO):** Alternativa A (reancoragem, recomendada) vs. Alternativa B (perda direta da reserva), preservando `step_decay()`. |
+| Persistência em disco e fontes naturais (D1, P2) | Nenhuma persistência em disco na base atual; `ResourceSource` possui estoque finito por `source_id`. | R2 tinha somas inconsistentes no JSON, dupla referência de trânsito e não persistia `ResourceSource`. | Snapshot consistente sem dupla contagem, incluindo `source_id`/`remaining_amount` das fontes e validação de integridade pré-carga. |
+| Sequenciamento de incrementos (§13) | Base pronta para T3.1. | R1 posicionava canteiros jogáveis antes da validação espacial. | Validação espacial e prévia (T3.2) precedem a colocação jogável e suprimento (T3.3). |
+
+---
+
+## 3. Contabilidade Física, Reservas e Ciclo de Suprimento (D2)
+
+### 3.1. Invariante Contábil Fundamental do Assentamento
+Para impedir duplicação, criação espontânea ou desaparecimento de recursos em qualquer estado do jogo, a economia obedece à equação de conservação estrita por tipo de recurso $R$:
+
+$$Q_{\text{inicial}}(R) + Q_{\text{coletado}}(R) = Q_{\text{pilhas\_livre}}(R) + Q_{\text{pilhas\_reservado}}(R) + \sum_{u} Q_{\text{mochila}}(u, R) + \sum_{c} Q_{\text{buffer\_canteiro}}(c, R) + \sum_{c} Q_{\text{incorporado}}(c, R) + \sum_{d} Q_{\text{depósito}}(d, R) + Q_{\text{deteriorado}}(R) + Q_{\text{perda\_demolição}}(R)$$
+
+Onde cada termo representa uma quantidade fisicamente disjunta:
+- $Q_{\text{pilhas\_livre}}(R)$: Recursos no chão da `CampStorageZone`, livres para novas reservas ou consumo.
+- $Q_{\text{pilhas\_reservado}}(R)$: Recursos no chão da `CampStorageZone`, fisicamente presentes nas pilhas, mas contratualmente alocados a uma obra ativa.
+- $Q_{\text{mochila}}(u, R)$: Recursos sendo carregados nas costas do trabalhador $u$ (`UnitCarryLoad`).
+- $Q_{\text{buffer\_canteiro}}(c, R)$: Recursos entregues no canteiro $c$ que **ainda não foram consumidos** pelo avanço da construção.
+- $Q_{\text{incorporado}}(c, R)$: Recursos consumidos pelo trabalho e fisicamente integrados à estrutura da obra.
+- $Q_{\text{depósito}}(d, R)$: Recursos guardados em depósitos protegidos (T3.7).
+- $Q_{\text{deteriorado}}(R)$: Total acumulado de perdas por desgaste temporal (`step_decay()`).
+- $Q_{\text{perda\_demolição}}(R)$: Total acumulado de materiais destruídos na desmontagem de obras canceladas.
+
+### 3.2. Diferenciação nos Totais e Interface HUD
+Para evitar dupla contagem no HUD e nas validações:
+- **Estoque Livre Disponível:** $Q_{\text{disponível}}(R) = Q_{\text{pilhas\_livre}}(R) + \sum_d Q_{\text{depósito\_livre}}(d, R)$ (o que a interface exibe como disponível para novas obras).
+- **Estoque Físico Total da Comunidade:**
+  $$Q_{\text{comunitário\_total}}(R) = Q_{\text{disponível}}(R) + Q_{\text{pilhas\_reservado}}(R) + \sum_u Q_{\text{mochila}}(u, R) + \sum_c Q_{\text{buffer\_canteiro}}(c, R) + \sum_d Q_{\text{depósito\_reservado}}(d, R)$$
+- **No Canteiro de Obras:**
+  $$\text{Entregue Acumulado}(c, R) = Q_{\text{buffer\_canteiro}}(c, R) + Q_{\text{incorporado}}(c, R)$$
+  O HUD do canteiro exibe $\text{Entregue Acumulado} / \text{Necessário}$ para informar o avanço logístico, mas a lógica de construção consome estritamente de $Q_{\text{buffer\_canteiro}}(c, R)$.
+
+### 3.3. Transições de Estado e Atomicidade das Operações
+Todas as transferências entre estados contábeis operam sob transações atômicas com verificação de pré-condição e capacidade de reversão (*rollback*):
+
+1. **Criação da Obra (`Reserva`):**
+   - `SettlementInventory.reserve_batch(costs)` valida se $Q_{\text{pilhas\_livre}}(R) \ge \text{cost}(R)$.
+   - Se aprovado, transfere atomicamente de $Q_{\text{pilhas\_livre}}$ para $Q_{\text{pilhas\_reservado}}$.
+   - Falha em qualquer recurso aborta a reserva inteira sem efeitos colaterais.
+2. **Retirada para Transporte (`Saque Físico`):**
+   - O trabalhador chega à pilha correspondente na `CampStorageZone`.
+   - Executa `GroundPileManager.withdraw_reserved(resource_id, amount)`.
+   - A quantidade é subtraída da pilha física e creditada em `UnitCarryLoad` na mesma transação.
+   - $Q_{\text{pilhas\_reservado}} \mathrel{-}= \text{amount}$, $Q_{\text{mochila}} \mathrel{+}= \text{amount}$.
+3. **Entrega no Canteiro (`Descarga`):**
+   - O trabalhador chega ao canteiro (`BuildSlotPlanner.get_dropoff_slot()`).
+   - A quantidade é retirada da mochila e creditada no buffer do canteiro:
+   - $Q_{\text{mochila}} \mathrel{-}= \text{amount}$, $Q_{\text{buffer\_canteiro}} \mathrel{+}= \text{amount}$.
+4. **Trabalho Construtivo (`Incorporação`):**
+   - À medida que construtores realizam trabalho $\Delta W$, unidades inteiras são transferidas do buffer para a estrutura:
+   - $Q_{\text{buffer\_canteiro}} \mathrel{-}= \Delta M$, $Q_{\text{incorporado}} \mathrel{+}= \Delta M$.
+
+### 3.4. Política de Deterioração com Reservas (ÚLTIMA DECISÃO PENDENTE — NÃO APROVADO)
+Materiais expostos no chão do acampamento continuam sofrendo desgaste pelo tempo por meio de `GroundPileManager.step_decay()`, cujo funcionamento existente da T2 **não será alterado** nem neutralizado artificialmente por reservas. Proteger pilhas no chão por estarem reservadas permitiria usar canteiros como escudo contra deterioração.
+
+Resta definir como a perda física real em uma pilha afeta os canteiros vinculados. Seguem as duas alternativas para deliberação do proprietário (ambas **NÃO APROVADAS**):
+
+| Aspecto | Alternativa A — Deterioração física com reancoragem *(NÃO APROVADA)* | Alternativa B — Deterioração física com perda direta da reserva *(NÃO APROVADA)* |
+|---|---|---|
+| **Regra de perda na pilha** | A reserva não protege materiais expostos. Se o desgaste reduzir o saldo físico abaixo do reservado, o sistema tenta substituir a falta usando saldo **livre** de outras pilhas da mesma categoria. | A reserva também não protege os materiais. Quando o desgaste atingir uma pilha com reserva, reduz diretamente a reserva da obra correspondente até o limite físico restante, sem reancorar. |
+| **Quando não há saldo substituto** | Se não houver saldo livre em nenhuma outra pilha, a obra afetada entra em pausa (`AWAITING_RESOURCES`) e informa a falta até nova coleta. | A obra entra imediatamente em pausa (`AWAITING_RESOURCES`) até nova coleta restaurar o déficit, mesmo se houver saldo livre em outra pilha. |
+| **Múltiplas obras simultâneas** | Se várias obras perderem reserva e houver saldo livre parcial, a reancoragem segue fila determinística por ordem de criação (`site_id` / timestamp) para evitar disputa caótica. | Cada obra sofre perda estrita vinculada às pilhas em que sua reserva estava alocada; outras obras não perdem suas reservas de outras pilhas nem competem pelo saldo livre na hora do decaimento. |
+| **Prioridade entre reservas e novas obras** | Ao coletar novos recursos, a recomposição de obras pausadas por déficit concorre ou tem prioridade explícita (definível por fila de criação) antes de liberar saldo para novas obras. | Mesma regra de recomposição explícita após nova entrega ou liberação manual; nunca consome automaticamente saldo livre de pilhas não associadas sem ação/regra explícita. |
+| **Impacto no HUD** | HUD exibe déficit apenas quando o estoque livre global da categoria zera e alguma obra pausa; mantém saldo livre consistente com a soma real das pilhas menos reservas ativas. | HUD pode mostrar obra pausada por perda na pilha original enquanto ainda exibe algum saldo livre em outra pilha, exigindo explicação mais clara ao jogador (ou botão de re-suprir). |
+| **Prevenção de duplicação** | A soma $\sum_{c} \text{reserva}(p, c) \le \text{amount}(p)$ é verificada em toda mutação; reancorar apenas move a marcação lógica de uma pilha com sobra livre para o canteiro deficitário, mantendo $Q_{\text{total}}$ conservado. | A dedução na reserva ocorre junto da dedução física em `step_decay()`, reduzindo `materials_reserved_pending` e registrando perda contábil real em $Q_{\text{deteriorado}}(R)$, mantendo $Q_{\text{total}}$ conservado. |
+
+**Recomendação Técnica (NÃO APROVADA):** recomenda-se a **Alternativa A — Deterioração física com reancoragem**, pois evita frustração de UX em que uma obra pausa mesmo havendo madeira ou pedra livre disponível em outra pilha do acampamento, preservando rigorosamente a conservação física e o comportamento intacto de `GroundPileManager.step_decay()`. Entretanto, ambas as alternativas permanecem **NÃO APROVADAS** aguardando decisão expressa do proprietário.
+
+---
+
+## 4. NavMesh, Colisão e Validação Espacial (D6)
+
+### 4.1. Comportamento Real do `WorldNavigation.request_rebake()`
+A inspeção direta de `src/navigation/world_navigation.gd` revela o fluxo síncrono/assíncrono real:
+```gdscript
+NavigationServer3D.parse_source_geometry_data(nav_mesh, source_data, source_root)
+NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_data)
+```
+1. **Fase Síncrona:** A análise geométrica dos colisores e a geração dos polígonos do `NavigationMesh` ocorrem **bloqueando a thread principal** na chamada de `request_rebake()`.
+2. **Fase Assíncrona de Sincronização:** Após o bake síncrono, o nó entra em `_is_syncing = true` e desativa `_is_ready = false`. Nos quadros de física seguintes (`_physics_process`), ele aguarda o `NavigationServer3D` sincronizar o mapa até emitir `navigation_ready`.
+3. **Contrato de Segurança para Unidades:**
+   - Durante `_is_ready == false`, consultas `find_path()` retornam `QueryStatus.NOT_READY`.
+   - Unidades que já possuem caminho traçado continuam seguindo os waypoints existentes sem falhar.
+   - Novas ordens emitidas pelo jogador durante o intervalo de sincronização (normalmente 1 a 3 quadros de física) devem ser pausadas ou retidas pelo `CommandController` até a emissão de `navigation_ready`.
+4. **Impacto e Medição na Intel UHD 620:**
+   - No mapa de testes (64 × 64 m), o bake síncrono consome ~6 ms.
+   - O benchmark de desempenho da T3.9 monitorará `get_last_bake_metrics()` em 1080p para assegurar que nenhum evento de colocação/conclusão gere quadros $> 100\text{ ms}$.
+
+### 4.2. Isolamento de Máscaras de Colisão (PROPOSTA TÉCNICA)
+Para evitar que edifícios quebrem a física de unidades ou o raycast de terreno:
+- **`MASK_WORLD_SOLID` (inalterado):** `MASK_TERRAIN | MASK_OBSTACLES` (camadas 1 e 2). Mantido estritamente para suporte de solo, gravidade de unidades e picking básico.
+- **`MASK_NAV_STATIC` (proposto):** `MASK_TERRAIN | MASK_OBSTACLES | MASK_BUILDINGS` (camadas 1, 2 e 5). Atribuído a `nav_mesh.geometry_collision_mask` para que o NavMesh contorne fundações e paredes construídas.
+- **`WorldPicker` (proposto):** A busca de alvos executa uma consulta dedicada para `CollisionLayers.MASK_BUILDINGS` antes do raycast de terreno, retornando `PickResult.Kind.CONSTRUCTION_SITE` ou `BUILDING` sem interferência de colisão com o solo.
+
+### 4.3. Validação Espacial da `CampStorageZone` e Conectividade Futura (D6)
+- **Área Efetiva na Cena:** `levels/test_map/test_map.tscn` define `zone_bounds_half_extents = Vector2(2.8, 2.2)`, totalizando **$5,6\text{ m}$ de largura por $4,4\text{ m}$ de profundidade** em torno da âncora `(0, 0, 0.5)`.
+- **Regra de Exclusão (D6):** O `PlacementValidator` lê as propriedades dinâmicas da instância ativa de `CampStorageZone`:
+  $$\text{AABB}(\text{Obra}) \cap \text{AABB}(\text{CampStorageZone}) = \emptyset$$
+  Qualquer sobreposição invalida a colocação com a mensagem de rejeição: `"Posição inválida: Área reservada para pilhas do acampamento"`.
+- **Limitação da Malha Atual para Conectividade Futura:** Consultar `WorldNavigation.find_path()` sobre o `NavigationMesh` existente **não prova** que a nova obra preservará corredores livres, pois o edifício ainda não foi adicionado como colisor nem assado na malha atual (o caminho poderia atravessar a própria área onde o prédio será erguido).
+- **Comparação de Estratégias de Validação Considerando Ocupação Futura (PROPOSTA TÉCNICA):**
+
+| Estratégia | Mecanismo | Custo de CPU (Intel UHD 620) | Limitações / Riscos |
+|---|---|---|---|
+| **Estratégia A — Avaliação em Malha Candidata** | Ao confirmar (ou após pausa curta do cursor), gera um `NavigationMeshSourceGeometryData3D` incluindo o colisor temporário da obra candidata, executa um *bake* em malha candidata isolada e consulta `NavigationServer3D` entre a `CampStorageZone`, as fontes ativas e as unidades selecionadas. | ~5 a 8 ms pontuais por verificação (inadequado para rodar a todo frame no *hover*; viável no clique de confirmação). | Pequeno pico síncrono no momento da confirmação; exige descartar a malha auxiliar caso rejeitada (ou reutilizá-la diretamente no `WorldNavigation` se aprovada, evitando duplo *bake*). |
+| **Estratégia B — Validação Espacial Conservadora** | Durante o *hover* em tempo real, verifica uma caixa de consulta expandida (*clearance* mínimo $\ge 2 \times \text{agent\_radius} + \text{folga} \approx 1,5\text{ m}$) em torno da *footprint* contra `MASK_OBSTACLES \| MASK_BUILDINGS \| MASK_RESOURCES`, além de checar pontos de acesso perimetrais no `NavMesh` atual. | $< 0,2\text{ ms}$ por quadro (seguro para *hover* contínuo em 60+ FPS). | Pode gerar falsos negativos em encaixes justos (exige margem ao redor) e não detecta fechamentos topológicos à distância (ex.: bloquear a única boca de um corredor longo em U). |
+
+- **Proposta Híbrida e Invariante Pré-Reserva:**
+  1. **No *hover* em tempo real:** aplicar a **Estratégia B (conservadora)** para retorno visual imediato verde/vermelho sem degradar *frametime*.
+  2. **Na confirmação (clique esquerdo):** antes de instanciar qualquer `ConstructionSite` ou chamar `reserve_batch()`, executar a **Estratégia A (avaliação em malha candidata)** confirmando que nenhuma fonte ativa, ponto de entrega na `CampStorageZone` ou unidade selecionada ficou isolada.
+  3. **Garantia de Não Consumo Prematuro:** nenhuma obra consome ou reserva recursos definitivamente antes que todas as validações (terreno, exclusão da `CampStorageZone`, sobreposição, acessibilidade perimetral e conectividade pós-ocupação) tenham sido integralmente aprovadas.
+
+---
+
+## 5. Tabela de Custos, Dimensões e Tempos (APROVADA EM 14/11/2026 COMO VALORES PROVISÓRIOS — D4)
+
+Os parâmetros foram recalculados com base nos dados reais do projeto:
+- Madeira: peso **2** (`data/resources/wood.tres`).
+- Pedra: peso **3** (`data/resources/stone.tres`).
+- Capacidade de transporte: **20 de peso**.
+- Ritmo de extração na T2: Madeira = 2 unidades / 2,5 s; Pedra = 1 unidade / 3,5 s.
+- Caminhada: $4,8\text{ m/s}$ (vazio) a $\approx 2,88\text{ m/s}$ (com 100% de carga).
+
+| Parâmetro | Abrigo Básico (`shelter_basic`) | Depósito Rústico (`storage_depot`) | Justificativa Técnica / Pressupostos |
+|---|---|---|---|
+| **Classificação** | Residência unifamiliar (GDD §6) | Armazém coberto protetor (GDD §5, §6; D5) | Abrigo cumpre meta T3; depósito protege excedente. |
+| **Dimensões (XZ)** | $4,0\text{ m} \times 4,0\text{ m}$ ($16\text{ m}^2$) | $5,0\text{ m} \times 4,0\text{ m}$ ($20\text{ m}^2$) | Espaço externo rústico, proporção legível em 45°. |
+| **Altura Visual** | $3,0\text{ m}$ (teto inclinado) | $2,8\text{ m}$ (cobertura rústica) | Diferenciação volumétrica para visão isométrica. |
+| **Custo: Madeira** | **12 unidades** (peso: $12 \times 2 = 24$) | **18 unidades** (peso: $18 \times 2 = 36$) | Madeira para pilares e esteios. |
+| **Custo: Pedra** | **6 unidades** (peso: $6 \times 3 = 18$) | **10 unidades** (peso: $10 \times 3 = 30$) | Pedra para sapatas, base seca e muretas. |
+| **Peso Total de Materiais** | **42 unidades de peso** | **66 unidades de peso** | Valores reais corrigidos conforme `data/resources/*.tres`. |
+| **Logística de Viagens** *(capacidade: 20)* | **3 viagens totais:**<br>• Viagem 1 (Trab. A): 10 madeiras (peso 20)<br>• Viagem 2 (Trab. B): 2 madeiras + 5 pedras (peso 19)<br>• Viagem 3 (Trab. A): 1 pedra (peso 3) | **4 viagens totais:**<br>• 18 madeiras = 2 viagens de 9 (peso 18)<br>• 10 pedras = 2 viagens de 5 (peso 15)<br>*(2 viagens por trabalhador atuando juntos)* | Cargas em números inteiros, sem exceder a capacidade de carga individual de 20. |
+| **Estimativa de Transporte** *(pressuposto: ~15 m distância)* | ~ $30\text{ a }40\text{ s}$ acumulados de transporte (ida vazia + volta carregada a $\approx 3,3\text{ m/s}$) | ~ $45\text{ a }60\text{ s}$ acumulados de transporte com os 2 trabalhadores atuando em paralelo | Pressupõe que os materiais já estejam previamente acumulados nas pilhas do acampamento. |
+| **Tempo de Coleta Prévia** *(se pilhas vazias)* | Madeira: 6 operações $\times$ 2,5 s = 15 s<br>Pedra: 6 operações $\times$ 3,5 s = 21 s | Madeira: 9 operações $\times$ 2,5 s = 22,5 s<br>Pedra: 10 operações $\times$ 3,5 s = 35 s | Ritmo real das fontes do `TestMap` na T2. |
+| **Esforço de Construção** | **30,0 s-construtor** (**15,0 s** com casal junto) | **45,0 s-construtor** (**22,5 s** com casal junto) | Tempo de trabalho no perímetro após materiais entregues. |
+| **Máximo Construtores** | **2 trabalhadores** | **2 trabalhadores** | Casal inicial sem congestionamento perimetral. |
+| **Função / Benefício** *(APROVADO — provisório)* | Residência permanente do casal (conclusão T3). | Protege até **50 madeiras, 50 pedras, 30 alimentos**. Decaimento = **0,0**. *(Capacidade provisória aprovada em 14/11/2026, sujeita a balanceamento)* | Elimina perda por exposição dentro da capacidade aprovada. |
+
+> **Registro de Governança (14/11/2026):** Todos os valores numéricos desta tabela (dimensões, custos de madeira/pedra, esforço de construção, limite de 2 construtores e capacidade provisória do depósito de 50 madeiras, 50 pedras e 30 alimentos) foram **aprovados pelo proprietário em 14/11/2026 como valores provisórios sujeitos a balanceamento** em testes jogáveis.
+
+---
+
+## 6. Cancelamento e Reembolso Proporcional (D3)
+
+### 6.1. Regra de Devolução Contábil
+O cancelamento de obra em andamento devolve recursos sem gerar duplicações nem abandonar pilhas espalhadas pelo mapa:
+
+1. **Materiais Reservados nas Pilhas ($M_{\text{reservado\_pendente}}$):**
+   - Liberação imediata nas pilhas físicas da `CampStorageZone`:
+   - $Q_{\text{pilhas\_livre}} \mathrel{+}= M_{\text{reservado\_pendente}}, \quad Q_{\text{pilhas\_reservado}} \mathrel{-}= M_{\text{reservado\_pendente}}$.
+   - **Reembolso: 100% integral.**
+2. **Materiais em Transporte nas Mochilas ($M_{\text{em\_transporte}}$):**
+   - A ordem de suprimento é convertida imediatamente em `DeliverToCampOrder`.
+   - O trabalhador retorna à `CampStorageZone` e descarrega os materiais no chão do acampamento.
+   - **Reembolso: 100% integral após caminhada de retorno.**
+3. **Materiais no Buffer do Canteiro Não Consumidos ($Q_{\text{buffer\_canteiro}}$):**
+   - Materiais entregues e intactos.
+   - Trabalhadores no local recebem ordem para recolher o buffer e transportá-lo de volta à `CampStorageZone`. Não são criadas pilhas soltas no terreno fora do acampamento.
+   - **Reembolso: 100% integral.**
+4. **Materiais Incorporados à Estrutura ($Q_{\text{incorporado}}$):**
+   - Materiais fixados sofrem perda por demolição proporcional ao progresso da obra:
+     $$M_{\text{recuperado\_incorporado}}(R) = \left\lfloor Q_{\text{incorporado}}(R) \times (1.0 - \text{progresso}) \times \eta_{\text{demolição}} \right\rfloor$$
+   - Onde a eficiência de recuperação $\eta_{\text{demolição}} = 0,50$ foi **APROVADA em 14/11/2026** como taxa provisória sujeita a balanceamento.
+   - Detalhes técnicos operacionais da logística de retorno (ex.: ordem automática dos trabalhadores ao recolher o saldo recuperado vs. fila de devolução e arredondamentos em cenários de borda) permanecem sujeitos a testes durante a etapa T3.6.
+   - O saldo recuperado é somado ao lote de transporte de retorno ao acampamento. A fração restante é contabilizada como $Q_{\text{perda\_demolição}}(R)$.
+
+### 6.2. Exemplos Concretos de Cancelamento (Abrigo Básico: 12 Madeiras, 6 Pedras)
+
+- **Cenário A — Cancelamento em 0% de montagem (materiais já entregues no canteiro):**
+  - $Q_{\text{buffer}} = 12\text{ madeiras}, 6\text{ pedras}$; $Q_{\text{incorporado}} = 0$.
+  - Reembolso do buffer: 12 madeiras, 6 pedras (100%).
+  - Reembolso do incorporado: 0.
+  - **Devolvido ao acampamento:** 12 madeiras, 6 pedras (**100%**). Perda: 0.
+
+- **Cenário B — Cancelamento em 50% de progresso de montagem:**
+  - $Q_{\text{buffer}} = 6\text{ madeiras}, 3\text{ pedras}$; $Q_{\text{incorporado}} = 6\text{ madeiras}, 3\text{ pedras}$.
+  - Reembolso do buffer: 6 madeiras, 3 pedras (100%).
+  - Reembolso do incorporado:
+    - Madeira: $\lfloor 6 \times (1.0 - 0.5) \times 0.5 \rfloor = \lfloor 1,5 \rfloor = 1\text{ madeira}$.
+    - Pedra: $\lfloor 3 \times (1.0 - 0.5) \times 0.5 \rfloor = \lfloor 0,75 \rfloor = 0\text{ pedras}$.
+  - **Devolvido ao acampamento:** $6 + 1 = 7\text{ madeiras}$; $3 + 0 = 3\text{ pedras}$ (**58,3% madeira, 50% pedra**).
+  - Perda justificada por demolição: 5 madeiras, 3 pedras.
+
+- **Cenário C — Cancelamento em 90% de progresso de montagem:**
+  - $Q_{\text{buffer}} = 1\text{ madeira}, 0\text{ pedras}$; $Q_{\text{incorporado}} = 11\text{ madeiras}, 6\text{ pedras}$.
+  - Reembolso do buffer: 1 madeira, 0 pedras.
+  - Reembolso do incorporado:
+    - Madeira: $\lfloor 11 \times (1.0 - 0.9) \times 0.5 \rfloor = \lfloor 0,55 \rfloor = 0\text{ madeiras}$.
+    - Pedra: $\lfloor 6 \times (1.0 - 0.9) \times 0.5 \rfloor = \lfloor 0,30 \rfloor = 0\text{ pedras}$.
+  - **Devolvido ao acampamento:** $1 + 0 = 1\text{ madeira}$; $0 + 0 = 0\text{ pedras}$ (**8,3% madeira, 0% pedra**).
+  - Perda justificada por demolição: 11 madeiras, 6 pedras.
+
+---
+
+## 7. Persistência Mínima em Disco na T3 (P2 — D1)
+
+### 7.1. Mecanismo de Escrita Segura e Tratamento de Falhas
+Godot não oferece primitivas nativas de transação POSIX atômica multiplataforma em seu subsistema de arquivos (e no Windows a substituição de arquivos existentes pode falhar se houver bloqueio). Portanto, a escrita segura adota o seguinte protocolo sequencial em `user://saves/`:
+
+1. **Gravação Temporária:** Escreve todo o conteúdo JSON em `user://saves/t3_settlement_buildings.json.tmp`.
+2. **Validação Estrutural:** O arquivo temporário é reaberto e submetido ao validador de integridade (§7.4). Se falhar ou estiver incompleto, o `.tmp` é removido e a gravação é abortada, preservando os arquivos anteriores.
+3. **Backup de Segurança:** Se `t3_settlement_buildings.json` já existir, ele é copiado/movido para `t3_settlement_buildings.json.bak` após remoção de `.bak` obsoleto.
+4. **Substituição:** O `.tmp` validado é movido para `t3_settlement_buildings.json` via `DirAccess.rename_absolute()`.
+5. **Recuperação em Inicialização (Crash Recovery):**
+   - Ao carregar, executa a validação completa (§7.4) sobre `t3_settlement_buildings.json`.
+   - Se ausente, ilegível ou reprovado na integridade, tenta carregar e validar `t3_settlement_buildings.json.bak`.
+   - Se ambos falharem, registra erro explícito e mantém/inicializa estado limpo seguro sem corromper o inventário em memória.
+
+### 7.2. Snapshot Consistente do Estado da T3 (Sem Dupla Contagem)
+Para evitar duplicação contábil, **cada unidade física de recurso aparece em exatamente um local no arquivo**:
+- Materiais no chão do acampamento ficam em `camp_storage.piles` (com `reservations` por `site_id`).
+- Materiais já carregados por trabalhadores ficam **exclusivamente** em `units[].carry_load` vinculados a `target_site_id` (o canteiro **não** duplica um contador `materials_in_transit` independente no JSON; em tempo de execução esse valor é uma visão derivada da soma de `carry_load` das unidades vinculadas).
+- Materiais já entregues ao canteiro ficam em `materials_buffer` ou `materials_consumed`.
+
+```json
+{
+  "schema_version": 1,
+  "generator": "DawnOfKin_T3",
+  "save_time_sec": 384.2,
+  "camp_storage": {
+    "piles": [
+      {
+        "pile_id": 1,
+        "resource_id": "wood",
+        "amount": 16,
+        "reservations": { "site_depot_1": 6 },
+        "position": [0.0, 0.0, 0.5],
+        "elapsed_exposure_sec": 45.2,
+        "decay_accumulator_sec": 0.0
+      },
+      {
+        "pile_id": 2,
+        "resource_id": "stone",
+        "amount": 9,
+        "reservations": { "site_depot_1": 6 },
+        "position": [1.2, 0.0, 0.5],
+        "elapsed_exposure_sec": 12.0,
+        "decay_accumulator_sec": 0.0
+      }
+    ]
+  },
+  "storage_depots": [],
+  "buildings_completed": [
+    {
+      "instance_id": "bld_shelter_1",
+      "definition_id": "shelter_basic",
+      "transform": {
+        "origin": [6.5, 0.0, -8.0],
+        "basis": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+      }
+    }
+  ],
+  "construction_sites": [
+    {
+      "site_id": "site_depot_1",
+      "definition_id": "storage_depot",
+      "transform": {
+        "origin": [-7.0, 0.0, 5.0],
+        "basis": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+      },
+      "work_progress_sec": 9.0,
+      "materials_required": { "wood": 18, "stone": 10 },
+      "materials_consumed": { "wood": 3, "stone": 2 },
+      "materials_buffer": { "wood": 3, "stone": 2 },
+      "materials_reserved_pending": { "wood": 6, "stone": 6 }
+    }
+  ],
+  "units": [
+    {
+      "unit_id": "unit_leader_a",
+      "character_id": "leader_a",
+      "position": [-3.2, 0.0, 2.4],
+      "rotation_y": 0.45,
+      "carry_load": { "wood": 6 },
+      "active_order": "ConstructOrder",
+      "order_phase": "DELIVERING_TO_SITE",
+      "target_site_id": "site_depot_1"
+    },
+    {
+      "unit_id": "unit_leader_b",
+      "character_id": "leader_b",
+      "position": [-6.1, 0.0, 4.2],
+      "rotation_y": -1.10,
+      "carry_load": {},
+      "active_order": "ConstructOrder",
+      "order_phase": "ASSEMBLING",
+      "target_site_id": "site_depot_1"
+    }
+  ],
+  "resource_sources": [
+    { "source_id": "wood_tree_01", "remaining_amount": 0, "has_extracted": true },
+    { "source_id": "wood_tree_02", "remaining_amount": 8, "has_extracted": true },
+    { "source_id": "stone_rock_01", "remaining_amount": 0, "has_extracted": true },
+    { "source_id": "stone_rock_02", "remaining_amount": 17, "has_extracted": true },
+    { "source_id": "food_bush_01", "remaining_amount": 30, "has_extracted": false },
+    { "source_id": "food_bush_02", "remaining_amount": 30, "has_extracted": false }
+  ]
+}
+```
+*Nota contábil do exemplo acima:*
+- **Madeira em `site_depot_1`:** `consumed (3) + buffer (3) + unit_leader_a.carry_load (6) + reserved_pending (6) = 18` (= `materials_required.wood`).
+- **Pedra em `site_depot_1`:** `consumed (2) + buffer (2) + unit_leader_a.carry_load (0) + reserved_pending (6) = 10` (= `materials_required.stone`).
+- **Reserva nas pilhas:** `pile 1` reserva `6 wood` (= `reserved_pending.wood`); `pile 2` reserva `6 stone` (= `reserved_pending.stone`).
+- **Balanço global contra fontes naturais:** Extraídos `40 wood` (`24 + 16`) = `12 (bld_shelter_1) + 18 (site_depot_1) + 10 (livre na pile 1)`. Extraídos `19 stone` (`18 + 1`) = `6 (bld_shelter_1) + 10 (site_depot_1) + 3 (livre na pile 2)`.
+- **Estrutura de `storage_depots` (quando concluídos):** cada entrada registra `depot_id`, `building_instance_id`, `definition_id`, `capacities` e `stored_amounts` (`{ "wood": int, "stone": int, "food": int }`) mais `reservations` por `site_id`, permitindo restaurar estoques protegidos sem duplicar com `camp_storage.piles`.
+
+### 7.3. Preservação de Fontes Naturais (`ResourceSource`) entre Salvamentos
+Na T2, cada árvore, rocha e arbusto em `levels/test_map/test_map.tscn` possui `source_id` estável (`wood_tree_01`, `stone_rock_01`, `food_bush_01`, etc.) e estoque finito (`initial_amount` e `_remaining_amount`), sem regeneração. Sem persistir essas fontes na T3, recarregar uma partida após construir o abrigo restauraria todas as árvores e rochas para o valor inicial, permitindo coleta infinita e duplicação econômica.
+
+**Solução Mínima na T3 (sem antecipar sistema de mundo da T4):**
+- O snapshot persiste apenas o par mínimo `{ source_id, remaining_amount, has_extracted }` das fontes existentes no mapa.
+- Na carga: cada `ResourceSource` identificada por `source_id` restaura `_remaining_amount` (limitado a `[0, initial_amount]`) e `_has_extracted`.
+- Se `remaining_amount == 0` em uma árvore, o estado visual `TreeVisualState.FALLEN` é aplicado diretamente sem reproduzir a animação de queda, mantendo `is_depleted() == true` e bloqueando novas extrações.
+
+### 7.4. Validação de Integridade Pré-Aceite do Save
+Antes de aplicar qualquer arquivo carregado ao estado da cena, `BuildingPersistenceManager` executa validação estrita em memória. Se **qualquer** verificação falhar, o arquivo é rejeitado e o carregador recorre ao `.bak` ou aborta com erro seguro:
+1. **Esquema e Tipos:** `schema_version == 1`, chaves obrigatórias presentes, valores numéricos finitos (`is_finite`) e quantidades inteiras $\ge 0$.
+2. **Identificadores Válidos:** `definition_id` existente no catálogo, `character_id` reconhecido, `source_id` existente no mapa e unicidade de `instance_id`, `site_id`, `pile_id` e `unit_id`.
+3. **Capacidade e Limites:** soma de pesos em `carry_load` de cada unidade $\le$ sua capacidade efetiva; `remaining_amount` de cada `ResourceSource` em `[0, initial_amount]`; saldos de depósito dentro da capacidade configurada.
+4. **Lastro Físico das Reservas:** para toda pilha $p$, $\sum_{c} \text{reservations}(p, c) \le \text{amount}(p)$; e para todo canteiro $c$ e recurso $R$, $\sum_{p} \text{reservations}(p, c, R) == \text{materials\_reserved\_pending}(c, R)$.
+5. **Conservação por Canteiro:** para todo canteiro $c$ e recurso $R$:
+   $$\text{consumed}(c, R) + \text{buffer}(c, R) + \text{reserved\_pending}(c, R) + \sum_{u \to c} \text{carry\_load}(u, R) == \text{materials\_required}(c, R)$$
+6. **Progresso Coerente:** $0.0 \le \text{work\_progress\_sec} \le \text{build\_work\_required}$.
+
+### 7.5. Cenário: Carga Interrompida Durante Transporte
+Se a partida for salva enquanto `unit_leader_a` caminha da `pile 1` até `site_depot_1` carregando 6 madeiras:
+- O snapshot registra `carry_load: {"wood": 6}` apenas na entrada da unidade (com `position`, `character_id`, `active_order: "ConstructOrder"`, `order_phase: "DELIVERING_TO_SITE"`, `target_site_id: "site_depot_1"`).
+- As 6 madeiras já foram subtraídas do `amount` da `pile 1` quando o trabalhador fez o saque, e ainda não constam no `materials_buffer` de `site_depot_1`.
+- **Restauração:** o carregador valida a conservação (`3 + 3 + 6 + 6 = 18`), posiciona `LeaderA` em `[-3.2, 0.0, 2.4]`, restaura sua mochila com 6 madeiras e reconstitui `ConstructOrder` em fase de entrega para `site_depot_1` após `WorldNavigation` emitir `navigation_ready`. Caso `target_site_id` não exista no estado carregado, o arquivo falha na validação de integridade (§7.4) ou, se o canteiro tiver sido cancelado antes, a unidade recebe `DeliverToCampOrder` para devolver a carga à `CampStorageZone`.
+
+---
+
+## 8. Sequenciamento Incremental Corrigido (T3.1 a T3.9)
+
+A ordem dos incrementos foi reestruturada para garantir que a validação espacial preceda a criação de canteiros jogáveis, evitando que obras sejam instanciadas em locais inválidos:
+
+| Etapa | Objetivo Principal | Dependências | Arquivos Previstos | Riscos Técnicos | Testes Automatizados Previstos | Critério de Aceite |
+|---|---|---|---|---|---|---|
+| **T3.0 — Revisão Arquitetural** *(atual)* | Correção técnica de consistência contábil, NavMesh e dimensões | `main` (`t2-complete`) | `docs/architecture/T3_architecture_PROPOSAL.md` | Inconsistência conceitual | `git diff --check` | Documento corrigido e aprovado pelo proprietário |
+| **T3.1 — Contabilidade, Reservas e Saque em Lote** | Implementar `reserve_batch()`, `release_batch()`, `withdraw_reserved()` e deduções atômicas | T3.0 aprovada | `src/economy/settlement_storage_source.gd`, `ground_pile_manager.gd`, `settlement_inventory.gd` | Regressão em invariantes contábeis da T2 | Testes unitários com reservas múltiplas, concorrência, cancelamento de reserva e rollback | Conservação estrita: livre + reservado = físico; 0 falhas na suíte T2 |
+| **T3.2 — Validação Espacial, Área Reservada e Prévia sem Grid** | `PlacementValidator` (exclusão da `CampStorageZone`, terreno, checagem conservadora no *hover* e malha candidata na confirmação) e prévia visual | T3.1 | `src/buildings/building_definition.gd`, `placement_validator.gd`, `placement_preview.gd`, `placement_controller.gd` | Falsos positivos de rejeição ou custo de *bake* candidato na confirmação | Testes unitários de validação geométrica (fora vs dentro da `CampStorageZone`, declives e bloqueio de corredor) | Validação impede posicionamento no acampamento ou bloqueio de rotas antes de reservar recursos |
+| **T3.3 — Canteiro de Obra e Suprimento Físico (Transporte)** | Instanciação de canteiro em local válido, reserva nas pilhas e trabalhadores transportando materiais com peso real | T3.2 | `src/buildings/construction_site.gd`, `src/units/orders/construct_order.gd`, `build_slot_planner.gd` | Trabalhador travar no percurso ou tentar sacar mais do que aguenta carregar | Testes de integração: trabalhador retira cota da pilha, carrega com peso e descarrega no canteiro | Material sai da pilha física com peso real e passa a constar no buffer do canteiro |
+| **T3.4 — Ordem de Construção, Progresso com Consumo e Conclusão** | Consumo progressivo do buffer, avanço de progresso, transmutação em `BuildingInstance` e rebake do NavMesh | T3.3 | `src/buildings/construction_site.gd`, `building_instance.gd`, `src/units/orders/construct_order.gd`, `src/navigation/world_navigation.gd` | Deadlocks com múltiplos construtores ou unidades presas no bake | Testes de integração: 1 e 2 construtores, interrupção por nova ordem e conclusão do abrigo | Abrigo conclui em 100%, consome materiais do buffer e unidades contornam a nova construção |
+| **T3.5 — Interface de Construção (Botão, Painel Retrátil e Contexto)** | Botão inferior direito, catálogo retrátil de obras e painel contextual do canteiro | T3.4 | `src/ui/construction_hud.gd`, `building_inspector_panel.gd`, `src/rts/rts_input_controller.gd`, `src/main/main.gd` | Bloqueio de cliques RTS do mapa pela UI | Testes de integração de UI: abrir painel, selecionar, posicionar e cancelar com Esc | Interface funcional sem sobrepor painel do personagem nem estoque |
+| **T3.6 — Cancelamento com Reembolso Proporcional** | Desfazer reservas, redirecionar transportadores para devolução e recolher buffer do canteiro com taxa de demolição | T3.5 | `src/buildings/construction_site.gd`, `building_manager.gd`, `src/units/orders/deliver_to_camp_order.gd` | Geração indevida de recursos ou perda de material transportado | Testes unitários e de integração de cancelamento em 0%, 50% e 90% | Reembolso nunca excede custo original; materiais retornam fisicamente à `CampStorageZone` |
+| **T3.7 — Depósitos Protetores contra Deterioração** | Construir `StorageDepotInstance`, integrar `CompositeStorageSource` e zerar decaimento da capacidade protegida | T3.6 | `src/buildings/storage_depot.gd`, `src/economy/composite_storage_source.gd`, `src/ui/settlement_stockpile_panel.gd` | Conflito de autoridade entre pilhas livres e depósitos | Testes com `EconomyClockController`: recursos no depósito não sofrem deterioração | Depósito concluído protege recursos até o limite de capacidade e atualiza o HUD |
+| **T3.8 — Persistência Mínima Versionada em Disco (P2)** | Serialização segura (`.tmp` $\rightarrow$ `.bak` $\rightarrow$ replace), fontes naturais (`ResourceSource`), unidades em trânsito e validação pré-carga | T3.7 | `src/persistence/building_persistence_manager.gd`, `src/economy/resource_source.gd`, `src/main/main.gd` | Corrupção de arquivo, dessincronização contábil ou regeneração de fontes ao recarregar | Testes de save/load: consistência de progresso, fontes exauridas, rejeição de save inválido e recuperação de `.bak` | Jogo recarregado preserva obras, fontes e cargas em trânsito sem duplicar recursos |
+| **T3.9 — Validação Global, Protocolo Manual e Benchmarks** | Execução de suíte segmentada completa, bateria de testes manuais e medição de performance na Intel UHD 620 | T3.8 | `tests/perf/t3_perf_benchmark.gd`, `docs/testing/T3_manual_test_protocol.md` | Queda de FPS abaixo da meta ($p95 > 16,7\text{ ms}$ em CA) ou picos de rebake | Suíte completa via `run_tests.ps1 -Segmented` + benchmark 1080p | 100% testes aprovados, 0 avisos/erros e $p95 \le 16,7\text{ ms}$ na tomada CA |
+
+---
+
+## 9. Governança, Aprovações de 14/11/2026 e Pendência Final
+
+### 9.1. Decisões Aprovadas em 14/11/2026
+Além das sete diretrizes estruturais (**D1–D7**) integralmente preservadas, o proprietário aprovou em **14/11/2026**:
+1. **Tabela de Valores Provisórios (D4 — APROVADA como valores provisórios sujeitos a balanceamento):**
+   - **Abrigo Básico (`shelter_basic`):** $4,0 \times 4,0\text{ m}$, 12 madeiras, 6 pedras, 30,0 s-construtor, máximo 2 construtores.
+   - **Depósito Rústico (`storage_depot`):** $5,0 \times 4,0\text{ m}$, 18 madeiras, 10 pedras, 45,0 s-construtor, máximo 2 construtores.
+2. **Capacidade Provisória do Depósito Rústico (D5 — APROVADA como valor provisório sujeito a balanceamento):**
+   - 50 madeiras, 50 pedras e 30 alimentos (com decaimento `0,0` dentro da capacidade).
+3. **Eficiência de Demolição no Cancelamento (D3 — APROVADA como taxa provisória sujeita a balanceamento):**
+   - $\eta_{\text{demolição}} = 0,50$ para recuperação de materiais já incorporados à estrutura física (mantendo a fórmula proporcional da §6.1 e sujeitando apenas detalhes operacionais da logística de retorno aos testes da etapa T3.6).
+
+### 9.2. Única Decisão Pendente
+- **Política de Deterioração de Materiais Reservados nas Pilhas Expostas (§3.4 — NÃO APROVADO):**
+  - Escolher entre **Alternativa A — Deterioração física com reancoragem** *(recomendada tecnicamente)* ou **Alternativa B — Deterioração física com perda direta da reserva**.
+
+### 9.3. Autorização Condicional da T3.1
+- O proprietário concedeu **autorização condicional** para iniciar o incremento **T3.1 — Contabilidade, Reservas e Saque em Lote** somente **após** a definição expressa da política de deterioração com reservas (§9.2) e a conclusão da conferência documental independente pelo ChatGPT. Nenhuma implementação de código está autorizada antes do cumprimento dessas condições.
