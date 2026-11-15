@@ -251,6 +251,8 @@ func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) ->
 		if get_reservation_amount(reservation_id, res_id) < int(items[res_id]):
 			return false
 	var snapshot: Variant = _create_rollback_snapshot()
+	if snapshot == null:
+		return false
 	var prev_dirty: bool = _batch_dirty
 	var prev_res_dirty: bool = _reservation_batch_dirty
 	begin_batch()

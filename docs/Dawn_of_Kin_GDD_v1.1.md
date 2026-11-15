@@ -6,21 +6,14 @@
 **Uso:** minuta de referência de produto para revisão do proprietário antes de substituir a v1.0 em `AGENTS.md`  
 **Nome de trabalho:** *Dawn of Kin* («Aurora da Linhagem»); verificar disponibilidade de marca e lojas antes da publicação.
 
-> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental aguardando aprovação formal do proprietário**. A v1.0 permanece preservada sem alterações em `docs/Dawn_of_Kin_GDD_v1.0.md`. Este documento não autoriza encerramento antecipado da `T2`, alteração da `T2.6` nem implementação antecipada de `T3`–`T8`.
+> **Aviso de vigência:** Esta versão `v1.1` é uma **minuta documental não promovida aguardando aprovação formal do proprietário**. O documento [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) é a fonte normativa vigente e recebeu as atualizações e decisões aprovadas pelo proprietário. A fase **T2** encontra-se oficialmente concluída e aprovada; a etapa **T3.1** foi a única implementação autorizada até aqui, permanecendo as etapas posteriores (**T3.2+**) estritamente sem autorização de implementação.
 >
 > **Regra de leitura:** **DECIDIDO** = aprovado pelo proprietário; **PROPOSTA** / **PROPOSTA TÉCNICA** / **PROPOSTA FUTURA** = sugestão técnica ou de design para avaliação, não compromisso fechado; **ABERTO** = depende de definição futura e não deve ser presumido na implementação.
 >
 > **Estado real observado do projeto em 14/11/2026:**
 > - **T1 — Fundação RTS:** **concluída e aprovada** (`t1-complete`, commit `2808799`, 90 testes automatizados e 1.607 asserções).
-> - **T2 — Trabalho e Recursos (`T2.0`–`T2.6` + `B1`):**
->   - `T2.0`–`T2.6` e ajuste `B1`: implementadas, validadas e testadas automaticamente (**182/182 testes em 27 suítes, 6.469 asserções em execução segmentada** com 0 erros/avisos).
->   - `B1`: velocidade de deslocamento sem carga unificada em 4,8 m/s em ordens de movimento e de coleta, com desaceleração decorrendo estritamente da carga física transportada.
->   - **Testes manuais:** Todos os 21 itens do protocolo manual (`docs/testing/T2_manual_test_protocol.md`) foram executados e relatados como aprovados pelo proprietário em 14/11/2026, com o ajuste B1 testado e confirmado ("testei esta correto").
->   - **Medição de desempenho em 1920×1080 (Intel UHD 620, `gl_compatibility`):**
->     - **Tomada CA (B1.1):** `p95 = 9,757 ms` (mediana de 147,33 FPS), zero quadros > 100 ms — **critério atendido**.
->     - **Bateria DC (B1):** `p95 = 33,038 ms` (mediana de 55,80 FPS), zero quadros > 100 ms — **critério de `p95` não atendido em bateria**; classificação como limitação aceitável para encerrar a T2 depende de decisão expressa do proprietário.
->   - **Situação da T2:** **Concluída e aprovada** pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`), com limitação de desempenho em bateria DC aceita como não bloqueante para a T2.
->   - **Situação da T3:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`), com autorização exclusiva para implementação incremental da etapa **T3.1** (`feature/t3-1-reservations`).
+> - **T2 — Trabalho e Recursos (`T2.0`–`T2.6` + `B1`):** **concluída e aprovada** pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes e 21/21 itens manuais aprovados), com limitação de desempenho em bateria DC aceita como não bloqueante para a T2.
+> - **T3 — Construção:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`), com autorização exclusiva para implementação incremental da etapa **T3.1** (`feature/t3-1-reservations`); etapas `T3.2` em diante continuam sem autorização de implementação.
 
 ---
 

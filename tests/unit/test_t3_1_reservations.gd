@@ -160,6 +160,57 @@ class FailingSecondReservedInMemorySource:
 		return super.withdraw_reserved(reservation_id, resource_id, amount)
 
 
+class NoSnapshotReservedStorageSource:
+	extends SettlementStorageSource
+
+	var _amounts: Dictionary = {}
+	var _reservations: Dictionary = {}
+	var withdraw_reserved_calls: Array[StringName] = []
+
+	func deposit(resource_id: StringName, amount: int) -> bool:
+		_amounts[resource_id] = int(_amounts.get(resource_id, 0)) + amount
+		_emit_storage_changed()
+		return true
+
+	func get_physical_amount(resource_id: StringName) -> int:
+		return int(_amounts.get(resource_id, 0))
+
+	func get_reserved_amount(resource_id: StringName) -> int:
+		var total: int = 0
+		for bucket: Variant in _reservations.values():
+			total += int((bucket as Dictionary).get(resource_id, 0))
+		return total
+
+	func has_reservation(reservation_id: StringName) -> bool:
+		return _reservations.has(reservation_id) and not (_reservations[reservation_id] as Dictionary).is_empty()
+
+	func get_reservation_amount(reservation_id: StringName, resource_id: StringName) -> int:
+		if not _reservations.has(reservation_id):
+			return 0
+		return int((_reservations[reservation_id] as Dictionary).get(resource_id, 0))
+
+	func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+		_reservations[reservation_id] = amounts.duplicate()
+		_emit_reservations_changed()
+		_emit_storage_changed()
+		return true
+
+	func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
+		withdraw_reserved_calls.append(resource_id)
+		var current_phys: int = int(_amounts.get(resource_id, 0))
+		if current_phys < amount:
+			return false
+		var bucket: Dictionary = _reservations.get(reservation_id, {}) as Dictionary
+		var current_res: int = int(bucket.get(resource_id, 0))
+		if current_res < amount:
+			return false
+		_amounts[resource_id] = current_phys - amount
+		bucket[resource_id] = current_res - amount
+		_emit_reservations_changed()
+		_emit_storage_changed()
+		return true
+
+
 func test_01_simple_reservation_and_balance_breakdown() -> void:
 	var fix: Dictionary = _make_fixture()
 	var manager: GroundPileManager = fix["manager"] as GroundPileManager
@@ -682,3 +733,28 @@ func test_15_withdraw_reserved_batch_intermediate_failure_rolls_back_atomically(
 	assert_eq(int(mgr_signals["storage"]), 0)
 	assert_eq(int(mgr_signals["res"]), 0)
 	_assert_pile_invariants(fail_mgr)
+
+
+func test_16_withdraw_reserved_batch_fails_safe_without_snapshot() -> void:
+	var src := NoSnapshotReservedStorageSource.new()
+	var inv := SettlementInventory.new(src)
+
+	assert_true(inv.deposit(&"wood", 10))
+	assert_true(inv.deposit(&"stone", 6))
+	assert_true(inv.reserve_batch(&"site_a", {&"wood": 8, &"stone": 5}))
+
+	var signals := {"storage": 0, "res": 0}
+	src.storage_changed.connect(func() -> void: signals["storage"] = int(signals["storage"]) + 1)
+	src.reservations_changed.connect(func() -> void: signals["res"] = int(signals["res"]) + 1)
+
+	# Backend does not implement _create_rollback_snapshot -> withdraw_reserved_batch must fail before executing any withdraw
+	assert_false(inv.withdraw_reserved_batch(&"site_a", {&"wood": 4, &"stone": 3}))
+	assert_eq(src.withdraw_reserved_calls.size(), 0, "No withdraw_reserved calls should execute if snapshot cannot be created")
+	assert_eq(inv.get_physical_amount(&"wood"), 10)
+	assert_eq(inv.get_physical_amount(&"stone"), 6)
+	assert_eq(inv.get_reservation_amount(&"site_a", &"wood"), 8)
+	assert_eq(inv.get_reservation_amount(&"site_a", &"stone"), 5)
+	assert_eq(inv.get_available_amount(&"wood"), 2)
+	assert_eq(inv.get_available_amount(&"stone"), 1)
+	assert_eq(int(signals["storage"]), 0, "No storage signal emitted on refused batch")
+	assert_eq(int(signals["res"]), 0, "No reservation signal emitted on refused batch")
