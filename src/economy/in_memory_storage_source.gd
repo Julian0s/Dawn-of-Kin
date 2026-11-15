@@ -178,6 +178,31 @@ func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amou
 	return true
 
 
+func _create_rollback_snapshot() -> Variant:
+	var res_copy: Dictionary = {}
+	for key: Variant in _reservations.keys():
+		res_copy[key] = (_reservations[key] as Dictionary).duplicate()
+	return {
+		"amounts": _amounts.duplicate(),
+		"reservations": res_copy,
+		"reservation_order": _reservation_order.duplicate(),
+		"next_reservation_seq": _next_reservation_seq,
+	}
+
+
+func _restore_rollback_snapshot(snapshot: Variant) -> void:
+	if not (snapshot is Dictionary):
+		return
+	var snap: Dictionary = snapshot as Dictionary
+	_amounts = (snap.get("amounts", {}) as Dictionary).duplicate()
+	_reservations.clear()
+	var res_src: Dictionary = snap.get("reservations", {}) as Dictionary
+	for key: Variant in res_src.keys():
+		_reservations[key] = (res_src[key] as Dictionary).duplicate()
+	_reservation_order = (snap.get("reservation_order", {}) as Dictionary).duplicate()
+	_next_reservation_seq = int(snap.get("next_reservation_seq", 1))
+
+
 func record_intentional_decay(resource_id: StringName, amount: int) -> int:
 	if resource_id.is_empty() or amount <= 0:
 		return 0

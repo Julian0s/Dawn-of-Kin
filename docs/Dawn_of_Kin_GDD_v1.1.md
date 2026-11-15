@@ -19,7 +19,8 @@
 >   - **Medição de desempenho em 1920×1080 (Intel UHD 620, `gl_compatibility`):**
 >     - **Tomada CA (B1.1):** `p95 = 9,757 ms` (mediana de 147,33 FPS), zero quadros > 100 ms — **critério atendido**.
 >     - **Bateria DC (B1):** `p95 = 33,038 ms` (mediana de 55,80 FPS), zero quadros > 100 ms — **critério de `p95` não atendido em bateria**; classificação como limitação aceitável para encerrar a T2 depende de decisão expressa do proprietário.
->   - **Situação da T2:** Aguardando aceite formal de encerramento do marco pelo proprietário.
+>   - **Situação da T2:** **Concluída e aprovada** pelo proprietário em 14/11/2026 (`t2-complete`, commit `f7c2459`), com limitação de desempenho em bateria DC aceita como não bloqueante para a T2.
+>   - **Situação da T3:** Arquitetura consolidada (`docs/architecture/T3_architecture_PROPOSAL.md`), com autorização exclusiva para implementação incremental da etapa **T3.1** (`feature/t3-1-reservations`).
 
 ---
 
@@ -72,7 +73,7 @@
 
 ## 4. Loop central e controles RTS
 
-**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → coletar e transportar recursos até o acampamento → descarregar em pilhas físicas no acampamento → proteger e evoluir o armazenamento conforme a comunidade cresce → sustentar famílias → explorar e lidar com ameaças ocasionais.
+**Ciclo desejado:** observar a comunidade → selecionar um ou mais moradores → dar tarefas → coletar e transportar recursos até um local de armazenamento válido (na **T2 implementada**, descarga nas pilhas físicas do acampamento inicial; pela **regra futura aprovada**, materiais poderão existir no chão de qualquer região, mas só integram o estoque coletivo quando entregues a armazenamento válido) → proteger e evoluir o armazenamento conforme a comunidade cresce → sustentar famílias → explorar e lidar com ameaças ocasionais.
 
 - **DECIDIDO:** clique esquerdo seleciona personagem; clique direito dá ordem contextual (mover no chão, colher, cortar, coletar, entregar carga, construir, interagir). Na T2, o clique direito em terreno livre permanece estritamente como movimento RTS.
 - **DECIDIDO:** tarefas são executadas automaticamente; o jogador não precisa controlar fisicamente cada golpe, deslocamento ou retorno de descarga.
@@ -90,7 +91,7 @@
 - **DECIDIDO — Início sem infraestrutura prévia:** o casal protagonista começa sem ferramentas, sem equipamentos equipáveis e sem construções humanas pré-existentes no mapa.
 - **DECIDIDO:** o assentamento mantém um **estoque coletivo de pontos de alimentos** e demais recursos compartilhados utilizáveis pela comunidade. Cada pessoa tem um consumo periódico; todos são sustentados por esse estoque.
 - **DECIDIDO:** não é necessário cozinhar receitas complexas ou fabricar alimento ingrediente por ingrediente.
-- **DECIDIDO — Transporte físico e proibição de crédito instantâneo:** os materiais coletados (madeira, pedra, alimentos e futuras categorias) **não** aparecem instantaneamente no estoque compartilhado durante a coleta. Cada trabalhador carrega fisicamente os materiais coletados e o estoque coletivo só é atualizado após descarga física válida no acampamento.
+- **DECIDIDO — Transporte físico e proibição de crédito instantâneo:** os materiais coletados (madeira, pedra, alimentos e futuras categorias) **não** aparecem instantaneamente no estoque compartilhado durante a coleta. Cada trabalhador carrega fisicamente os materiais coletados e o estoque coletivo só é atualizado após descarga física em armazenamento válido (**T2 implementada:** descarga no acampamento inicial; **regra futura aprovada:** materiais poderão permanecer no chão de qualquer região, mas só integrarão o estoque coletivo quando entregues a um local de armazenamento válido).
 - **DECIDIDO — Escopo inicial T2 e expansão futura de materiais no mundo:** na T2, os materiais descarregados formam **pilhas físicas individuais** de madeira, pedra ou alimentos exclusivamente **dentro do acampamento inicial** (primeiro local de armazenamento em zona lógica inicial sem construções pré-prontas; placeholders simples permitidos inicialmente e modelos 3D finais posteriormente). Cada pilha mantém quantidade própria, localização e estado de exposição, podendo pilhas da mesma categoria ser agrupadas conforme regra técnica determinística.
   - **DECIDIDO — Materiais largados e múltiplos locais de armazenamento:** a restrição da T2 ao acampamento inicial não é permanente. Qualquer item ou material poderá futuramente ser deixado fisicamente no chão de qualquer região; contudo, materiais largados fora de um local de armazenamento válido **não** entram automaticamente no estoque coletivo — para integrá-lo, devem ser transportados fisicamente até um local de armazenamento válido.
 - **DECIDIDO — Sincronia entre pilhas válidas e estoque:** todas as pilhas válidas de armazenamento contribuem para o estoque coletivo utilizável, que reflete exatamente as quantidades livres/disponíveis nessas pilhas (sem contagem duplicada).

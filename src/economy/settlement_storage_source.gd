@@ -231,6 +231,14 @@ func withdraw_reserved(_reservation_id: StringName, _resource_id: StringName, _a
 	return false
 
 
+func _create_rollback_snapshot() -> Variant:
+	return null
+
+
+func _restore_rollback_snapshot(_snapshot: Variant) -> void:
+	pass
+
+
 func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	if reservation_id.is_empty() or not has_reservation(reservation_id):
 		return false
@@ -242,14 +250,18 @@ func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) ->
 	for res_id: StringName in sorted_keys:
 		if get_reservation_amount(reservation_id, res_id) < int(items[res_id]):
 			return false
+	var snapshot: Variant = _create_rollback_snapshot()
 	var prev_dirty: bool = _batch_dirty
 	var prev_res_dirty: bool = _reservation_batch_dirty
 	begin_batch()
 	for res_id: StringName in sorted_keys:
 		if not withdraw_reserved(reservation_id, res_id, int(items[res_id])):
-			_batch_dirty = prev_dirty
-			_reservation_batch_dirty = prev_res_dirty
+			if snapshot != null:
+				_restore_rollback_snapshot(snapshot)
 			end_batch(true)
+			if _batch_depth > 0:
+				_batch_dirty = prev_dirty
+				_reservation_batch_dirty = prev_res_dirty
 			return false
 	end_batch(false)
 	return true

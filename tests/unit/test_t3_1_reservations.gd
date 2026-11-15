@@ -147,6 +147,19 @@ class FailingSecondInMemorySource:
 		return super.withdraw(resource_id, amount)
 
 
+class FailingSecondReservedInMemorySource:
+	extends InMemoryStorageSource
+
+	var fail_reserved_resource: StringName = &"wood"
+	var withdraw_calls: Array[StringName] = []
+
+	func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
+		withdraw_calls.append(resource_id)
+		if resource_id == fail_reserved_resource:
+			return false
+		return super.withdraw_reserved(reservation_id, resource_id, amount)
+
+
 func test_01_simple_reservation_and_balance_breakdown() -> void:
 	var fix: Dictionary = _make_fixture()
 	var manager: GroundPileManager = fix["manager"] as GroundPileManager
@@ -620,3 +633,52 @@ func test_14_reentrancy_blocked_during_reservation_notifications() -> void:
 	assert_eq(inv.get_reservation_amounts(&"site_a"), {&"wood": 4})
 	assert_eq(inv.get_available_amount(&"wood"), 6)
 	_assert_pile_invariants(manager)
+
+
+func test_15_withdraw_reserved_batch_intermediate_failure_rolls_back_atomically() -> void:
+	# Part A: InMemoryStorageSource rollback when 1st resource succeeds and 2nd fails
+	var mem_src := FailingSecondReservedInMemorySource.new()
+	var mem_inv := SettlementInventory.new(mem_src)
+	assert_true(mem_inv.deposit(&"wood", 10))
+	assert_true(mem_inv.deposit(&"stone", 6))
+	assert_true(mem_inv.reserve_batch(&"site_a", {&"wood": 8, &"stone": 5}))
+
+	var mem_signals := {"storage": 0, "res": 0}
+	mem_src.storage_changed.connect(func() -> void: mem_signals["storage"] = int(mem_signals["storage"]) + 1)
+	mem_src.reservations_changed.connect(func() -> void: mem_signals["res"] = int(mem_signals["res"]) + 1)
+
+	# Sorted key order executes &"stone" first (succeeds) and &"wood" second (injected failure)
+	assert_false(mem_inv.withdraw_reserved_batch(&"site_a", {&"wood": 4, &"stone": 3}))
+	assert_eq(mem_src.withdraw_calls, [&"stone", &"wood"])
+	assert_eq(mem_inv.get_physical_amount(&"wood"), 10)
+	assert_eq(mem_inv.get_physical_amount(&"stone"), 6)
+	assert_eq(mem_inv.get_reservation_amount(&"site_a", &"wood"), 8)
+	assert_eq(mem_inv.get_reservation_amount(&"site_a", &"stone"), 5)
+	assert_eq(mem_inv.get_available_amount(&"wood"), 2)
+	assert_eq(mem_inv.get_available_amount(&"stone"), 1)
+	assert_eq(int(mem_signals["storage"]), 0, "Rolled-back reserved batch must emit zero storage signals")
+	assert_eq(int(mem_signals["res"]), 0, "Rolled-back reserved batch must emit zero reservation signals")
+
+	# Part B: GroundPileManager rollback preserved on mid-commit failure in withdraw_reserved_batch
+	var fix: Dictionary = _make_fixture()
+	var host := fix["host"] as Node3D
+	var zone := fix["zone"] as CampStorageZone
+	var piles_root := Node3D.new()
+	host.add_child(piles_root)
+	var fail_mgr := FailingSecondWithdrawManager.new(fix["defs"] as Dictionary, zone, piles_root)
+	_managers_to_cleanup.append(fail_mgr)
+	assert_true(fail_mgr.deposit_batch({&"wood": 10, &"stone": 6}))
+	assert_true(fail_mgr.reserve_batch(&"site_a", {&"wood": 8, &"stone": 5}))
+
+	var mgr_signals := {"storage": 0, "res": 0}
+	fail_mgr.storage_changed.connect(func() -> void: mgr_signals["storage"] = int(mgr_signals["storage"]) + 1)
+	fail_mgr.reservations_changed.connect(func() -> void: mgr_signals["res"] = int(mgr_signals["res"]) + 1)
+
+	assert_false(fail_mgr.withdraw_reserved_batch(&"site_a", {&"wood": 4, &"stone": 3}))
+	assert_eq(fail_mgr.get_physical_amount(&"wood"), 10)
+	assert_eq(fail_mgr.get_physical_amount(&"stone"), 6)
+	assert_eq(fail_mgr.get_reservation_amount(&"site_a", &"wood"), 8)
+	assert_eq(fail_mgr.get_reservation_amount(&"site_a", &"stone"), 5)
+	assert_eq(int(mgr_signals["storage"]), 0)
+	assert_eq(int(mgr_signals["res"]), 0)
+	_assert_pile_invariants(fail_mgr)
