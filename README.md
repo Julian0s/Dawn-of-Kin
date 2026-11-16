@@ -5,8 +5,6 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
-- **Fase atual (`T3 — Construção`):** **T3.1**, **T3.2** e **T3.3** concluídas, auditadas, testadas manualmente, formalmente homologadas pelo proprietário e integradas na `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag anotada `t3-3-complete`; ver [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)); a etapa **T3.4** e as posteriores permanecem planejadas e **sem autorização de implementação**.
-- **Game Design Document (GDD):** Conteúdo consolidado `v1.2` (`R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9`) formalmente aprovado pelo proprietário em 16/11/2026. Na `main`, antes da integração expressamente autorizada do GDD único, vigora `docs/Dawn_of_Kin_GDD_v1.0.md`; após a integração autorizada, [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) passa a ser a fonte normativa única do projeto (sem liberar a implementação da `T3.4`).
   - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
@@ -26,7 +24,9 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
     - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
     - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
   - **Situação de encerramento:** Fase T2 oficialmente concluída, integrada na branch `main` e marcada com a tag `t2-complete`.
+- **Fase atual (`T3 — Construção`):** **T3.1**, **T3.2** e **T3.3** concluídas, auditadas, testadas manualmente, formalmente homologadas pelo proprietário e integradas na `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag anotada `t3-3-complete`; ver [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)); a etapa **T3.4** e as posteriores permanecem planejadas e **sem autorização de implementação**.
 - **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
+- **Game Design Document (GDD):** [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) (`v1.2 — Conteúdo Aprovado pelo Proprietário`, revisão `R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovado em 16/11/2026); vigora como fonte normativa única do projeto na `main` após integração autorizada (antes da integração, `docs/Dawn_of_Kin_GDD_v1.0.md` permanece vigente na `main`; a aprovação documental não libera a implementação da `T3.4`).
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
 

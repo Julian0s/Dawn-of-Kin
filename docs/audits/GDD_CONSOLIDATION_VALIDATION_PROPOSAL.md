@@ -146,7 +146,7 @@ Comparação realizada entre: (1) `GDD v1.0` (`3c6fc0b`), (2) `GDD v1.1` (`3c6fc
 
 - **Histórico `R1–R4.1` concluído:** As rodadas de revisão documental (`R1`, `R2`, `R3`, `R4` e os quatro ajustes finais `R4.1-A..D` em `6e5764f67125da103eec68adb95e5b67ac329ed9`) foram concluídas e auditadas.
 - **Aprovação formal pelo proprietário (`16/11/2026`):** O conteúdo do GDD `R4.1` (`6e5764f67125da103eec68adb95e5b67ac329ed9`) foi formalmente aprovado pelo proprietário, com autorização estrita para **preparação da promoção normativa documental** com revisão antes de qualquer merge.
-- **Governança de vigência:** A integração à `main` permanece **pendente de auditoria independente e autorização expressa separada**. A implementação da etapa `T3.4` permanece **bloqueada** (`T3.4-ARCHITECTURE-R2` pendente e sem autorização de código).
+- **Governança de vigência e histórico pré-integração:** No registro histórico da preparação (`16/11/2026`), a integração à `main` dependia de auditoria independente e autorização expressa separada. Após auditoria e autorização expressa do proprietário para integrar exclusivamente a documentação aprovada à `main`, [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) vigora como GDD normativo único na `main`. A implementação da etapa `T3.4` permanece **estritamente bloqueada** (`T3.4-ARCHITECTURE-R2` pendente e sem autorização de código).
 
 ---
 
@@ -165,5 +165,5 @@ Comparação realizada entre: (1) `GDD v1.0` (`3c6fc0b`), (2) `GDD v1.1` (`3c6fc
 - [x] `DEC-11A` e `DEC-11B` ratificadas em todas as seções pertinentes.
 - [x] Todas as referências Markdown da branch sincronizadas sem links `file:///` ou destinos quebrados.
 - [x] Divergências `AUD-01` a `AUD-08`, `R4-I` e `R4-J` corrigidas em revisão documental `R4` e ajustes `R4.1-A..D` concluídos (`6e5764f67125da103eec68adb95e5b67ac329ed9`).
-- [x] Conteúdo `R4.1` formalmente aprovado pelo proprietário (`16/11/2026`); preparação da promoção normativa concluída em `docs/gdd-normative-promotion-prep` (integração à `main` e `T3.4` pendentes de autorização expressa).
+- [x] Conteúdo `R4.1` formalmente aprovado pelo proprietário (`16/11/2026`); preparação normativa concluída em `docs/gdd-normative-promotion-prep` e pronta para integração autorizada à `main` (`T3.4` permanece bloqueada).
 - [x] Nenhum código GDScript, cena `.tscn`, recurso `.tres` ou teste foi modificado.
