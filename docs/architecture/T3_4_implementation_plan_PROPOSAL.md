@@ -1,15 +1,15 @@
 # DAWN OF KIN — T3.4-ARCHITECTURE-R2 — PROPOSTA NÃO APROVADA
 
-**Identificação da Revisão:** **T3.4-ARCHITECTURE-R2 — PROPOSTA NÃO APROVADA**  
-**Etapa:** T3.4 — Ordem de Construção, Progresso com Consumo e Conclusão  
-**Status:** **PROPOSTA TÉCNICA R2 — NÃO APROVADA / NÃO IMPLEMENTADA** (aguardando auditoria independente do ChatGPT e aprovação expressa do proprietário; nenhuma autorização de código concedida)  
-**Base oficial da `main`:** `518aec6da477c6105b60844a106cb7322246b53a`  
-**GDD Normativo Vigente (`main`):** [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) (`v1.2 — Conteúdo Aprovado pelo Proprietário`)  
-**Último Marco Funcional Homologado:** Tag anotada `t3-3-complete` ([T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md))  
-**Referência Histórica R1 Preservada:** branch `planning/t3-4-architecture`, commit [`6ac2c5102e71623224dbd5f1e69bedd0d90bfc45`](https://github.com/Julian0s/Dawn-of-Kin/blob/6ac2c5102e71623224dbd5f1e69bedd0d90bfc45/docs/architecture/T3_4_implementation_plan_PROPOSAL.md) *(não integrada à `main`)*  
-**Branch de Planejamento R2:** `planning/t3-4-architecture-r2`  
-**Worktree Isolado:** `C:\Projetos\Dawn_of_Kin_wt_t3_4_plan_r2`  
-**Engine Alvo:** Godot `4.7.2.stable` (`gl_compatibility`, `Jolt Physics`)  
+**Identificação da Revisão:** **T3.4-ARCHITECTURE-R2 — PROPOSTA NÃO APROVADA**<br>
+**Etapa:** T3.4 — Ordem de Construção, Progresso com Consumo e Conclusão<br>
+**Status:** **PROPOSTA TÉCNICA R2 — NÃO APROVADA / NÃO IMPLEMENTADA** (aguardando auditoria independente do ChatGPT e aprovação expressa do proprietário; nenhuma autorização de código concedida)<br>
+**Base oficial da `main`:** `518aec6da477c6105b60844a106cb7322246b53a`<br>
+**GDD Normativo Vigente (`main`):** [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) (`v1.2 — Conteúdo Aprovado pelo Proprietário`)<br>
+**Último Marco Funcional Homologado:** Tag anotada `t3-3-complete` ([T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md))<br>
+**Referência Histórica R1 Preservada:** branch `planning/t3-4-architecture`, commit [`6ac2c5102e71623224dbd5f1e69bedd0d90bfc45`](https://github.com/Julian0s/Dawn-of-Kin/blob/6ac2c5102e71623224dbd5f1e69bedd0d90bfc45/docs/architecture/T3_4_implementation_plan_PROPOSAL.md) *(não integrada à `main`)*<br>
+**Branch de Planejamento R2:** `planning/t3-4-architecture-r2`<br>
+**Worktree Isolado:** `C:\Projetos\Dawn_of_Kin_wt_t3_4_plan_r2`<br>
+**Engine Alvo:** Godot `4.7.2.stable` (`gl_compatibility`, `Jolt Physics`)<br>
 **Data da Revisão R2:** 16 de novembro de 2026
 
 > **Nota de Governança e Bloqueio Estrito:** Este documento é exclusivamente uma **especificação arquitetural candidata (`T3.4-ARCHITECTURE-R2`)**. Mesmo após eventual auditoria técnica, **a aprovação deste plano não libera automaticamente a escrita de código**: a implementação da `T3.4` e de qualquer etapa posterior (`T3.5`–`T8`) permanece estritamente bloqueada até autorização expressa do proprietário ([`AGENTS.md`](../../AGENTS.md)). Nenhum arquivo `.gd`, `.tscn`, `.tres`, teste ou configuração foi modificado nesta revisão.
@@ -323,7 +323,7 @@ Eliminamos qualquer erro de arredondamento `float` armazenando o progresso inter
    - Se `w_efetivo == _total_work_usec`: validar $\forall R: Q_{\text{incorporado}}(R) == \text{Custo}(R)$ e disparar transição para `COMPLETING`.
 
 #### 3. Verificação Numérica do Caso Obrigatório e Casos de Fronteira
-**Parâmetros:** `Abrigo Básico` (`wood: 12`, `stone: 6`, `total_work_usec = 30_000_000`).  
+**Parâmetros:** `Abrigo Básico` (`wood: 12`, `stone: 6`, `total_work_usec = 30_000_000`).<br>
 **Marcos exatos:**
 - Madeira (`12`): $m_1 = 2\_500\_000\text{ }\mu\text{s}$ ($\frac{1}{12}$), $m_2 = 5\_000\_000\text{ }\mu\text{s}$ ($\frac{2}{12} = \frac{1}{6}$), $m_3 = 7\_500\_000\text{ }\mu\text{s}$ ($\frac{3}{12}$)...
 - Pedra (`6`): $s_1 = 5\_000\_000\text{ }\mu\text{s}$ ($\frac{1}{6}$), $s_2 = 10\_000\_000\text{ }\mu\text{s}$ ($\frac{2}{6}$)...
