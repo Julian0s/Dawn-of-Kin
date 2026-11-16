@@ -28,6 +28,7 @@ var _ground_pile_manager: GroundPileManager = null
 var _settlement_inventory: SettlementInventory = null
 var _construction_sites_root: Node3D = null
 var _construction_manager: ConstructionManager = null
+var _test_workers_controller: TemporaryTestWorkersController = null
 
 
 func _ready() -> void:
@@ -88,6 +89,16 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			_selection_manager,
 			_input_controller
 		)
+		if _test_workers_controller == null:
+			_test_workers_controller = TemporaryTestWorkersController.new()
+		_test_workers_controller.configure(
+			_units_root,
+			world_nav,
+			_camp_storage_zone,
+			_selection_manager,
+			_construction_sites_root
+		)
+		_placement_test_overlay.configure_test_workers(_test_workers_controller)
 
 
 func _setup_construction(world_nav: WorldNavigation) -> void:
@@ -138,6 +149,7 @@ func _exit_tree() -> void:
 		_ground_pile_manager = null
 	_construction_manager = null
 	_construction_sites_root = null
+	_test_workers_controller = null
 	_settlement_inventory = null
 	_time_provider = null
 

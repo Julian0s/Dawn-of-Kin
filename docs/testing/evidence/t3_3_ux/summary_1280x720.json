@@ -1,0 +1,31 @@
+{
+	"adapter_name": "GeForce GTX 1060",
+	"c4_d_reason": "no_worker_slot",
+	"delivered": {
+		"stone": 6,
+		"wood": 12
+	},
+	"passed": true,
+	"resolution_1080_switch": {
+		"effective_size": "(1920, 1080)",
+		"ok": true,
+		"position": "(980, 672)",
+		"reason": "",
+		"requested_size": "(1920, 1080)",
+		"target_effective_size": "(1920, 1080)",
+		"usable_rect": "[P: (0, 0), S: (3240, 2064)]",
+		"was_clamped": false
+	},
+	"resolution_720_switch": {
+		"effective_size": "(1280, 720)",
+		"ok": true,
+		"position": "(980, 672)",
+		"reason": "",
+		"requested_size": "(1280, 720)",
+		"target_effective_size": "(1280, 720)",
+		"usable_rect": "[P: (0, 0), S: (3240, 2064)]",
+		"was_clamped": false
+	},
+	"resolution_tag": "1280x720",
+	"units_count_after_remove": 2
+}

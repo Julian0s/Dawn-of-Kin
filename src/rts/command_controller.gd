@@ -4,6 +4,7 @@ extends Node
 ## for the currently selected units using GroupMovePlanner and updates DestinationMarker.
 
 signal command_issued(pick: PickResult, anchor_position: Vector3, unit_count: int, all_reachable: bool)
+signal command_rejected(pick: PickResult, reason: String)
 
 @export var selection_manager_path: NodePath = NodePath()
 @export var world_navigation_path: NodePath = NodePath()
@@ -255,6 +256,7 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 
 	if started_count <= 0:
 		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else ConstructOrder.REASON_NO_WORKER_SLOT
+		command_rejected.emit(pick, _last_command_reason)
 		return false
 
 	var marker_pos: Vector3 = site.global_position if site.is_inside_tree() else pick.position
