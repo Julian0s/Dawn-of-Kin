@@ -94,3 +94,7 @@ A homologação formal da T3.3 preserva explicitamente as limitações conhecida
 - **Criação de tag Git:** **NÃO AUTORIZADA**.
 - **Implementação ou planejamento de T3.4:** **NÃO AUTORIZADOS**.
 - **Novos recursos ou alterações funcionais:** **NÃO AUTORIZADOS**.
+
+---
+
+> **Nota Histórica de Contextualização Posterior (16/11/2026):** Este termo preserva integralmente as condições assinadas no ato da homologação da T3.3. Posteriormente a este aceite formal, por novas autorizações expressas do proprietário, o commit homologado `3c6fc0bd36fc3828af5a89662fb23cfb60d37865` foi integrado à `main` via fast-forward e marcado com a tag anotada `t3-3-complete`. A etapa **T3.4** permanece sem autorização de implementação.

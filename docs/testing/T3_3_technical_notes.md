@@ -6,6 +6,8 @@
 - **Engine / Renderer:** Godot `4.7.2.stable`, `gl_compatibility`
 - **Estado:** T3.3 implementada (`R1`, `R2`, `UX`); **adendo consolidado em 16/11/2026:** **10/10 testes manuais aprovados pelo proprietário** ([T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md)); **homologação formal pendente, sem integração à `main` e T3.4 não iniciada** (ver [T3_3_closeout_CANDIDATE.md](T3_3_closeout_CANDIDATE.md)). *Nota: as seções 3–7 abaixo preservam os registros históricos de cada rodada.*
 
+> **Adendo de Status Posterior (16/11/2026):** Posteriormente ao registro técnico acima, a etapa **T3.3** foi **formalmente homologada pelo proprietário** ([T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md)), **integrada à `main` via fast-forward no commit `3c6fc0bd36fc3828af5a89662fb23cfb60d37865`** e marcada com a **tag anotada `t3-3-complete`**. A implementação da etapa **T3.4** permanece bloqueada e **não autorizada**. *O texto original e as evidências abaixo permanecem preservados integralmente.*
+
 ---
 
 ## 1. Escopo Entregue vs. Fronteiras Estritas (T3.4–T3.8)

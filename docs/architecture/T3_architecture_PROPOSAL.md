@@ -2,7 +2,7 @@
 
 **Status:** T3.1, T3.2 e T3.3 CONCLUÍDAS, HOMOLOGADAS E INTEGRADAS NA `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag `t3-3-complete`; ver [T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)); etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
 **Base Auditada:** Branch `main` (`ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`), baseada no histórico consolidado da tag `t2-complete` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`).<br>
-**Fonte Normativa:** [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (unificando os antigos `v1.0` e `v1.1` preservados no histórico Git em `3c6fc0b`).<br>
+**Referência GDD:** Nesta branch de revisão (`docs/gdd-canonical-review`), o documento único candidato é [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (`v1.2 RC — Aguardando Aprovação`); na `main`, o antigo `Dawn_of_Kin_GDD_v1.0.md` permanece vigente até promoção formal.<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
 
 ---
