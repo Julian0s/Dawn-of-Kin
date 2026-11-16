@@ -109,14 +109,15 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
   - Cor dos olhos.
   - Tom de pele dentro de uma ampla faixa de tonalidades naturais.
   - Botão **Randomizar**, capaz de gerar combinações válidas de aparência.
-- **Sistema de Cores (`DECIDIDO`):**
-  - Cabelo, olhos e roupas terão **seleção livre de cores**.
-  - A pele utilizará uma **paleta ampla de tonalidades naturais**.
-  - As cores escolhidas na criação do casal inicial são consideradas naturais e hereditárias, inclusive quando forem cores incomuns.
+- **Sistema de Cores (`DECIDIDO` — `R3-E`):**
+  - **Cabelo e olhos** terão **seleção livre de cores**, inclusive cores incomuns.
+  - A **pele** utilizará uma **paleta ampla de tonalidades naturais**.
+  - Apenas os **traços biológicos escolhidos para os protagonistas** podem influenciar hereditariamente a aparência dos descendentes, seguindo estritamente os seis traços herdáveis aprovados.
+  - **Roupas** possuem cores personalizáveis, **mas a coloração da vestimenta não constitui característica hereditária**.
 - **Peças Modulares (`DECIDIDO`):** Personagens serão construídos por componentes 3D intercambiáveis (**Cabeça**, **Cabelo**, **Corpo**, **Vestuário**). Variantes produzidas em Blender ou Tripo AI exigem padronização técnica obrigatória para Godot (escala, pivô, peso de ossos e encaixes).
 - **Herança Visual e Crescimento Consistente (`DECIDIDO`):**
-  - Cada filho terá sua aparência determinada por uma combinação probabilística das características dos pais, com pequenas variações (aproximação visual de hereditariedade, não simulação genética científica).
-  - **Traços herdáveis obrigatórios:**
+  - Cada filho terá sua aparência determinada por uma combinação probabilística das características biológicas dos pais, com pequenas variações (aproximação visual de hereditariedade, não simulação genética científica).
+  - **Seis traços herdáveis obrigatórios:**
     1. Formato do rosto e proporções faciais.
     2. Cor dos olhos.
     3. Tom de pele.
@@ -167,10 +168,22 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
 
 ## 4. Trabalho, Economia Física e Construção
 
-### 4.1 Coleta, Transporte Físico e Armazenamento (`DECIDIDO`, `IMPLEMENTADO` e `VALIDADO` T2)
-- **Sem Fome/Sede Individual (`DECIDIDO`):** Consumo alimentar periódico atendido pelo estoque coletivo compartilhado, sem receitas culinárias complexas.
-- **Proibição de Crédito Instantâneo (`DECIDIDO` / `IMPLEMENTADO` T2):** Recursos extraídos (`wood` peso `2`, `stone` peso `3`, `food` peso `1` — provisórios em `data/resources/*.tres`) são carregados em `UnitCarryLoad` (`0%` a `100%` da capacidade base `20`, reduzindo a velocidade de `4,8 m/s` vazio até `2,88 m/s` cheio) e só entram no estoque coletivo após descarga física em armazenamento válido.
-- **Pilhas e Armazenamento no Mundo (`DECIDIDO` D8 / `IMPLEMENTADO` T2):** Na T2, descargas formam pilhas físicas (`GroundResourcePile`) na `CampStorageZone` (`5,6 × 4,4 m` no `TestMap`). Futuramente (`PLANEJADO`), materiais largados fora de armazenamento válido não integram o estoque coletivo até serem transportados fisicamente a um local válido.
+### 4.1 Coleta, Consumo Alimentar, Retorno Automático e Armazenamento (`DECIDIDO`, `IMPLEMENTADO` T2 e `PLANEJADO`)
+- **Consumo Alimentar Coletivo sem Fome/Sede Individual (`DECIDIDO` em regra / `PLANEJADO (NÃO IMPLEMENTADO)` — `R3-A`):**
+  1. **Não existem barras individuais de fome ou sede** nem cozimento complexo ingrediente por ingrediente.
+  2. **Cada habitante possui uma necessidade periódica de alimentos**, sustentada por um **estoque coletivo compartilhado de alimentos** da comunidade.
+  3. O consumo é **descontado periodicamente do estoque coletivo**, de modo que o crescimento populacional aumenta proporcionalmente a demanda alimentar.
+  4. A **estabilidade alimentar** do estoque coletivo participa das condições necessárias para novos nascimentos (§3.4).
+  5. *Estado atual (`main` `3c6fc0b`):* A implementação atual da T2 ainda **não** executa consumo alimentar periódico por habitante (mecânica futura marcada como `PLANEJADO (NÃO IMPLEMENTADO)`).
+  6. *Calibração (`PROPOSTA` / `ABERTO`):* Taxas numéricas exatas de consumo por idade e consequências graduais da escassez alimentar (como eventual redução de produtividade ou risco para moradores comuns) permanecem como `PROPOSTA` / `ABERTO` sujeitas a balanceamento.
+- **Fontes e Atividades Alimentares (`DECIDIDO` e `PLANEJADO` — `R3-F`):**
+  - *Já implementado na T2 (`IMPLEMENTADO`):* coleta física de frutos em arbustos (`food_bush`), madeira (`wood_tree`) e pedra (`stone_rock`).
+  - *Previstos na visão completa (`PLANEJADO`, sem antecipar para a demo sem suporte documental):* **pesca**, **caça**, **plantações/roças** e **criação de animais**, todos compatíveis com transporte físico e estoque coletivo compartilhado.
+- **Proibição de Crédito Instantâneo (`DECIDIDO` / `IMPLEMENTADO` T2):** Recursos extraídos (`wood` peso `2`, `stone` peso `3`, `food` peso `1` — provisórios em `data/resources/*.tres`) são carregados em `UnitCarryLoad` (`0%` a `100%` da capacidade base `20` por peso, reduzindo a velocidade de `4,8 m/s` vazio até `2,88 m/s` cheio) e só entram no estoque coletivo após descarga física em armazenamento válido, distinguindo-se rigorosamente peso de carga e quantidade unitária de itens.
+- **Retorno Automático na Coleta (`DECIDIDO` / `IMPLEMENTADO` T2 — `R3-D`):**
+  - Quando a carga do trabalhador atingir **100% da capacidade**, ou quando **não houver espaço livre suficiente para comportar mais uma unidade coletável do material** (`UnitCarryLoad.can_fit_one`), ele interrompe automaticamente o ciclo na fonte e retorna para descarregar.
+  - *Já implementado na T2 (`IMPLEMENTADO` na `main`):* em `GatherResourceOrder`, o trabalhador retorna exclusivamente às pilhas físicas do acampamento inicial (`CampStorageZone`, `5,6 × 4,4 m` no `TestMap`), formando/agrupando pilhas individuais sincronizadas ao estoque coletivo.
+  - *Comportamento futuro (`PLANEJADO` `T3.7` / `T4+`):* suporte a múltiplos depósitos protegidos construíveis e locais de armazenamento em outras regiões (`D8`), mantendo que materiais eventualmente largados fora de armazenamento válido **não** integram o estoque coletivo até transporte físico.
 
 ### 4.2 Deterioração por Categoria e Reposição Manual de Reservas (`DECIDIDO` — `DEC-11A` e `DEC-11B` **RATIFICADAS**)
 - **Deterioração por Categoria (`DEC-11A` — `RATIFICADO`):**
@@ -178,11 +191,12 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
   - **Pedra bruta exposta não sofre deterioração temporal** (`data/resources/decay_stone_provisional.tres` mantido com `can_decay = false`).
   - Futuras categorias terão perfis próprios sem presumir desgaste automático idêntico.
 - **Perda Direta sobre Reservas (`DECIDIDO` — Alternativa B, `IMPLEMENTADO` T3.1):** Reservas de obra não protegem pilhas expostas. Se `step_decay()` reduzir uma pilha abaixo do reservado, a reserva afetada cai até o saldo físico restante, **sem realocação automática** para outras pilhas.
-- **Complementação Manual de Reservas Deterioradas (`DEC-11B` — `RATIFICADO`):**
+- **Complementação Manual de Reservas Deterioradas (`DEC-11B` — `RATIFICADO` — separação `T3.4` / `T3.5` / `T3.6` conforme `R3-G`):**
   1. Se material reservado numa pilha deteriorar antes do transporte, a reserva diminui e a obra passa a apresentar déficit, preservando integralmente o progresso e os materiais já recebidos/incorporados no canteiro.
   2. O **jogador deve autorizar manualmente o complemento da reserva no canteiro** (não existe reposição automática silenciosa).
   3. A nova quantidade só pode ser reservada se houver **materiais livres reais** no estoque (jamais retirando reservas de outras obras).
   4. Uma vez autorizada e reservada a complementação, os trabalhadores realizam o **transporte físico normal** até o canteiro (jamais crédito instantâneo).
+  5. *Separação estrita entre etapas:* a **`T3.4-R2`** especifica a integridade transacional da complementação e seus testes (qualquer acesso provisório só mediante autorização técnica separada); a **`T3.5`** concentra a interface definitiva de inspeção do canteiro e ação manual do jogador; e a **`T3.6`** trata exclusivamente do cancelamento/reembolso proporcional `D3` (mecanismo distinto da complementação).
 
 ### 4.3 Construção Progressiva (`D1–D9`, `DEC-18`, `DEC-19`)
 - **Posicionamento Contínuo sem Grid (`D6` / `IMPLEMENTADO` T3.2):** Edifícios vistos e administrados pelo exterior; `CampStorageZone` protegida contra obras na T3; validação de inclinação ($\le 10^\circ$), desnível ($\le 0,35\text{ m}$), colisões e conectividade em malha navegável candidata assíncrona.
@@ -197,7 +211,9 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
     - **3 trabalhadores:** 1 transporta enquanto 2 constroem (teto de 2 construtores); ao concluir entregas, o transportador é liberado.
     - **4º trabalhador:** recusado com `no_worker_slot` (`IMPLEMENTADO` na T3.3).
     - Consumo inteiro proporcional transacional, conversão em `BuildingInstance` e inclusão no `WorldNavigation` regional (`DEC-19` — Opção N1, sujeita à revisão `T3.4-ARCHITECTURE-R2`).
-- **Cancelamento com Reembolso (`D3` — `PLANEJADO T3.6`):** Devolução de 100% do não consumido e recuperação proporcional sobre material incorporado ($\eta_{\text{demolição}} = 0,50$ provisório).
+- **Cancelamento com Reembolso (`D3` — `PLANEJADO T3.6`, distinto da complementação `DEC-11B`):** Devolução integral (100%) de materiais reservados nas pilhas, em transporte e no buffer não consumido do canteiro (retornando fisicamente à área de armazenamento sem criar pilhas avulsas fora dela), e recuperação proporcional sobre material já incorporado à estrutura conforme a fórmula arquitetural aprovada:
+  $$M_{\text{recuperado\_incorporado}}(R) = \left\lfloor Q_{\text{incorporado}}(R) \times (1.0 - \text{progresso}) \times \eta_{\text{demolição}} \right\rfloor$$
+  onde $\eta_{\text{demolição}} = 0,50$ é taxa provisória sujeita a balanceamento.
 
 ### 4.4 Economia Cooperativa, Vestuário e Comércio Futuro (`DECIDIDO` — `DEC-12`, `PLANEJADO`)
 - **Sem Salários ou Moeda Interna (`DECIDIDO` — `DEC-12`):** Não existe pagamento de salário nem compra individual de itens dentro da comunidade. Roupas produzidas (substituindo os trapos iniciais) e ferramentas/armas integram o estoque/arsenal coletivo e equipam os moradores conforme sua função.
@@ -213,7 +229,7 @@ O jogo separa claramente três dimensões de desenvolvimento humano, evitando a 
 
 | Sistema | Definição | Exemplos | Regras de Funcionamento |
 |---|---|---|---|
-| **1. Profissão** | Trabalho cotidiano produtivo do morador na comunidade. | Agricultor, Lenhador, Minerador/Pedreiro, Construtor, Costureiro, Ferreiro. | Qualquer morador em idade apta pode exercer uma profissão; quando `IDLE`, executa sua rotina automaticamente (`JobSystem` — `DEC-08`, `PLANEJADO`). |
+| **1. Profissão** | Trabalho cotidiano produtivo do morador na comunidade. | Agricultor, Pescador, Caçador, Lenhador, Minerador/Pedreiro, Construtor, Costureiro, Ferreiro. | Qualquer morador em idade apta pode exercer uma profissão; quando `IDLE`, executa sua rotina automaticamente (`JobSystem` — `DEC-08`, `PLANEJADO`). |
 | **2. Vocação** | Especialização de defesa ou apoio comunitário. | **Guerreiro**, **Arqueiro**, **Curandeiro**, **Canalizador da Luz**. | Coexiste com a profissão (a profissão **não** é abandonada ao receber uma vocação), mas o personagem executa **uma tarefa por vez**, com prioridade absoluta para ordens manuais do jogador. |
 | **3. Dom** | Capacidade sobrenatural latente ou despertada. | **Alento** (recuperação inicial), proteção luminosa, canalização da Luz. | Já existe em potencial nas pessoas em diferentes aptidões/ritmos; desperta e evolui por aprendizado, treino e mentoria. Não é obrigatório para todos. |
 
@@ -242,7 +258,7 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
 
 | Nível | Marco Visual | Desbloqueios Coerentes (`DECIDIDO` — `PLANEJADO`) |
 |---|---|---|
-| **1** | **Acampamento** | Pilhas físicas na `CampStorageZone` (`IMPLEMENTADO`), Fogueira, **Abrigo Básico** e **Depósito Rústico**. Sobrevivência inicial do casal, manifestação natural do *Alento* e evento noturno da única aparição pessoal do Ser de Trevas após o abrigo. |
+| **1** | **Acampamento** | Pilhas físicas na `CampStorageZone` (`IMPLEMENTADO`), coleta inicial (`IMPLEMENTADO`), **Abrigo Básico**, **Depósito Rústico**, e elemento previsto de **Fogueira** (`PROPOSTA` como estrutura de acampamento, sem efeito defensivo numérico fixado). Sobrevivência inicial do casal, manifestação natural do *Alento* e evento noturno da única aparição pessoal do Ser de Trevas após o abrigo. |
 | **2** | **Propriedade** | Primeiras **Casas Familiares**, **Roça** (agricultura contínua), **Costura/Tecelagem** (roupas comunitárias), tratamentos básicos/ervas (sem exigir classe Curandeiro especializada) e treinamento rudimentar de defesa (lanças simples) compatível com o núcleo familiar do Capítulo 1. |
 | **3** | **Povoado** | **Carpintaria** (ferramentas melhores, arco e flecha), **Criação de Animais** e **Montarias**, **Caminhos** estruturados, Paliçadas e infraestrutura inicial de treino para **Arqueiros** e defensores. |
 | **4** | **Aldeia** | Mineração, **Ferraria e Arsenal** (**Espada + Escudo** e equipamentos completos para **Guerreiros**), estrutura de cuidados/mentoria (**Curandeiros** especializados e despertar avançado de **Canalizadores da Luz**) e Torres de Defesa. |
@@ -379,4 +395,4 @@ Configuração exata confirmada em `src/camera/rts_camera_rig.gd` e `src/camera/
 ### 12.3 Pendências Abertas (`ABERTO` e `PENDENTE DE APROVAÇÃO`)
 - **`PENDENTE DE APROVAÇÃO` (`T3.4-ARCHITECTURE-R2`):** As 6 especificações técnicas da §11 antes de autorizar qualquer código da T3.4.
 - **`ABERTO` (Marca e Narrativa):** Registro comercial de *Dawn of Kin*, cosmologia última dessa versão da Terra, momento/forma de eventual revelação futura do Ser de Luz, fala definitiva do Ser de Trevas no Cap. 1 e regras de diplomacia/troca do Cap. 3.
-- **`ABERTO` (Balanceamento e Performance):** Recalibração empírica do calendário, custo/recarga do *Alento*, ritmo de brotação/regeneração, vagas de dependentes, curva de natalidade, números de combate e medições reais na **Intel UHD Graphics 620** para regiões `256–384 m` e modelos modulares.
+- **`ABERTO` (Balanceamento e Performance):** Recalibração empírica do calendário, taxas numéricas de consumo alimentar por habitante e consequências graduais da escassez alimentar, custo/recarga do *Alento*, ritmo de brotação/regeneração, vagas de dependentes, curva de natalidade, números de combate e medições reais na **Intel UHD Graphics 620** para regiões `256–384 m` e modelos modulares.

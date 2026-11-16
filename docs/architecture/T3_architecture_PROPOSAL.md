@@ -7,9 +7,9 @@
 
 ---
 
-## 1. As Sete Decisões Aprovadas pelo Proprietário (D1 a D7)
+## 1. Diretrizes Estruturais Aprovadas pelo Proprietário (Decisões Iniciais D1–D7 e Complementos Aprovados D8–D9)
 
-Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da proposta inicial T3.0, estabelecendo os seguintes direcionamentos vinculantes que permanecem integralmente preservados nesta revisão:
+Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da proposta inicial T3.0 (D1 a D7) e consolidou em seguida os complementos D8 e D9, estabelecendo os seguintes direcionamentos vinculantes que permanecem integralmente preservados nesta revisão:
 
 1. **D1 — Persistência em disco na T3 (DECIDIDO: P2):**
    - As construções e o estado econômico relevante do assentamento deverão ser salvos em disco já na T3.
@@ -433,7 +433,7 @@ Além das sete diretrizes estruturais (**D1–D7**) integralmente preservadas, o
 - **Política de Deterioração de Materiais Reservados nas Pilhas Expostas (§3.4 — DECIDIDO):**
   - Aprovada a **Alternativa B — Deterioração física com perda direta da reserva**. `step_decay()` prossegue normalmente e, caso comprometa saldo reservado, reduz diretamente as reservas afetadas na pilha até o saldo físico restante, sem reancoragem automática para outras pilhas.
 - **Armazenamento no Mundo e Organização de Trabalhadores (D8 e D9 — DECIDIDO):**
-  - Materiais poderão futuramente ser largados no chão de qualquer região, sem integrar o estoque coletivo até transporte físico a armazenamento válido, permanecendo sujeitos à deterioração configurável por categoria (madeira, pedra, alimentos, ferro, aço etc.).
+  - Materiais poderão futuramente ser largados no chão de qualquer região, sem integrar o estoque coletivo até transporte físico a armazenamento válido. Madeira e alimentos expostos seguem seus perfis configuráveis de deterioração; **pedra bruta exposta não sofre deterioração temporal**, conforme ratificação expressa **`DEC-11A`** (preservando `data/resources/decay_stone_provisional.tres` com `can_decay = false`); ferro, aço e futuras categorias terão perfis próprios configuráveis, ainda não definidos. Reservas não protegem materiais efetivamente deterioráveis (**Alternativa B — Perda Direta**), e a complementação de reservas deterioradas exige autorização manual expressa no canteiro (**`DEC-11B`**).
   - Organização de trabalhadores na construção: 1 trabalhador busca e constrói; 2 trabalhadores (1 transporta, 1 constrói); 3 trabalhadores (1 transporta, 2 constroem), mantendo o teto provisório de 2 construtores simultâneos sem pilha obrigatória ao lado de cada obra.
 - **Encerramento da Etapa T3.1 (15/11/2026):** a etapa **T3.1 — Contabilidade, Reservas e Saque em Lote** foi **IMPLEMENTADA, AUDITADA, APROVADA PELO PROPRIETÁRIO E INTEGRADA NA MAIN EM 15/11/2026** (commit `ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`).
 - **Encerramento da Etapa T3.2 (15/11/2026):** a etapa **T3.2 — Validação Espacial, Área Reservada e Prévia sem Grid** foi **IMPLEMENTADA, AUDITADA TECNICAMENTE, TESTADA MANUALMENTE (11/11 ITENS) E FORMALMENTE APROVADA PELO PROPRIETÁRIO EM 15/11/2026** (branch `feature/t3-2-placement`, commit técnico final `f2110b619640a149b2c3190b05d7f08d3359891d`). O método implementado adotou:

@@ -28,7 +28,7 @@
 
 ### 2.1 Ideias e Decisões do Argon Integralmente Preservadas
 - **DEC-01:** Calendário compacto (`1 ano ≈ 12–15 min` em `1×`, `~2,5–3h` após o nascimento até Jovem 12 anos).
-- **DEC-02 a DEC-04:** Bloqueio de consanguinidade até primos de 1º grau, casamentos com jovens de comunidades vizinhas (Cap. 2–3), Abrigo Básico habilitando início da família, nascimento autônomo (vaga de dependente + estabilidade alimentar + intervalo progressivo), limites RTS por idade (`Bebê`/`Criança`/`Jovem`/`Adulto`) e regras de viuvez/acolhimento.
+- **DEC-02 a DEC-04:** Bloqueio de consanguinidade até primos de 1º grau; o Capítulo 2 é desbloqueado quando pelo menos um filho atinge 12 anos (fase Jovem), porém **somente Adultos (`18+ anos`) podem casar** (nunca casamento de menores), respeitando afinidade autônoma persistente, parentesco, residência e demais regras aprovadas ao formar casais no Capítulo 3 (inclusive com adultos oriundos de comunidades vizinhas); Abrigo Básico habilitando início da família, nascimento autônomo (vaga de dependente + estabilidade alimentar + intervalo progressivo), limites RTS por idade (`Bebê`/`Criança`/`Jovem`/`Adulto`) e regras de viuvez/acolhimento.
 - **DEC-05 (Cosmologia de Bastidores e Fauna Corrompida):** Existência de bastidores do Ser de Luz e do Ser de Trevas ancestral sem nome; coexistência entre animais naturais normais e animais corrompidos mais fortes irradiando trevas.
 - **DEC-07:** Existência de grupo humano seduzido pelo Ser de Trevas causando guerras futuras no Cap. 3 e proteção especial contra morte definitiva dos dois líderes originais.
 - **DEC-08 a DEC-10:** Modelo Híbrido RTS + Autonomia por Profissão (`JobSystem`), remoção 100% (`queue_free()`) de árvores e pedras esgotadas em `0`, brotação orgânica em solo livre, caminhos que bloqueiam vegetação, arbustos arrancáveis ao construir e Roças contínuas.
@@ -83,6 +83,45 @@ Todos os documentos ativos da árvore foram atualizados nesta branch para aponta
 - **`R2-H` (Status Normativo):** Ajustados `AGENTS.md`, `T3_architecture_PROPOSAL.md` e o cabeçalho de `Dawn_of_Kin_GDD.md` deixando claro que na `main` o antigo `v1.0` continua vigente até promoção expressa, enquanto nesta branch `Dawn_of_Kin_GDD.md` (`v1.2 RC`) é o candidato único para auditoria (sem autorizar T3.4).
 - **`R2-I` (Registros Históricos):** Adicionados adendos datados (16/11/2026) em `T3_3_technical_notes.md` e `T3_3_closeout_ACCEPTANCE.md` mantendo originais intactos, e registrada a preservação histórica de `DAWN_OF_KIN_GLOBAL_VISION_AUDIT_PROPOSAL.md`.
 - **`R2-11` (Rastreabilidade da Direção Criativa):** §12.2 do GDD único agora distingue expressamente escolhas do proprietário, aprovações da entrevista com Argon, ratificações `DEC-11A/B`, diretrizes estruturadas pelo ChatGPT sob delegação do proprietário e hipóteses `PROPOSTA`/`ABERTO`.
+
+---
+
+## 3C. Correções Aplicadas na Revisão R3 (`R3-A` a `R3-H`)
+
+- **`R3-A` (Consumo Alimentar por Habitante):** Restaurada na §4.1 do GDD único a regra de necessidade alimentar periódica por habitante descontada do estoque coletivo compartilhado (sem barras individuais), explicitando que a implementação atual da T2 ainda não executa consumo populacional (`PLANEJADO (NÃO IMPLEMENTADO)`) e mantendo taxas e consequências de escassez como `PROPOSTA` / `ABERTO`.
+- **`R3-B` (Casamentos Somente entre Adultos):** Corrigida a §2.1 desta matriz de consolidação para alinhar-se à regra canônica da §3.4 do GDD único (Cap. 2 abre aos 12 anos de um filho, mas somente Adultos `18+` podem casar). Registros históricos da entrevista mantidos sem reescrita.
+- **`R3-C` (`DEC-11A` na Arquitetura):** Corrigida a §9.2 de `docs/architecture/T3_architecture_PROPOSAL.md` para remover pedra da lista de deterioração automática e registrar `DEC-11A` e `DEC-11B`, preservando `T3.1–T3.3` e `.tres`.
+- **`R3-D` (Retorno Automático na Coleta):** Restaurada explicitamente na §4.1 do GDD único a regra de retorno automático ao atingir `100%` de carga ou não caber `+1` unidade (`UnitCarryLoad.can_fit_one`), confrontada com `gather_resource_order.gd` e distinguindo acampamento inicial (`IMPLEMENTADO` T2) de depósitos/regiões futuros (`PLANEJADO`).
+- **`R3-E` (Hereditariedade e Cores):** Refinada a §3.1 do GDD único para deixar explícito que apenas traços biológicos influenciam a hereditariedade (6 traços herdáveis obrigatórios), enquanto a coloração de roupas é personalizável e **não** hereditária.
+- **`R3-F` (Pesca e Profissões):** Restauradas na visão completa (§4.1 e §5.1 do GDD único) a **pesca** (e profissão **Pescador**), **caça** e **criação de animais** como atividades/profissões planejadas compatíveis com transporte físico e estoque coletivo, sem antecipar para a Demo.
+- **`R3-G` (Limites entre `T3.4`, `T3.5` e `T3.6`):** Registrada na §4.2 e §4.3 do GDD único a separação entre `T3.4-R2` (integridade transacional da complementação), `T3.5` (UI definitiva de inspeção e ação manual) e `T3.6` (cancelamento/reembolso proporcional `D3` com fórmula explícita e $\eta_{\text{demolição}} = 0,50$).
+- **`R3-H` (Consistência Editorial):** Ajustado o título da §1 de `T3_architecture_PROPOSAL.md` (explicando D1–D7 iniciais e D8–D9 consolidados em sequência) e reclassificada a **Fogueira** no Nível 1 do GDD (§6) estritamente como estrutura prevista (`PROPOSTA`), removendo afirmação de proteção noturna não fundamentada como decisão aprovada.
+
+---
+
+## 3D. Auditoria Final de Cobertura (Comparação Integral das 7 Fontes)
+
+Comparação realizada entre: (1) `GDD v1.0` (`3c6fc0b`), (2) `GDD v1.1` (`3c6fc0b`), (3) `GDD v1.2 PROPOSAL` (`05ca346`), (4) Auditoria Global R1 (`23fd493`), (5) GDD único R3 (`Dawn_of_Kin_GDD.md`), (6) Código `T1–T3.3` na `main` (`3c6fc0b`) e (7) `T3_architecture_PROPOSAL.md` (`D1–D9`).
+
+| Item / Regra Comparada | Origem Histórica | Classificação na R3 |
+|---|---|---|
+| Consumo periódico de alimentos por habitante no estoque coletivo (sem barras individuais) | `v1.0` §5 | **Corrigida / Preservada** (restaurada em §4.1 como `DECIDIDO` / `PLANEJADO (NÃO IMPLEMENTADO)`). |
+| Retorno automático ao atingir `100%` ou não caber `+1` unidade | `v1.0` §5 + `gather_resource_order.gd` | **Corrigida / Preservada** (restaurada em §4.1 separando T2 implementada de futuro `T3.7`/`T4+`). |
+| Pesca, Pescador, Caça e Criação de Animais | `v1.0` §5 e §6 | **Corrigida / Preservada** (restaurada em §4.1 e §5.1 como `PLANEJADO`, sem antecipar para Demo). |
+| Biomas completos (florestas, campos, montanhas, rios, praias/mar, clima) | `v1.0` §9 | **Preservada** (§7.2, distinguindo visão completa de Demo/Cap. 1). |
+| Seleção livre de cores (cabelo/olhos/roupas) e 6 traços biológicos herdáveis (sem herança de cor de roupa) | `v1.1` §7.3–7.4 | **Corrigida / Preservada** (§3.1 R3-E). |
+| Afinidade autônoma persistente, nomes externos persistentes, renomeação sem mudar ID/sem reversão automática | `v1.1` §7.5 e §7.7 | **Preservada** (§3.2 e §3.4). |
+| Serviço `Identity/NameService` e shaders/orçamento `~1.5k–3.5k` triângulos | `v1.1` §7.5 e `DEC-16` | **Proposta não aprovada** (mantidos explicitamente como `PROPOSTA` / hipótese técnica). |
+| Economia pessoal / salários e compra de roupas | `v1.1` §5 | **Substituída expressamente** por economia cooperativa (`DEC-12`). |
+| Aparição e bênção visível do Ser de Luz no Cap. 1 e desbloqueio do Nível 2 pela bênção | `v1.2 PROPOSAL` / Auditoria R1 | **Substituída expressamente** (ausência do Ser de Luz no Cap. 1; Dons Latentes; marcos concretos para Níveis 1–5). |
+| Reposição automática de reservas deterioradas | Auditoria inicial do Argon | **Substituída expressamente** por complementação manual (`DEC-11B`). |
+| Deterioração de pedra bruta no chão | `v1.0` §5 e `T3_arch` §9.2 | **Corrigida / Substituída expressamente** por `DEC-11A` (`can_decay = false`). |
+| Função defensiva noturna da Fogueira no Nível 1 | Nenhuma decisão aprovada (`v1.0` §6 listava apenas "fogueira") | **Proposta não aprovada** (corrigida em §6 como `PROPOSTA` de acampamento, sem inventar efeito). |
+| Casamento de menores / ambiguidade "jovens" no Cap. 3 | R2 anterior / matriz | **Corrigida** (§2.2, §3.4 e §2.1 desta matriz: somente `18+` casam). |
+| Câmera isométrica real (`FOV 35°`, `yaw 45°`, `pitch -55°`, `edge_pan_margin_base_px = 6.0`) | `rts_camera_rig.gd`/`.tscn` | **Corrigida / Preservada** (§9.1). |
+| Remoção 100% de árvores/pedras esgotadas (`DEC-09`) vs. código atual (`DepletedVisual`) | `resource_source.gd` vs. `DEC-09` | **Preservada** como `DECIDIDO` e `PLANEJADO (NÃO IMPLEMENTADO)` (§7.2). |
+| Trabalhadores de teste `Worker3` e `Worker4` vs. população inicial canônica | `TemporaryTestWorkersController` | **Preservada** (separação explícita no cabeçalho do GDD: 2 protagonistas canônicos). |
+| Taxas de consumo alimentar, consequências de fome, equilíbrio de calendário, *Alento*, combate e marca | `v1.0` / `v1.1` / Entrevista | **Questão legítima em aberto** (`ABERTO` / `PROPOSTA` na §12.3). |
 
 ---
 
