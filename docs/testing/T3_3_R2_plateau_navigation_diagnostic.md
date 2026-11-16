@@ -5,7 +5,7 @@
 - **Worktree:** `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`
 - **Engine / Renderer:** Godot `4.7.2.stable` (`gl_compatibility` / `--rendering-driver opengl3`)
 - **Hardware Medido:** `Intel(R) UHD Graphics 620`
-- **Status Atual:** B2 corrigido em código e verificado em execução renderizada real (`1280×720` e `1920×1080`) e suíte automatizada completa; **aguardando reteste manual de B2 e execução de C1–D2 pelo proprietário** (**T3.3 ainda não homologada; T3.4 não iniciada**).
+- **Status Atual (adendo 16/11/2026):** Registro histórico da rodada R2 preservado abaixo (na ocasião da R2, B2 aguardava reteste manual e C1–D2 seguiam pendentes). Em **16/11/2026**, o proprietário aprovou o reteste manual de **B2** e concluiu **10/10** testes manuais ([T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md)); **homologação formal da T3.3 permanece pendente, sem integração à `main` e com T3.4 não iniciada** (ver [T3_3_closeout_CANDIDATE.md](T3_3_closeout_CANDIDATE.md)).
 
 ---
 

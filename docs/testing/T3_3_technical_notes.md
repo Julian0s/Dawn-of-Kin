@@ -4,7 +4,7 @@
 - **Branch de Implementação:** `feature/t3-3-construction-logistics`
 - **Base:** `origin/main` (`931ad196346251e3f24a3ea5db6facb3641233bc`, T3.1 e T3.2 integradas)
 - **Engine / Renderer:** Godot `4.7.2.stable`, `gl_compatibility`
-- **Estado:** Implementada e validada automaticamente; aguardando validação visual/manual e aprovação formal do proprietário (`T3.4+` permanecem bloqueadas).
+- **Estado:** T3.3 implementada (`R1`, `R2`, `UX`); **adendo consolidado em 16/11/2026:** **10/10 testes manuais aprovados pelo proprietário** ([T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md)); **homologação formal pendente, sem integração à `main` e T3.4 não iniciada** (ver [T3_3_closeout_CANDIDATE.md](T3_3_closeout_CANDIDATE.md)). *Nota: as seções 3–7 abaixo preservam os registros históricos de cada rodada.*
 
 ---
 

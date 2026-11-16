@@ -5,7 +5,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
-- **Próximo marco:** **T3 — Construção** (próxima fase **de planejamento técnico**; implementação ainda não iniciada e dependente de autorização prévia).
+- **Fase atual (`T3 — Construção`):** **T3.1** e **T3.2** concluídas, aprovadas e integradas na `main` (`931ad19`); **T3.3** implementada na branch `feature/t3-3-construction-logistics` (`R1`, `R2`, `UX`) com **10/10 testes manuais aprovados pelo proprietário em 16/11/2026**, **homologação formal pendente e sem integração à `main`** (`T3.4+` não iniciadas; ver [docs/testing/T3_3_closeout_CANDIDATE.md](docs/testing/T3_3_closeout_CANDIDATE.md)).
   - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.

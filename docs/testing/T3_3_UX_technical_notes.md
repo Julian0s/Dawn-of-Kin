@@ -3,7 +3,7 @@
 - **Branch:** `feature/t3-3-construction-logistics`
 - **Base (`bb62e85`):** `T3.3-R2` (`origin/main` preservada em `931ad196346251e3f24a3ea5db6facb3641233bc`)
 - **Worktree:** `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`
-- **Status:** Implementado, validado em execução gráfica real (`1280×720` e `1920×1080`) e suíte automatizada completa (`34/34` suítes, `234/234` testes). **C4 permanece NÃO TESTADO MANUALMENTE** aguardando execução do proprietário; **T3.3 não homologada; T3.4+ não iniciadas**.
+- **Status:** Implementado, validado em execução gráfica real (`1280×720` e `1920×1080`) e suíte automatizada completa (`34/34` suítes, `234/234` testes). **Adendo de status (16/11/2026):** os **10/10 testes manuais** (incluindo `C4-A..E` e troca dinâmica `1280×720 ↔ 1920×1080`) foram aprovados pelo proprietário em [T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md); **homologação formal da T3.3 permanece pendente, sem integração à `main` e com T3.4+ não iniciadas** (ver [T3_3_closeout_CANDIDATE.md](T3_3_closeout_CANDIDATE.md)).
 
 ---
 

@@ -75,8 +75,8 @@ Executar na raiz do worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`:
 - **C4 — Limite D9 com 3 e 4 trabalhadores (`1 transportador + até 2 construtores` e recusa do 4º):**
   - Ação: Clicar em `Adicionar 2 trabalhadores de teste — C4` na barra inferior direita (adiciona `Worker3` e `Worker4` próximo ao acampamento sem duplicar). Criar um canteiro com materiais reservados e executar sequencialmente: (C4-A) designar `LeaderA`; (C4-B) designar `LeaderB`; (C4-C) designar `Worker3`; (C4-D) tentar designar `Worker4`; (C4-E) interromper o transportador ativo durante o transporte; ao concluir sem cargas pendentes, testar `Remover temporários`.
   - Evidência esperada: Com 3 trabalhadores designados, exatamente 1 atua como transportador e 2 como construtores em espera no perímetro (`max_builders = 2`); ao tentar designar o 4º (`Worker4`) enquanto todas as vagas estão ocupadas, o canteiro recusa (`no_worker_slot`) e o painel/banner exibe motivo compreensível sem corromper reservas, cargas ou os 3 designados anteriores; ao interromper o transportador, um construtor assume o transporte e o outro permanece como construtor sem perda ou duplicação de recursos. *(Os testes automatizados em `test_t3_3_ux_flow.gd` e `t3_3_ux_repro.gd` não substituem este aceite manual.)*
-  - Resultado: `[ ] aprovado  [ ] reprovado  [x] não testado`
-  - Campo de observações opcionais: `Aguardando execução manual pelo proprietário com os controles adicionados na T3.3-UX.`
+  - Resultado: `[x] aprovado  [ ] reprovado  [ ] não testado`
+  - Campo de observações opcionais: `Aprovado pelo proprietário em 16/11/2026 (C4-A, C4-B, C4-C, C4-D, C4-E e remoção segura de Worker3/Worker4 aprovados; sem observações adicionais).`
 
 ### D. Regras Espaciais, Câmera e Higiene
 - **D1 — Bloqueio de sobreposição sobre canteiro existente:**
@@ -89,11 +89,11 @@ Executar na raiz do worktree `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`:
   - Ação: Repetir criação, inspeção e transporte nas duas resoluções (`1280x720` e `1920x1080`, inclusive usando o seletor dinâmico `1280×720` / `1920×1080` na barra temporária), operando pan/zoom (`WASD`, setas, `MMB`, `Scroll`, `Edge Scroll`) e seleção em caixa (`LMB` drag) sem fechar o painel provisório.
   - Evidência esperada: Nenhuma sobreposição visual crítica nos painéis de canto, cliques no mundo e arrastes não travam por filtros de UI, e 0 `ERROR`/`WARNING` no console ao encerrar o jogo.
   - Resultado: `[x] aprovado  [ ] reprovado  [ ] não testado`
-  - Campo de observações opcionais: `Aprovado pelo proprietário após T3.3-R2.`
+  - Campo de observações opcionais: `Aprovado pelo proprietário após T3.3-R2; troca dinâmica 1280×720 ↔ 1920×1080 na mesma partida também aprovada em 16/11/2026.`
 
 ---
 
 ## 3. Resumo Final do Avaliador
-- **Resoluções testadas:** `1280×720 e 1920×1080`
-- **Veredito geral:** `[ ] Aprovado  [ ] Aprovado com ressalvas  [ ] Reprovado  [x] Aguardando execução manual`
-- **Observações gerais opcionais:** `9 de 10 testes manuais aprovados pelo proprietário após T3.3-R2 (A1, A2, B1, B2, C1, C2, C3, D1, D2). Único item pendente de execução manual: C4 (habilitado na T3.3-UX com troca dinâmica de resolução e criação/remoção segura de Worker3 e Worker4).`
+- **Resoluções testadas:** `1280×720 e 1920×1080 (incluindo alternância dinâmica na mesma partida)`
+- **Veredito geral:** `[x] Aprovado  [ ] Aprovado com ressalvas  [ ] Reprovado  [ ] Aguardando execução manual`
+- **Observações gerais opcionais:** `Execução manual integral realizada pelo proprietário (não pelo ChatGPT) e consolidada em 16/11/2026: 10/10 itens aprovados (A1, A2, B1, B2, C1, C2, C3, C4 [C4-A..C4-E], D1, D2), incluindo troca dinâmica 1280×720 ↔ 1920×1080, zero reprovações atuais e zero casos manuais pendentes. Histórico preservado: B2 reprovou na T3.3-R1 por falha na lateral da rampa e interrupção do suprimento, foi diagnosticado/corrigido na T3.3-R2 e aprovado em reteste manual. Nota de governança: a aprovação dos testes manuais NÃO constitui homologação formal da etapa T3.3 nem autoriza merge, tag ou início da T3.4.`
