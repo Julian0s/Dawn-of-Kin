@@ -5,7 +5,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 ## Estado atual
 
 - **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
-- **Fase atual (`T3 — Construção`):** **T3.1** e **T3.2** concluídas, aprovadas e integradas na `main` (`931ad19`); **T3.3** implementada, auditada, testada manualmente (10/10) e **formalmente homologada pelo proprietário em 16/11/2026** ([docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)), permanecendo na branch `feature/t3-3-construction-logistics`, **sem integração à `main`, sem tag e sem autorização para T3.4**.
+- **Fase atual (`T3 — Construção`):** **T3.1**, **T3.2** e **T3.3** concluídas, auditadas, testadas manualmente, formalmente homologadas pelo proprietário e integradas na `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag anotada `t3-3-complete`; ver [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)); a etapa **T3.4** e as posteriores permanecem planejadas e **sem autorização de implementação**.
   - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
@@ -49,7 +49,7 @@ Dawn of Kin/
 ├─ AGENTS.md                           # Regras permanentes de engenharia
 ├─ README.md                           # Este arquivo
 ├─ docs/
-│  ├─ Dawn_of_Kin_GDD_v1.0.md          # Game Design Document (fonte de verdade)
+│  ├─ Dawn_of_Kin_GDD.md               # Game Design Document único consolidado (fonte de verdade)
 │  ├─ T1_Implementation_Plan.md        # Plano técnico da T1 e critérios AC-01..AC-16
 │  ├─ KNOWN_ISSUES.md                  # Limitações e pendências reais medidas
 │  ├─ architecture/T1_architecture.md  # Arquitetura consolidada da T1

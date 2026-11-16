@@ -67,7 +67,7 @@ Estão formalmente homologadas na T3.3 as seguintes capacidades de canteiro e su
 O **ChatGPT** conduziu auditoria documental e estática independente sobre o candidato `a84a67bee416f560794cbdfd102207f297f8771e`, verificando:
 - Os **9 arquivos modificados/criados** na entrega candidata.
 - Ausência completa de alterações de código GDScript, cenas ou recursos na etapa documental.
-- Preservação integral dos contratos normativos do [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) e das decisões **D1–D9** em [T3_architecture_PROPOSAL.md](../architecture/T3_architecture_PROPOSAL.md).
+- Preservação integral dos contratos normativos de `Dawn_of_Kin_GDD_v1.0.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.0.md), hoje unificado em [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md)) e das decisões **D1–D9** em [T3_architecture_PROPOSAL.md](../architecture/T3_architecture_PROPOSAL.md).
 - Atualização íntegra de [T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md) com `10/10` aprovações e preservação do histórico de reprovação/correção de `B2`.
 - Existência verificada de **80/80 referências relativas** no repositório e ausência de divergências documentais bloqueantes.
 

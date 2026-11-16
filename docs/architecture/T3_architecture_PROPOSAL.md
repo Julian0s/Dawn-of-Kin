@@ -1,8 +1,8 @@
 # Dawn of Kin — T3.0-R4+: Arquitetura Consolidada da T3 (Construção)
 
-**Status:** T3.1 e T3.2 CONCLUÍDAS E APROVADAS — integradas na `main` (`931ad19`); etapa **T3.3** implementada, auditada, testada manualmente (10/10) e **formalmente homologada pelo proprietário em 16/11/2026** ([T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)), permanecendo na branch `feature/t3-3-construction-logistics`, **sem integração à `main`, sem tag e sem autorização para T3.4**; etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
+**Status:** T3.1, T3.2 e T3.3 CONCLUÍDAS, HOMOLOGADAS E INTEGRADAS NA `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag `t3-3-complete`; ver [T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)); etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
 **Base Auditada:** Branch `main` (`ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`), baseada no histórico consolidado da tag `t2-complete` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`).<br>
-**Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md)).<br>
+**Fonte Normativa:** [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (unificando os antigos `v1.0` e `v1.1` preservados no histórico Git em `3c6fc0b`).<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
 
 ---
@@ -48,7 +48,7 @@ Em 14/11/2026, o proprietário do projeto deliberou sobre os pontos abertos da p
 8. **D8 — Armazenamento e materiais no mundo (DECIDIDO):**
    - O acampamento inicial (`CampStorageZone`) é o primeiro local de armazenamento da T2/T3, **não** uma restrição permanente do jogo.
    - Futuramente, qualquer item ou material poderá ser deixado fisicamente no chão de qualquer região; contudo, materiais largados fora de um local de armazenamento válido **não** entram automaticamente no estoque coletivo — precisam ser transportados fisicamente até um local de armazenamento válido para integrá-lo.
-   - Materiais mantidos no chão permanecem expostos à deterioração (incluindo madeira, pedra, alimentos e futuros recursos como ferro e aço), respeitando perfis configuráveis por categoria (sem alterar perfis e tempos vigentes da T2 sem aprovação/testes dedicados).
+   - Materiais mantidos no chão permanecem expostos à deterioração conforme perfis configuráveis por categoria (madeira e alimentos deterioram quando expostos; pedra bruta exposta não sofre deterioração temporal conforme ratificação `DEC-11A`, preservando `decay_stone_provisional.tres` com `can_decay = false`; futuras categorias terão regras próprias).
    - Construções poderão existir em diferentes locais e regiões, desde que o posicionamento seja válido; a restrição D6 continua protegendo especificamente a zona inicial das pilhas durante a T3.
 
 9. **D9 — Organização dos trabalhadores na construção (DECIDIDO):**

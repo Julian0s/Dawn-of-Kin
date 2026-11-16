@@ -20,7 +20,7 @@ Após a consolidação técnica na branch `review/t2-closeout-candidate` e a aud
 2. **APROVADO — Encerramento Oficial da Fase T2:**
    > Autorizou formalmente a integração da candidata T2 à branch `main`, a formalização documental do encerramento do marco, a criação da tag Git anotada `t2-complete` e a publicação dos resultados no GitHub.
 3. **DECISÃO PENDENTE — Minuta GDD v1.1:**
-   > O proprietário manteve pendente a promoção formal do GDD v1.1. O documento [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) permanece como a única fonte normativa vigente da engenharia do projeto. A minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md) permanece versionada no repositório como proposta integral consolidada aguardando avaliação e promoção futura.
+   > O proprietário manteve pendente na ocasião a promoção formal do GDD v1.1. O documento `Dawn_of_Kin_GDD_v1.0.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.0.md)) permaneceu como a fonte normativa na ocasião do fechamento da T2, e a minuta `Dawn_of_Kin_GDD_v1.1.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.1.md)) foi posteriormente unificada em [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md).
 
 ---
 
@@ -79,6 +79,6 @@ Após a consolidação técnica na branch `review/t2-closeout-candidate` e a aud
 
 ## 4. Confirmação de Governança e Escopo Estrito
 
-1. **GDD Vigente:** Conforme determinação explícita, [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) segue como documento normativo vigente; [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md) permanece como minuta não promovida.
+1. **GDD Vigente na Ocasião (14/11/2026):** Conforme determinação explícita da época, `Dawn_of_Kin_GDD_v1.0.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.0.md)) seguiu como documento normativo e `Dawn_of_Kin_GDD_v1.1.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.1.md)) como minuta não promovida (posteriormente consolidados no documento único [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md)).
 2. **Ausência de Código T3–T8:** Nenhum código, cena, asset ou script referente às fases futuras (Construção T3, Ciclos T4, Família T5, Combate T6–T8) foi implementado.
 3. **Próximo Passo:** O encerramento da fase T2 autoriza o início dos estudos e da elaboração da proposta de arquitetura técnica da etapa **T3 — Construção**, a ser submetida para aprovação prévia antes de qualquer codificação.

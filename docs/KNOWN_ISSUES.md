@@ -72,4 +72,4 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
 
 ## 5. Limites visuais provisórios aceitos até T2.6
 
-- Assets geométricos provisórios para pilhas no chão (`GroundResourcePile`) e fontes (`wood_tree`, `stone_rock`, `food_bush`), feedback corporal simples durante coleta e ausência de efeitos sonoros permanecem intencionalmente fora do escopo T2 conforme [Dawn_of_Kin_GDD_v1.0.md](Dawn_of_Kin_GDD_v1.0.md) e aceite da etapa T2.4.3.
+- Assets geométricos provisórios para pilhas no chão (`GroundResourcePile`) e fontes (`wood_tree`, `stone_rock`, `food_bush`), feedback corporal simples durante coleta e ausência de efeitos sonoros permanecem intencionalmente fora do escopo T2 conforme [Dawn_of_Kin_GDD.md](Dawn_of_Kin_GDD.md) e aceite da etapa T2.4.3.

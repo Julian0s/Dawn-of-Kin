@@ -199,7 +199,7 @@ Para governança transparente do projeto, todas as questões foram categorizadas
 - [AGENTS.md](../../AGENTS.md): Atualizado com a consolidação da T2, cobertura da suíte e preservação da trava de T3.
 - [docs/KNOWN_ISSUES.md](../KNOWN_ISSUES.md): Atualizado com o histórico de medições D2, B1 e B1.1, links relativos e ressalvas de energia.
 - [docs/testing/T2_manual_test_protocol.md](../testing/T2_manual_test_protocol.md): Registrado com os 21 itens executados e aprovados pelo proprietário em 14/11/2026.
-- [docs/Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md): Minuta consolidada com adendo de personagens modulares, links locais corrigidos para caminhos relativos e histórico atualizado.
+- `docs/Dawn_of_Kin_GDD_v1.1.md` ([histórico Git `3c6fc0b`](https://github.com/Julian0s/Dawn-of-Kin/blob/3c6fc0bd36fc3828af5a89662fb23cfb60d37865/docs/Dawn_of_Kin_GDD_v1.1.md), posteriormente consolidado em [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md)): Minuta consolidada com adendo de personagens modulares, links locais corrigidos para caminhos relativos e histórico atualizado.
 - [docs/architecture/T2_architecture_DRAFT.md](../architecture/T2_architecture_DRAFT.md): Atualizado para status consolidado com links relativos.
 - [docs/T2_Implementation_Plan_DRAFT.md](../T2_Implementation_Plan_DRAFT.md): Atualizado para status consolidado de encerramento.
 - [docs/reviews/T2_6_D2_performance_DRAFT.md](T2_6_D2_performance_DRAFT.md): Revisão D2 integrada com rastreabilidade total de commits.

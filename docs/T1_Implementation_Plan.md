@@ -154,7 +154,7 @@ C:\Projetos\Dawn of Kin/
 ├─ project.godot              # renderer (Compatibility), Jolt explícito, camadas nomeadas, InputMap, janela/DPI, avisos GDScript
 ├─ AGENTS.md  README.md  .gitignore  .gitattributes
 ├─ docs/
-│  ├─ Dawn_of_Kin_GDD_v1.0.md
+│  ├─ Dawn_of_Kin_GDD.md
 │  ├─ architecture/T1_architecture.md      # decisões e justificativas (ADR curto)
 │  ├─ testing/T1_manual_test_protocol.md   # roteiro de teste manual do usuário
 │  ├─ T1_Implementation_Plan.md           # cópia deste plano consolidado
