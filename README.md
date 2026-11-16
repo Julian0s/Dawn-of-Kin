@@ -20,7 +20,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
   - **Desempenho medido em `1920x1080` (Intel UHD Graphics 620, `gl_compatibility`, VSync OFF):**
     - **Tomada CA (B1.1):** mediana de `147,33 FPS` (`p50 = 6,608 ms`, `p95 = 9,757 ms`, `p99 = 11,679 ms`, pior max `25,258 ms`, `0` quadros `> 100 ms`) — **critério atendido com folga de 6,943 ms**.
     - **Bateria DC (B1):** mediana de `55,80 FPS` (`p50 = 14,872 ms`, `p95 = 33,038 ms`, `0` quadros `> 100 ms`) — **critério de `p95 <= 16,7 ms` não atendido na bateria B1** (critério de spikes cumprido em ambas as condições).
-    - *Nota de integridade:* Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a aprovação em CA não atesta conformidade universal em DC, e a classificação do desempenho em DC como limitação aceitável para encerrar a T2 depende de decisão expressa do proprietário.
+    - *Nota de integridade:* Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a aprovação em CA não atesta conformidade universal em DC, e o desempenho observado em bateria DC (`p95 = 33,038 ms` na bateria B1) foi formalmente registrado e aceito pelo proprietário em 14/11/2026 como limitação conhecida não bloqueante para encerramento da T2 ([docs/reviews/T2_Closeout_ACCEPTANCE.md](docs/reviews/T2_Closeout_ACCEPTANCE.md)).
   - **Testes manuais (informados pelo proprietário em 14/11/2026):**
     - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
     - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
@@ -33,7 +33,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 - Desempenho em bateria DC na Intel UHD 620 (`p95 = 33,038 ms` na bateria B1, não atendendo `p95 <= 16,7 ms`, vs. `9,757 ms` em CA na bateria B1.1; `0` quadros `> 100 ms` em ambas; aceito expressamente pelo proprietário em 14/11/2026 como limitação conhecida não bloqueante da T2, detalhado em `docs/KNOWN_ISSUES.md`).
 - Itens visuais provisórios declarados em T2.4.3 (oscilação simples no feedback de coleta e pilhas geométricas provisórias; sem bloqueio funcional para a T2).
-- Decisão de arquitetura para a T3 sobre o conceito de "abrigo concluído e persistido" antes do save/load em disco na T4 (a ser avaliada no planejamento técnico da T3).
+- Decisões `D1` e `DEC-17` definidas no planejamento arquitetural da T3 ([docs/architecture/T3_architecture_PROPOSAL.md](docs/architecture/T3_architecture_PROPOSAL.md)): a `T3.8` implementará persistência mínima versionada em disco (`schema_version = 1`) como núcleo extensível do `SaveManager` antes da expansão completa da T4 (etapas `T3.4`–`T3.8` planejadas e aguardando autorização).
 
 ## Requisitos de ambiente
 
@@ -49,15 +49,15 @@ Dawn of Kin/
 ├─ AGENTS.md                           # Regras permanentes de engenharia
 ├─ README.md                           # Este arquivo
 ├─ docs/
-│  ├─ Dawn_of_Kin_GDD.md               # Game Design Document único consolidado (fonte de verdade)
+│  ├─ Dawn_of_Kin_GDD.md               # Candidato único consolidado v1.2 RC (nesta branch; na `main`, `v1.0` segue vigente até aprovação)
 │  ├─ T1_Implementation_Plan.md        # Plano técnico da T1 e critérios AC-01..AC-16
 │  ├─ KNOWN_ISSUES.md                  # Limitações e pendências reais medidas
-│  ├─ architecture/T1_architecture.md  # Arquitetura consolidada da T1
-│  └─ testing/
-│     ├─ T1_manual_test_protocol.md   # Protocolo de validação manual da T1
-│     └─ T2_manual_test_protocol.md   # Protocolo de validação manual da T2 (pendente)
-├─ levels/test_map/                    # Mapa demonstrativo da T1
-├─ src/                                # Código-fonte do jogo (câmera, RTS, unidades, navegação, UI)
+│  ├─ architecture/                    # Arquitetura da T1 e proposta consolidada da T3
+│  ├─ audits/                          # Auditoria global e matriz de consolidação do GDD
+│  ├─ reviews/                         # Rascunhos, dossiês e aceite da T2
+│  └─ testing/                         # Protocolos manuais (T1–T3.3), notas técnicas e aceite T3.3 (T2 aprovada 21/21 em 14/11/2026; T3.3 homologada 16/11/2026)
+├─ levels/test_map/                    # Mapa demonstrativo de testes (`TestMap`, 64×64 m)
+├─ src/                                # Código-fonte (buildings, camera, core, economy, main, navigation, rts, ui, units)
 ├─ tests/
 │  ├─ unit/                            # Testes unitários puros
 │  ├─ integration/                     # Testes de integração com física e navegação reais

@@ -5,7 +5,9 @@
 - **Worktree:** `C:\Projetos\Dawn_of_Kin_wt_t3_3_construction`
 - **Engine / Renderer:** Godot `4.7.2.stable` (`gl_compatibility` / `--rendering-driver opengl3`)
 - **Hardware Medido:** `Intel(R) UHD Graphics 620`
-- **Status Atual (adendo 16/11/2026):** Registro histórico da rodada R2 preservado abaixo (na ocasião da R2, B2 aguardava reteste manual e C1–D2 seguiam pendentes). Em **16/11/2026**, o proprietário aprovou o reteste manual de **B2** e concluiu **10/10** testes manuais ([T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md)); **homologação formal da T3.3 permanece pendente, sem integração à `main` e com T3.4 não iniciada** (ver [T3_3_closeout_CANDIDATE.md](T3_3_closeout_CANDIDATE.md)).
+- **Status Atual (adendo histórico R2):** Na ocasião da rodada R2, os **10/10 testes manuais** (incluindo o reteste de **B2** e os itens **C1–D2**) vieram a ser aprovados pelo proprietário em 16/11/2026 ([T3_3_manual_test_protocol.md](T3_3_manual_test_protocol.md)).
+
+> **Adendo de Status Posterior (16/11/2026):** Posteriormente ao diagnóstico R2 e ao fechamento manual acima, a etapa **T3.3** foi **formalmente homologada pelo proprietário** ([T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md)), **integrada à `main` no commit `3c6fc0bd36fc3828af5a89662fb23cfb60d37865`** e marcada com a **tag anotada `t3-3-complete`**. A etapa **T3.4** permanece planejada e estritamente **bloqueada / não autorizada** (aguardando `T3.4-ARCHITECTURE-R2` e decisão expressa do proprietário). *O registro técnico e as medições originais da rodada R2 abaixo permanecem preservados integralmente.*
 
 ---
 
@@ -116,8 +118,6 @@ Foram adicionados dois testes permanentes em [`tests/integration/test_t3_3_const
 
 ---
 
-## 6. Limites Conhecidos e Próximo Passo Manual
+## 6. Limites Conhecidos e Próximo Passo Manual *(Registro Histórico da Rodada R2)*
 
-- O item **B2** do protocolo manual reprovou na rodada da T3.3-R1 e **permanece aguardando reteste manual pelo proprietário** em janela real após estas correções da T3.3-R2.
-- Os itens **C1–D2** permanecem pendentes de execução manual.
-- **T3.3 permanece NÃO homologada** e **nenhuma funcionalidade de T3.4+ foi implementada**.
+- Na ocasião da publicação deste diagnóstico R2, o item **B2** aguardava reteste manual e os itens **C1–D2** estavam pendentes. Posteriormente (16/11/2026), **todos os 10/10 itens manuais foram aprovados** e a **T3.3 foi formalmente homologada na `main` (`3c6fc0b`, tag `t3-3-complete`)** conforme adendo no topo e [T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md); **nenhuma funcionalidade de `T3.4+` foi implementada**.

@@ -1,6 +1,8 @@
 # Dawn of Kin — Registro Candidato de Encerramento da Etapa T3.3 (CANDIDATE)
 
-> **Governança:** Este documento consolida a execução técnica e os **10/10 testes manuais aprovados pelo proprietário em 16/11/2026** como **candidato a homologação (`T3.3-CLOSEOUT-CANDIDATE`)**. A etapa **T3.3 NÃO está formalmente homologada**; merge na `main`, criação de tag Git e início da **T3.4** dependem de auditoria independente e autorização expressa do proprietário.
+> **Adendo de Status Posterior (16/11/2026):** Este documento preserva o **registro candidato histórico (`T3.3-CLOSEOUT-CANDIDATE`)** submetido antes da homologação final. Posteriormente, em **16/11/2026**, a etapa **T3.3 foi formalmente homologada pelo proprietário** em [T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md), **integrada à `main` no commit `3c6fc0bd36fc3828af5a89662fb23cfb60d37865`** e marcada com a **tag anotada `t3-3-complete`**. A implementação da **T3.4 permanece bloqueada e não autorizada** (aguardando `T3.4-ARCHITECTURE-R2` e decisão expressa do proprietário).
+>
+> **Governança Original do Candidato *(preservada como histórico)*:** Este documento consolida a execução técnica e os **10/10 testes manuais aprovados pelo proprietário em 16/11/2026** como **candidato a homologação (`T3.3-CLOSEOUT-CANDIDATE`)**. Na data de geração do candidato, a etapa **T3.3 NÃO estava formalmente homologada** e dependia de auditoria independente e autorização expressa do proprietário.
 
 ---
 
@@ -156,10 +158,10 @@ Organização **D9** (máximo de **2** construtores simultâneos):
 
 ---
 
-## L. Governança
+## L. Governança *(Registro Histórico da Submissão Candidata)*
 
 - Os **10/10** testes manuais foram executados e aprovados pelo proprietário em **16/11/2026**.
-- Contudo, **homologação formal da T3.3, merge na `main`, criação de tag Git e início da T3.4 permanecem bloqueados** aguardando auditoria independente no GitHub e decisão expressa do proprietário.
+- Na submissão candidata original, a homologação formal aguardava auditoria independente; **essa homologação foi posteriormente concedida** em [T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md) (`main` `3c6fc0b`, tag `t3-3-complete`). **O início da implementação da T3.4 permanece estritamente bloqueado** aguardando `T3.4-ARCHITECTURE-R2` e autorização expressa do proprietário.
 
 ---
 
