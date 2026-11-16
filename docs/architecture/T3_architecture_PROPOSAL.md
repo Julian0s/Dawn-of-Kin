@@ -1,8 +1,8 @@
 # Dawn of Kin — T3.0-R4+: Arquitetura Consolidada da T3 (Construção)
 
-**Status:** T3.1, T3.2 e T3.3 CONCLUÍDAS, HOMOLOGADAS E INTEGRADAS NA `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag `t3-3-complete`; ver [T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)); etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
+**Status:** T3.1, T3.2 e T3.3 CONCLUÍDAS, HOMOLOGADAS E INTEGRADAS NA `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag `t3-3-complete`; ver [T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)); etapas `T3.4` a `T3.9` permanecem planejadas e bloqueadas (`T3.4-ARCHITECTURE-R2` pendente de aprovação; nenhuma autorização de implementação para `T3.4`).<br>
 **Base Auditada:** Branch `main` (`ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`), baseada no histórico consolidado da tag `t2-complete` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`).<br>
-**Referência GDD:** Nesta branch de revisão (`docs/gdd-canonical-review`), o documento único candidato é [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (`v1.2 RC — Aguardando Aprovação`); na `main`, o antigo `Dawn_of_Kin_GDD_v1.0.md` permanece vigente até promoção formal.<br>
+**Referência GDD:** [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (`v1.2 — Conteúdo Aprovado pelo Proprietário`, revisão `R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9` em 16/11/2026); quando integrado à `main` mediante autorização expressa, vigora como o GDD normativo único (antes dessa integração na `main`, o antigo `Dawn_of_Kin_GDD_v1.0.md` permanece vigente na `main`).<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
 
 ---

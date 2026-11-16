@@ -6,6 +6,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 - **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
 - **Fase atual (`T3 — Construção`):** **T3.1**, **T3.2** e **T3.3** concluídas, auditadas, testadas manualmente, formalmente homologadas pelo proprietário e integradas na `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag anotada `t3-3-complete`; ver [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)); a etapa **T3.4** e as posteriores permanecem planejadas e **sem autorização de implementação**.
+- **Game Design Document (GDD):** Conteúdo consolidado `v1.2` (`R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9`) formalmente aprovado pelo proprietário em 16/11/2026. Na `main`, antes da integração expressamente autorizada do GDD único, vigora `docs/Dawn_of_Kin_GDD_v1.0.md`; após a integração autorizada, [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) passa a ser a fonte normativa única do projeto (sem liberar a implementação da `T3.4`).
   - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
     - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
     - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
@@ -49,7 +50,7 @@ Dawn of Kin/
 ├─ AGENTS.md                           # Regras permanentes de engenharia
 ├─ README.md                           # Este arquivo
 ├─ docs/
-│  ├─ Dawn_of_Kin_GDD.md               # Candidato único consolidado v1.2 RC (nesta branch; na `main`, `v1.0` segue vigente até aprovação)
+│  ├─ Dawn_of_Kin_GDD.md               # GDD único consolidado v1.2 (conteúdo R4.1 aprovado em 16/11/2026; fonte normativa única quando integrado à main)
 │  ├─ T1_Implementation_Plan.md        # Plano técnico da T1 e critérios AC-01..AC-16
 │  ├─ KNOWN_ISSUES.md                  # Limitações e pendências reais medidas
 │  ├─ architecture/                    # Arquitetura da T1 e proposta consolidada da T3

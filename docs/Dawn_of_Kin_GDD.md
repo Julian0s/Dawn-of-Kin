@@ -1,16 +1,16 @@
 # DAWN OF KIN
 
 **Documento Mestre de Design (GDD Único Consolidado)**
-**Versão Interna:** **v1.2 RC — Aguardando Aprovação** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)
+**Versão Interna:** **v1.2 — Conteúdo Aprovado pelo Proprietário** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)
 **Data:** 16 de novembro de 2026
-**Uso:** Candidata única consolidada de Game Design para auditoria independente do ChatGPT e futura promoção normativa pelo proprietário
+**Uso:** Documento mestre único consolidado de Game Design (conteúdo da revisão `R4.1` formalmente aprovado pelo proprietário em `16/11/2026`, commit-base `6e5764f67125da103eec68adb95e5b67ac329ed9`)
 **Base Técnica Auditada:** `main` em `3c6fc0bd36fc3828af5a89662fb23cfb60d37865` (Tag `t3-3-complete`)
 **Nome de Trabalho:** *Dawn of Kin* («Aurora da Linhagem»); disponibilidade comercial e registro de marca permanecem **ABERTO** antes da publicação
 
-> **Governança e Status Normativo (`R2-H`):**
-> - **Nesta branch de revisão (`docs/gdd-canonical-review`):** `docs/Dawn_of_Kin_GDD.md` (`v1.2 RC — Aguardando Aprovação`) é o **único GDD candidato** e a referência única para revisar o novo design consolidado (os arquivos `v1.0`, `v1.1` e `v1.2_PROPOSAL` foram removidos da árvore ativa via `git rm`, permanecendo recuperáveis no histórico Git em `3c6fc0b` e `05ca346`).
-> - **Na branch `main`:** Até aprovação expressa do proprietário e integração autorizada à `main`, o antigo `docs/Dawn_of_Kin_GDD_v1.0.md` permanece como a fonte normativa oficial em vigor na `main`. Somente após auditoria do ChatGPT, aprovação do proprietário e merge autorizado este documento passará a ser a fonte normativa oficial do projeto.
-> - **Bloqueio de Implementação:** Esta consolidação documental **não** autoriza a implementação da etapa `T3.4` nem de etapas futuras.
+> **Governança e Status Normativo (`R2-H` / Promoção Normativa):**
+> - **Aprovação de Conteúdo (`CONCLUÍDA`):** O conteúdo consolidado desta versão `v1.2` (revisão `R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9`) foi **formalmente aprovado pelo proprietário em 16/11/2026**. Os arquivos concorrentes `Dawn_of_Kin_GDD_v1.0.md`, `Dawn_of_Kin_GDD_v1.1.md` e `Dawn_of_Kin_GDD_v1.2_PROPOSAL.md` foram removidos da árvore ativa via `git rm`, permanecendo integralmente recuperáveis no histórico Git (`3c6fc0b` e `05ca346`).
+> - **Vigência Normativa na `main`:** Enquanto este documento não for integrado à `main` mediante autorização expressa do proprietário, o antigo `docs/Dawn_of_Kin_GDD_v1.0.md` permanece vigente na árvore da `main`. Uma vez integrado à `main` por autorização expressa, `docs/Dawn_of_Kin_GDD.md` passa a vigorar como a **única fonte normativa oficial** de Game Design do projeto.
+> - **Bloqueio de Implementação:** A aprovação documental deste GDD **não** autoriza a implementação da etapa `T3.4` nem de etapas futuras.
 >
 > **Marcadores de Status:**
 > - **DECIDIDO:** escolha aprovada pelo proprietário (ou estruturada sob delegação expressa de design — ver rastreabilidade na §12.2).

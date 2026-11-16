@@ -1,15 +1,17 @@
 # DAWN OF KIN — MATRIZ DE VALIDAÇÃO DA CONSOLIDAÇÃO DEFINITIVA DO GDD ÚNICO (`docs/Dawn_of_Kin_GDD.md`)
 
-**Documento:** Matriz de Auditoria e Rastreabilidade da Migração para GDD Único (`v1.2 RC — Aguardando Aprovação`)
+**Documento:** Matriz de Auditoria e Rastreabilidade da Migração para GDD Único (`v1.2 — Conteúdo Aprovado pelo Proprietário`)
 **Repositório:** `https://github.com/Julian0s/Dawn-of-Kin`
 **Base Oficial (`main`):** `3c6fc0bd36fc3828af5a89662fb23cfb60d37865` (Tag `t3-3-complete`)
 **Auditoria Global R1:** `audit/global-vision-and-design` (`23fd493174e73e80599c13cef8a824314196a731`)
 **Candidata Anterior:** `docs/global-vision-gdd-candidate` (`05ca3467c325082b16d9c71b35febb894c6b34d2`)
-**Branch de Revisão Canônica:** `docs/gdd-canonical-review`
-**Worktree Isolado:** `C:\Projetos\Dawn_of_Kin_wt_gdd_canonical`
+**Conteúdo R4.1 Aprovado:** `docs/gdd-canonical-review` (`6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovado pelo proprietário em `16/11/2026`)
+**Branch de Preparação Normativa:** `docs/gdd-normative-promotion-prep`
 **Data:** 16 de novembro de 2026
 
-> **Regra de Governança:** Por determinação expressa do proprietário, esta branch unifica todo o Game Design em **um único documento ativo**: [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) (identificado internamente como **v1.2 RC — Aguardando Aprovação**). Os arquivos concorrentes `Dawn_of_Kin_GDD_v1.0.md`, `Dawn_of_Kin_GDD_v1.1.md` e `Dawn_of_Kin_GDD_v1.2_PROPOSAL.md` foram removidos da árvore ativa via `git rm` (permanecendo integralmente recuperáveis pelo histórico Git em `3c6fc0b` e `05ca346`). A `main` permanece intocada até auditoria do ChatGPT e autorização final do proprietário.
+> **Regra de Governança e Vigência:** Por determinação expressa do proprietário, esta consolidação unifica todo o Game Design em **um único documento ativo**: [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) (identificado internamente como **v1.2 — Conteúdo Aprovado pelo Proprietário**). Os arquivos concorrentes `Dawn_of_Kin_GDD_v1.0.md`, `Dawn_of_Kin_GDD_v1.1.md` e `Dawn_of_Kin_GDD_v1.2_PROPOSAL.md` foram removidos da árvore ativa via `git rm` (permanecendo integralmente recuperáveis pelo histórico Git em `3c6fc0b` e `05ca346`).
+> - **Aprovação de Conteúdo:** O conteúdo da revisão `R4.1` (`6e5764f67125da103eec68adb95e5b67ac329ed9`) foi **formalmente aprovado pelo proprietário em 16/11/2026**, estando autorizada apenas a **preparação da promoção normativa**.
+> - **Vigência na `main`:** A integração à `main` depende de auditoria independente e autorização expressa separada. Enquanto não integrada à `main`, o antigo `v1.0` permanece vigente na árvore da `main`; após integração autorizada, [`docs/Dawn_of_Kin_GDD.md`](../Dawn_of_Kin_GDD.md) passa a vigorar como GDD normativo único. A implementação da `T3.4` permanece **estritamente bloqueada**.
 
 ---
 
@@ -140,6 +142,14 @@ Comparação realizada entre: (1) `GDD v1.0` (`3c6fc0b`), (2) `GDD v1.1` (`3c6fc
 
 ---
 
+## 3F. Aprovação do Conteúdo `R4.1` e Preparação da Promoção Normativa (`16/11/2026`)
+
+- **Histórico `R1–R4.1` concluído:** As rodadas de revisão documental (`R1`, `R2`, `R3`, `R4` e os quatro ajustes finais `R4.1-A..D` em `6e5764f67125da103eec68adb95e5b67ac329ed9`) foram concluídas e auditadas.
+- **Aprovação formal pelo proprietário (`16/11/2026`):** O conteúdo do GDD `R4.1` (`6e5764f67125da103eec68adb95e5b67ac329ed9`) foi formalmente aprovado pelo proprietário, com autorização estrita para **preparação da promoção normativa documental** com revisão antes de qualquer merge.
+- **Governança de vigência:** A integração à `main` permanece **pendente de auditoria independente e autorização expressa separada**. A implementação da etapa `T3.4` permanece **bloqueada** (`T3.4-ARCHITECTURE-R2` pendente e sem autorização de código).
+
+---
+
 ## 4. Pendências Técnicas da `T3.4-ARCHITECTURE-R2` e Questões Abertas
 
 - **Bloqueio Técnico da T3.4:** Permanece obrigatória a publicação e aprovação da revisão **`T3.4-ARCHITECTURE-R2`** cobrindo: (1) complementação manual transacional de reservas (`DEC-11B`), (2) retentativa após falha de `BuildingInstance`, (3) proteção contra novas obras sobre edifícios concluídos, (4) validação de contribuições no slot, (5) teto inteiro de progresso e (6) testes adicionais de regressão, navegação (`DEC-19`) e contabilidade.
@@ -154,5 +164,6 @@ Comparação realizada entre: (1) `GDD v1.0` (`3c6fc0b`), (2) `GDD v1.1` (`3c6fc
 - [x] Nova direção narrativa (aparição única do Ser de Trevas, ausência do Ser de Luz no Cap. 1, Dons Latentes, *Alento*, Profissão × Vocação × Dom, 5 níveis por marcos concretos e 4 horizontes de lançamento) integralmente consolidada.
 - [x] `DEC-11A` e `DEC-11B` ratificadas em todas as seções pertinentes.
 - [x] Todas as referências Markdown da branch sincronizadas sem links `file:///` ou destinos quebrados.
-- [x] Divergências `AUD-01` a `AUD-08`, `R4-I` e `R4-J` corrigidas em revisão documental `R4`.
+- [x] Divergências `AUD-01` a `AUD-08`, `R4-I` e `R4-J` corrigidas em revisão documental `R4` e ajustes `R4.1-A..D` concluídos (`6e5764f67125da103eec68adb95e5b67ac329ed9`).
+- [x] Conteúdo `R4.1` formalmente aprovado pelo proprietário (`16/11/2026`); preparação da promoção normativa concluída em `docs/gdd-normative-promotion-prep` (integração à `main` e `T3.4` pendentes de autorização expressa).
 - [x] Nenhum código GDScript, cena `.tscn`, recurso `.tres` ou teste foi modificado.
