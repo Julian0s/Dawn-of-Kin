@@ -5,6 +5,8 @@
 **Engine / Renderer:** Godot `4.7.2.stable` / `gl_compatibility`<br>
 **Status:** Concluído, auditado tecnicamente e formalmente aprovado pelo proprietário em 15/11/2026 (T3.3+ permanece não autorizada).
 
+> **Adendo de Status Posterior (16/11/2026):** A etapa **T3.2** foi homologada em **15/11/2026**. Posteriormente ao registro técnico original abaixo, a etapa **T3.3** foi homologada e integrada à `main` em **16/11/2026** (commit `3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag `t3-3-complete`; ver [T3_3_closeout_ACCEPTANCE.md](T3_3_closeout_ACCEPTANCE.md)). As descrições de **T3.3** como futura, não autorizada ou não implementada (incluindo a linha acima e a §4 abaixo) pertencem exclusivamente ao contexto histórico do fechamento da T3.2 e permanecem preservadas sem reescrita. A implementação da etapa **T3.4** permanece bloqueada.
+
 ---
 
 ## 1. Arquitetura Implementada

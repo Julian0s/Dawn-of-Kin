@@ -76,7 +76,7 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
 #### Capítulo 1 — O Isolamento
 - **Ato I — Sobrevivência e Primeiro Abrigo:**
   - Apenas os **2 protagonistas originais** e, posteriormente, seus próprios filhos; nenhuma aparição ou recrutamento de humanos externos.
-  - O jogador aprende os controles RTS, coleta frutos, madeira e pedra, forma pilhas no acampamento inicial e constrói o **Abrigo Básico** e o **Depósito Rústico** *(estruturas do Nível 1 disponíveis sem bloqueio tecnológico artificial entre si; a conclusão do primeiro abrigo serve como marco narrativo que dispara a cena noturna do Ato II)*.
+  - O jogador aprende os controles RTS, coleta frutos, madeira e pedra, forma pilhas no acampamento inicial e constrói o **Abrigo Básico** e o **Depósito Rústico** *(ambas as estruturas pertencem ao Nível 1; pela diretriz técnica `D5`, a implementação funcional do depósito ocorre após o primeiro abrigo funcional, mantendo-se `ABERTO` no design se haverá ou não pré-requisito de desbloqueio entre elas dentro do jogo; a conclusão do primeiro abrigo continua sendo o marco narrativo que dispara a cena noturna do Ato II)*.
 - **Ato II — A Única Aparição Pessoal do Ser de Trevas:**
   - Depois que o casal constrói seu primeiro abrigo, ocorre um evento misterioso, preferencialmente em uma noite apropriada.
   - A natureza ao redor fica estranhamente silenciosa.
@@ -311,7 +311,8 @@ Configuração exata confirmada em `src/camera/rts_camera_rig.gd` e `src/camera/
   - Seleção individual por clique esquerdo e seleção múltipla por caixa (com `Shift` aditivo).
   - Clique direito contextual (`src/rts/command_controller.gd`):
     - *Implementado (`main` `3c6fc0b`):* **mover** (clique em terreno, obstáculo ou unidade), **coletar** recurso em fonte (`ResourceSource`, com retorno automático de descarga à `CampStorageZone` ao encher ou esgotar via `GatherResourceOrder`) e **suprir canteiro** (`ConstructionSite` via `ConstructOrder` na T3.3, levando materiais até o buffer).
-    - *Planejado (`PLANEJADO T3.4+ / T6+`):* ordem direta de **entregar** carga fora do ciclo automático de coleta/logística, **montagem progressiva** até conclusão (`T3.4`) e comandos contextuais de **atacar/interagir**. `Esc` cancela prévia/seleção.
+    - *Planejado (`PLANEJADO T3.4+ / T6+`):* **montagem progressiva** de construções até conclusão (`T3.4`) e comandos contextuais de **atacar/interagir** (`T6+`).
+    - *Proposta futura opcional (`PROPOSTA`, sem compromisso de implementação na `T3.4`):* eventual comando manual direto de **entregar** carga fora do ciclo automático (preservando os comportamentos já implementados de descarga automática na coleta e suprimento físico de canteiros). `Esc` cancela prévia/seleção.
   - Movimento da câmera via `WASD`/setas, arraste com botão do meio (`MMB`), zoom no scroll e **Edge Scrolling (`edge_pan_enabled = true`, `edge_pan_margin_base_px = 6.0`) acionado exclusivamente na borda real da viewport** quando a janela tem foco e o mouse está dentro da janela.
 - **UI de Construção e Contexto (`D7` — `PLANEJADO T3.5`):** Botão discreto **Construir** no canto inferior direito, painel retrátil de edifícios e inspetor contextual de canteiro (progresso, botão manual de complemento de reserva `DEC-11B` e cancelamento `D3`), sem sobrepor os HUDs existentes. *(Na T3.2/T3.3 opera temporariamente o `PlacementTestOverlay`).*
 
