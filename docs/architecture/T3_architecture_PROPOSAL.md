@@ -1,6 +1,6 @@
 # Dawn of Kin — T3.0-R4+: Arquitetura Consolidada da T3 (Construção)
 
-**Status:** T3.1 e T3.2 CONCLUÍDAS E APROVADAS — integradas na `main` (`931ad19`); etapa **T3.3** implementada na branch `feature/t3-3-construction-logistics` (`R1`, `R2`, `UX`) com **10/10 testes manuais aprovados pelo proprietário em 16/11/2026**, **homologação formal pendente e sem integração à `main`** (ver [T3_3_closeout_CANDIDATE.md](../testing/T3_3_closeout_CANDIDATE.md)); etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
+**Status:** T3.1 e T3.2 CONCLUÍDAS E APROVADAS — integradas na `main` (`931ad19`); etapa **T3.3** implementada, auditada, testada manualmente (10/10) e **formalmente homologada pelo proprietário em 16/11/2026** ([T3_3_closeout_ACCEPTANCE.md](../testing/T3_3_closeout_ACCEPTANCE.md)), permanecendo na branch `feature/t3-3-construction-logistics`, **sem integração à `main`, sem tag e sem autorização para T3.4**; etapas `T3.4` a `T3.9` permanecem planejadas sem autorização de implementação.<br>
 **Base Auditada:** Branch `main` (`ceb3f7194a750e66dbf73ebb0b0a7460d51eb87f`), baseada no histórico consolidado da tag `t2-complete` (`f7c24592e3a6d936dbcb63f648c474280695ab9b`).<br>
 **Fonte Normativa:** [Dawn_of_Kin_GDD_v1.0.md](../Dawn_of_Kin_GDD_v1.0.md) (com referências informativas à minuta [Dawn_of_Kin_GDD_v1.1.md](../Dawn_of_Kin_GDD_v1.1.md)).<br>
 **Engine e Alvo de Referência:** Godot `4.7.2.stable` (`gl_compatibility`), Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
