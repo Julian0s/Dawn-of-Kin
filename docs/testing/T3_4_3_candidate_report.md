@@ -1,6 +1,6 @@
-# Dawn of Kin — T3.4.3 — Relatório técnico da candidata
+# Dawn of Kin — T3.4.3 — Relatório técnico e registro de homologação
 
-**Status:** **T3.4.3 — CANDIDATA CORRIGIDA, AGUARDANDO NOVA AUDITORIA INDEPENDENTE E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO. SEM MERGE, SEM TAG, T3.4.4–T3.4.5 BLOQUEADAS.**
+**Status:** **T3.4.3 FORMALMENTE HOMOLOGADA PELO PROPRIETÁRIO EM 17/11/2026** no commit `532a5419f3604edfd6b4b2b74987b7e859b70a3c`. Autorizado exclusivamente o registro documental na branch candidata. **SEM MERGE, SEM TAG, SEM INÍCIO DA T3.4.4.**
 
 **Data:** 17/11/2026. **Branch:** `feat/t3-4-3-reactive-construction-orders`.
 
@@ -8,7 +8,20 @@
 
 **Commits funcionais e de testes nesta branch:**
 - Implementação inicial T3.4.3: `bb55f9a195a3deb45ca329553631c774cbb7a48f` / testes iniciais: `194e1f44bd159a82acf6ad142881ccd41af5d235` / relatório inicial auditado: `62c5acba3a635e2f13ae2473f1c822baa77dbe81`.
-- Revisão corretiva (carga excedente em construtores): `1c1f9c9539a026ff25a199789df015fef5961b23` (`fix(t3-4-3)`) e testes complementares `cb0b8e224163833f6effb5e19f18f1f86a8cc77d` (`test(t3-4-3)`). *(O commit seguinte nesta branch é estritamente documental.)*
+- Revisão corretiva (carga excedente em construtores): `1c1f9c9539a026ff25a199789df015fef5961b23` (`fix(t3-4-3)`), testes complementares `cb0b8e224163833f6effb5e19f18f1f86a8cc77d` (`test(t3-4-3)`) e relatório consolidado: `532a5419f3604edfd6b4b2b74987b7e859b70a3c`.
+- **Commit técnico homologado pelo proprietário:** `532a5419f3604edfd6b4b2b74987b7e859b70a3c`. *(O commit subsequente nesta branch é estritamente documental e não altera nem substitui o objeto técnico homologado).*
+
+## Registro formal de homologação — 17/11/2026
+
+**Decisão expressa do proprietário (sem observações):**
+
+> Homologo formalmente a T3.4.3 do Dawn of Kin no commit 532a5419f3604edfd6b4b2b74987b7e859b70a3c. Autorizo exclusivamente o registro documental da homologação pelo Antigravity ou Codex na branch candidata. Não autorizo merge, tag ou início da T3.4.4. Observações: Nenhuma.
+
+- **Objeto técnico homologado:** implementação e testes da T3.4.3 no SHA exato `532a5419f3604edfd6b4b2b74987b7e859b70a3c`, compreendendo a máquina reativa de ordens de construção (`ConstructOrder`), espera sem polling em `WAITING_FOR_MATERIALS`, ocupação contínua de âncora real por `BuildSlotPlanner`, promoções e reequilíbrios `D9`/`DEC-18`, devolução física de carga excedente/mista em construtores via `DeliverToCampOrder`, e encerramento em `SiteState.COMPLETING`.
+- **Fundamento técnico e auditoria independente:** homologação concedida formalmente pelo proprietário após auditoria técnica estática independente do ChatGPT sobre o diff, código de produção, testes automatizados e relatório técnico, em confronto com a arquitetura normativa aprovada `T3.4-R2.3`. Não foram identificados defeitos bloqueantes no escopo da T3.4.3.
+- **Evidência de execução e testes (Antigravity):** `37/37` suítes, `260/260` testes, `9.108` asserções em 8 lotes segmentados (`tools/run_tests.ps1 -Segmented`); validação de `113` scripts sem erros ou avisos (`tools/validate.ps1`). Essas execuções foram **realizadas no ambiente local pelo Antigravity e auditadas estaticamente pelo ChatGPT**, sem execução independente de Godot pelo ChatGPT.
+- **Ressalva de escopo e limites deliberados:** testes manuais/visuais de interface gráfica e medição empírica de desempenho em GPU não foram homologados nesta etapa (previstos para as etapas pertinentes, como T3.4.5 e T3.5).
+- **Escopo desta autorização:** restringe-se exclusivamente ao registro documental da homologação na branch candidata (`feat/t3-4-3-reactive-construction-orders`). **Nenhum merge para `main`, nenhuma criação de tag e nenhuma autorização para iniciar a T3.4.4.** O commit documental posterior não altera, substitui nem invalida o commit técnico homologado `532a5419f3604edfd6b4b2b74987b7e859b70a3c`.
 
 ---
 
@@ -136,4 +149,4 @@ Todos os comandos abaixo foram executados diretamente na worktree `C:\Projetos\D
 - **Não verificado visualmente/manualmente:** execução interativa por jogador humano com mouse, inspeção visual em tela das animações/posturas/painéis temporários durante devolução de carga ou montagem em andamento e medição empírica de desempenho em GPU alvo (`Intel UHD 620`, prevista para o incremento `T3.4.5`).
 - **Bloqueado / fora de escopo:** criação e validação transacional de `BuildingInstance` com cooldown de retentativa e proteção de sobreposição em `PlacementValidator` (`T3.4.4`), camada regional `_buildings_root` / rebake assíncrono N1 / barreira transitória `_pending_building_blockers` / benchmark `T34-PERF-01` (`T3.4.5`), UI definitiva (`T3.5`), cancelamento/reembolso (`T3.6`), depósito funcional (`T3.7`) e persistência (`T3.8`).
 
-**T3.4.3 — CANDIDATA CORRIGIDA, AGUARDANDO NOVA AUDITORIA INDEPENDENTE E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO.**
+**T3.4.3 FORMALMENTE HOMOLOGADA NO COMMIT `532a5419`. SEM MERGE. SEM TAG. T3.4.4–T3.4.5 BLOQUEADAS.**
