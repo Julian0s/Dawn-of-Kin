@@ -326,3 +326,48 @@ func test_08_invalid_factory_return_cannot_free_existing_scene_nodes() -> void:
 	cm.building_creator_override = Callable()
 	var building: BuildingInstance = await _wait_for_building(cm)
 	assert_eq(building.incorporated_materials, COSTS)
+
+
+func test_09_t34_aut_07_stale_hover_context_after_site_removal_before_physics_sync() -> void:
+	var fx: Dictionary = await _fixture()
+	var site: ConstructionSite = fx["site"]
+	var cm: ConstructionManager = fx["cm"]
+	var context := PlacementValidator.ValidationContext.from_region(fx["root"], fx["nav"])
+	var validator := PlacementValidator.new()
+	var other_region := Node3D.new()
+	other_region.set_meta(&"region_id", &"independent_region")
+	fx["root"].add_child(other_region)
+	var other_context := PlacementValidator.ValidationContext.from_region(other_region, fx["nav"])
+	assert_true(context.construction_sites.has(site))
+	assert_eq(context.completed_buildings.size(), 0)
+	var site_id: StringName = site.site_id
+	await _assemble(fx)
+	assert_true(cm.complete_site_transaction(site))
+	assert_null(cm.get_site_by_id(site_id))
+	assert_false(site.is_inside_tree())
+	assert_eq(cm.get_completed_buildings().size(), 1)
+	var building: BuildingInstance = cm.get_completed_buildings()[0]
+	assert_eq(building.building_id, site_id)
+	assert_true(context.construction_sites.has(site), "Original snapshot still holds the removed site")
+	assert_eq(context.completed_buildings.size(), 0, "Original snapshot predates the building")
+	var refreshed: PlacementValidator.ValidationContext = context.refresh_dynamic_state()
+	assert_false(refreshed.construction_sites.has(site))
+	assert_true(refreshed.completed_buildings.has(building))
+	assert_false(other_context.refresh_dynamic_state().completed_buildings.has(building), "Another region in the same world excludes this building")
+	# Both old and new physical colliders are excluded: only logical occupancy can reject.
+	# No physics frame is awaited between transaction and hover.
+	var original_layer: int = building._body.collision_layer
+	building._body.collision_layer = 0
+	site._site_body.collision_layer = 0
+	var same_frame: PlacementValidator.ValidationResult = validator.validate_hover(SHELTER, building.global_position, context)
+	assert_false(same_frame.valid)
+	assert_eq(same_frame.reason_code, PlacementValidator.REASON_OBSTACLE_OVERLAP)
+	assert_eq(same_frame.reason_text, "Completed building occupies this area.")
+	var other_hover: PlacementValidator.ValidationResult = validator.validate_hover(SHELTER, building.global_position, other_context)
+	assert_ne(other_hover.reason_code, PlacementValidator.REASON_OBSTACLE_OVERLAP, "The other region does not inherit the completed footprint; the shared fixture navmesh may reject its terrain independently")
+	building._body.collision_layer = original_layer
+	await wait_physics_frames(2)
+	var after_sync: PlacementValidator.ValidationResult = validator.validate_hover(SHELTER, building.global_position, context)
+	assert_false(after_sync.valid)
+	assert_eq(after_sync.reason_code, PlacementValidator.REASON_OBSTACLE_OVERLAP)
+	assert_true(validator.validate_hover(SHELTER, Vector3(10, 0, 10), context).valid)
