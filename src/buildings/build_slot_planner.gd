@@ -199,6 +199,7 @@ static func compute_pile_approach_slot(
 	var best_separated_dist: float = INF
 	var best_fallback := Vector3(INF, INF, INF)
 	var best_fallback_dist: float = INF
+	var pending_navigation: bool = false
 
 	for candidate: Vector3 in candidate_offsets:
 		var snapped: Vector3 = world_nav.snap_to_navmesh(candidate)
@@ -212,6 +213,7 @@ static func compute_pile_approach_slot(
 		if snap_pile_dist > reach_radius:
 			continue
 		var path_res: WorldNavigation.PathResult = world_nav.find_path(unit_pos, snapped)
+		pending_navigation = pending_navigation or path_res.reason == "pending_building_nav_sync"
 		if not _is_unit_connected_to_path(unit_pos, path_res, world_nav):
 			continue
 		var resolved: Vector3 = path_res.resolved_target
@@ -240,7 +242,7 @@ static func compute_pile_approach_slot(
 		return {"valid": true, "position": best_separated, "reason": ""}
 	if best_fallback.is_finite():
 		return {"valid": true, "position": best_fallback, "reason": ""}
-	return {"valid": false, "position": Vector3.ZERO, "reason": "pile_unreachable"}
+	return {"valid": false, "position": Vector3.ZERO, "reason": "pending_building_nav_sync" if pending_navigation else "pile_unreachable"}
 
 
 static func compute_site_perimeter_slot(
@@ -273,6 +275,7 @@ static func compute_site_perimeter_slot(
 	var best_separated_dist: float = INF
 	var best_fallback := Vector3(INF, INF, INF)
 	var best_fallback_dist: float = INF
+	var pending_navigation: bool = false
 
 	for margin: float in margins:
 		var offsets: Array[Vector2] = site.definition.get_perimeter_offsets(margin)
@@ -295,6 +298,7 @@ static func compute_site_perimeter_slot(
 				continue
 
 			var path_res: WorldNavigation.PathResult = world_nav.find_path(unit_pos, snapped)
+			pending_navigation = pending_navigation or path_res.reason == "pending_building_nav_sync"
 			if not _is_unit_connected_to_path(unit_pos, path_res, world_nav):
 				continue
 			var resolved: Vector3 = path_res.resolved_target
@@ -326,7 +330,7 @@ static func compute_site_perimeter_slot(
 		return {"valid": true, "position": best_separated, "reason": ""}
 	if best_fallback.is_finite():
 		return {"valid": true, "position": best_fallback, "reason": ""}
-	return {"valid": false, "position": Vector3.ZERO, "reason": "site_unreachable"}
+	return {"valid": false, "position": Vector3.ZERO, "reason": "pending_building_nav_sync" if pending_navigation else "site_unreachable"}
 
 
 static func find_best_pickup_candidate(
@@ -397,7 +401,8 @@ static func find_best_pickup_candidate(
 				agent_radius
 			)
 			if not (slot_res.get("valid", false) as bool):
-				last_fail_reason = str(slot_res.get("reason", "pile_unreachable"))
+				if last_fail_reason != "pending_building_nav_sync":
+					last_fail_reason = str(slot_res.get("reason", "pile_unreachable"))
 				continue
 
 			var slot_pos: Vector3 = slot_res["position"] as Vector3

@@ -6,6 +6,12 @@ extends NavigationRegion3D
 
 signal navigation_ready
 signal navigation_failed(reason: String)
+signal building_blocker_added(blocker_rect: Rect2)
+signal navigation_rebake_failed(reason: String)
+signal navigation_rebake_degraded(blocker_count: int, reason: String)
+
+const MAX_NAV_REBAKE_RETRIES: int = 3
+const NAV_REBAKE_RETRY_COOLDOWN_SEC: float = 1.0
 
 enum QueryStatus {
 	OK,
@@ -103,6 +109,7 @@ class CandidateSession extends RefCounted:
 
 class AsyncBakeToken extends RefCounted:
 	var cancelled: bool = false
+	var revision: int = 0
 
 	func cancel() -> void:
 		cancelled = true
@@ -126,9 +133,22 @@ var _cached_static_source_id: int = 0
 var _cached_static_bounds: Rect2 = Rect2()
 var _has_static_geometry_cache: bool = false
 var _active_async_tokens: Array[AsyncBakeToken] = []
+var _additional_source_roots: Array[Node] = []
+var _pending_building_blockers: Array[Dictionary] = []
+var _active_rebake_token: AsyncBakeToken = null
+var _active_rebake_started_usec: int = 0
+var _active_rebake_attempts: int = 0
+var _active_sync_revision: int = -1
+var _last_valid_navigation_mesh: NavigationMesh = null
+var _rebake_degraded: bool = false
+var _last_active_prepare_ms: float = 0.0
+var _last_active_bake_ms: float = 0.0
+var _last_active_sync_ms: float = 0.0
+var _applied_building_revision: int = -1
 
 
 func _exit_tree() -> void:
+	_cancel_active_rebake()
 	for tok: AsyncBakeToken in _active_async_tokens:
 		if tok != null:
 			tok.cancel()
@@ -146,12 +166,19 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if _active_rebake_token != null and not _is_syncing:
+		if Time.get_ticks_usec() - _active_rebake_started_usec > int(SYNC_TIMEOUT_SEC * 1_000_000):
+			_fail_active_rebake("bake_timeout")
+		return
 	if not _is_syncing:
 		set_physics_process(false)
 		return
 
 	var elapsed_sec: float = float(Time.get_ticks_usec() - _sync_started_usec) / 1_000_000.0
 	if elapsed_sec > SYNC_TIMEOUT_SEC:
+		if _active_sync_revision >= 0:
+			_fail_active_rebake("sync_timeout")
+			return
 		_is_syncing = false
 		_is_ready = false
 		_navigation_revision += 1
@@ -161,10 +188,22 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	if _check_navigation_server_ready():
+		if _active_sync_revision >= 0 and _active_sync_revision != _navigation_revision:
+			request_async_active_rebake()
+			return
 		_is_syncing = false
 		_is_ready = true
-		_navigation_revision += 1
 		_last_sync_ms = float(Time.get_ticks_usec() - _sync_started_usec) / 1000.0
+		_last_valid_navigation_mesh = navigation_mesh
+		if _active_sync_revision >= 0:
+			_applied_building_revision = _active_sync_revision
+			_clear_applied_building_blockers(_active_sync_revision)
+			_active_sync_revision = -1
+			_active_rebake_token = null
+			_active_rebake_attempts = 0
+			_last_active_sync_ms = _last_sync_ms
+			_rebake_degraded = not _pending_building_blockers.is_empty()
+		_navigation_revision += 1
 		set_physics_process(false)
 		navigation_ready.emit()
 
@@ -194,13 +233,185 @@ func invalidate_static_geometry_cache() -> void:
 		_navigation_revision += 1
 
 
-# Occupancy changed: invalidate in-flight candidates even when no cache existed.
-# T3.4.4 does not bake, register source roots or alter the active navigation map.
-func notify_building_geometry_changed() -> void:
-	var previous_revision: int = _navigation_revision
-	invalidate_static_geometry_cache()
-	if _navigation_revision == previous_revision:
-		_navigation_revision += 1
+# Occupancy revisions invalidate candidates without discarding terrain + ramp curbs.
+func notify_building_geometry_changed(building: BuildingInstance = null) -> void:
+	_navigation_revision += 1
+	if building == null or not _is_regional_building(building):
+		return
+	for blocker: Dictionary in _pending_building_blockers:
+		if blocker["instance_id"] == building.get_instance_id():
+			return
+	var rect: Rect2 = building.get_footprint_rect().grow(DEFAULT_AGENT_RADIUS)
+	_pending_building_blockers.append({"rect": rect, "instance_id": building.get_instance_id(),
+		"building_id": building.building_id, "region_id": building.region_id,
+		"revision": _navigation_revision, "permanent_degraded": false})
+	_active_rebake_attempts = 0
+	building_blocker_added.emit(rect)
+
+
+func get_region_id() -> StringName:
+	var cursor: Node = self
+	while cursor != null:
+		if cursor.has_meta(&"region_id"):
+			return StringName(cursor.get_meta(&"region_id"))
+		cursor = cursor.get_parent()
+	return &"default"
+
+
+func register_additional_source_root(root: Node) -> void:
+	if not (root is Node3D) or not root.is_inside_tree() or not is_inside_tree():
+		return
+	if (root as Node3D).get_world_3d() != get_world_3d() or StringName(root.get_meta(&"region_id", &"default")) != get_region_id():
+		return
+	if not _additional_source_roots.has(root):
+		_additional_source_roots.append(root)
+
+
+func unregister_additional_source_root(root: Node) -> void:
+	_additional_source_roots.erase(root)
+
+
+func _is_regional_building(building: BuildingInstance) -> bool:
+	return is_instance_valid(building) and building.is_inside_tree() and building.is_valid() and building.region_id == get_region_id() and building.get_world_3d() == get_world_3d()
+
+
+func get_pending_route_reason(from_pos: Vector3, to_pos: Vector3) -> String:
+	if _pending_building_blockers.is_empty():
+		return ""
+	var reason: String = ""
+	for blocker: Dictionary in _pending_building_blockers:
+		var rect: Rect2 = blocker["rect"]
+		if not _segment_intersects_rect(from_pos, to_pos, rect):
+			continue
+		if blocker["permanent_degraded"]:
+			return "navigation_rebake_degraded"
+		if rect.has_point(Vector2(to_pos.x, to_pos.z)):
+			reason = "pending_building_blocker"
+		elif reason.is_empty():
+			reason = "pending_building_nav_sync"
+	return reason
+
+
+func is_route_blocked_by_pending_building(from_pos: Vector3, to_pos: Vector3) -> bool:
+	return not get_pending_route_reason(from_pos, to_pos).is_empty()
+
+
+func does_path_intersect_pending_blockers(path: PackedVector3Array, from_index: int = 0) -> bool:
+	if _pending_building_blockers.is_empty() or path.is_empty():
+		return false
+	for idx: int in range(maxi(0, from_index), path.size()):
+		if is_route_blocked_by_pending_building(path[idx], path[mini(idx + 1, path.size() - 1)]):
+			return true
+	return false
+
+
+static func _segment_intersects_rect(a: Vector3, b: Vector3, rect: Rect2) -> bool:
+	var t_min: float = 0.0
+	var t_max: float = 1.0
+	var start := Vector2(a.x, a.z)
+	var direction := Vector2(b.x - a.x, b.z - a.z)
+	for axis: int in range(2):
+		if absf(direction[axis]) < 0.000001:
+			if start[axis] < rect.position[axis] or start[axis] > rect.end[axis]:
+				return false
+		else:
+			var first: float = (rect.position[axis] - start[axis]) / direction[axis]
+			var last: float = (rect.end[axis] - start[axis]) / direction[axis]
+			t_min = maxf(t_min, minf(first, last))
+			t_max = minf(t_max, maxf(first, last))
+			if t_min > t_max:
+				return false
+	return true
+
+
+func _clear_applied_building_blockers(revision: int) -> void:
+	for idx: int in range(_pending_building_blockers.size() - 1, -1, -1):
+		if int(_pending_building_blockers[idx]["revision"]) <= revision:
+			_pending_building_blockers.remove_at(idx)
+
+
+func can_retry_active_rebake() -> bool:
+	return _active_rebake_attempts < MAX_NAV_REBAKE_RETRIES and not _pending_building_blockers.is_empty()
+
+
+func _cancel_active_rebake() -> void:
+	if _active_rebake_token != null:
+		_active_rebake_token.cancel()
+	_active_rebake_token = null
+	if _active_sync_revision >= 0:
+		_is_syncing = false
+	_active_sync_revision = -1
+
+
+func request_async_active_rebake() -> void:
+	if not is_inside_tree():
+		return
+	if not _is_ready:
+		if not navigation_ready.is_connected(request_async_active_rebake):
+			navigation_ready.connect(request_async_active_rebake, CONNECT_ONE_SHOT)
+		return
+	_cancel_active_rebake()
+	_active_rebake_attempts += 1
+	var token := AsyncBakeToken.new()
+	token.revision = _navigation_revision
+	_active_rebake_token = token
+	_active_rebake_started_usec = Time.get_ticks_usec()
+	set_physics_process(true)
+	var prep: Dictionary = _prepare_candidate_build_inputs([])
+	if not bool(prep.get("ok", false)):
+		_fail_active_rebake(String(prep.get("reason", "active_prep_failed")))
+		return
+	_last_active_prepare_ms = float(prep["prepare_ms"])
+	var mesh: NavigationMesh = prep["nav_mesh"]
+	var source: NavigationMeshSourceGeometryData3D = prep["source_data"]
+	var callback := WorldNavigation._dispatch_active_bake_complete.bind(weakref(self), token, mesh, Time.get_ticks_usec())
+	NavigationServer3D.bake_from_source_geometry_data_async(mesh, source, callback)
+
+
+static func _dispatch_active_bake_complete(owner_ref: WeakRef, token: AsyncBakeToken, mesh: NavigationMesh, started: int) -> void:
+	var owner_nav: WorldNavigation = owner_ref.get_ref() as WorldNavigation
+	if token.cancelled or not is_instance_valid(owner_nav) or not owner_nav.is_inside_tree():
+		return
+	owner_nav._on_active_rebake_async_complete(token, mesh, started)
+
+
+func _on_active_rebake_async_complete(token: AsyncBakeToken, mesh: NavigationMesh, started: int) -> void:
+	if token != _active_rebake_token or token.cancelled:
+		return
+	if token.revision != _navigation_revision:
+		request_async_active_rebake()
+		return
+	_last_active_bake_ms = float(Time.get_ticks_usec() - started) / 1000.0
+	if mesh == null or mesh.get_polygon_count() == 0:
+		_fail_active_rebake("empty_active_navmesh")
+		return
+	_sync_min_map_iteration = NavigationServer3D.map_get_iteration_id(get_navigation_map()) + 1
+	_sync_min_region_iteration = NavigationServer3D.region_get_iteration_id(get_region_rid()) + 1
+	_active_sync_revision = token.revision
+	navigation_mesh = mesh
+	_sync_started_usec = Time.get_ticks_usec()
+	_is_syncing = true
+	set_physics_process(true)
+
+
+func _fail_active_rebake(reason: String) -> void:
+	_cancel_active_rebake()
+	if _last_valid_navigation_mesh != null:
+		navigation_mesh = _last_valid_navigation_mesh
+	_navigation_revision += 1
+	set_physics_process(false)
+	if _active_rebake_attempts >= MAX_NAV_REBAKE_RETRIES:
+		_rebake_degraded = true
+		for blocker: Dictionary in _pending_building_blockers:
+			blocker["permanent_degraded"] = true
+		_report_degraded_error(reason)
+		navigation_rebake_degraded.emit(_pending_building_blockers.size(), reason)
+		navigation_failed.emit(reason)
+	navigation_rebake_failed.emit(reason)
+
+
+func _report_degraded_error(reason: String) -> void:
+	push_error("WorldNavigation: navigation_rebake_degraded after %d attempts: %s (%d blockers retained)." % [_active_rebake_attempts, reason, _pending_building_blockers.size()])
 
 
 func has_static_geometry_cache() -> bool:
@@ -219,6 +430,9 @@ func get_last_bake_metrics() -> Dictionary:
 		poly_count = navigation_mesh.get_polygon_count()
 	return {
 		"bake_ms": _last_bake_ms,
+		"active_prepare_ms": _last_active_prepare_ms,
+		"active_bake_ms": _last_active_bake_ms,
+		"active_sync_ms": _last_active_sync_ms,
 		"sync_ms": _last_sync_ms,
 		"total_ms": _last_bake_ms + _last_sync_ms,
 		"vertex_count": vert_count,
@@ -229,6 +443,7 @@ func get_last_bake_metrics() -> Dictionary:
 ## Bakes the NavigationMesh from static colliders under source_root_path and
 ## starts asynchronous readiness verification against NavigationServer3D.
 func request_rebake() -> void:
+	_cancel_active_rebake()
 	_is_ready = false
 	_is_syncing = false
 	_navigation_revision += 1
@@ -247,6 +462,7 @@ func request_rebake() -> void:
 	NavigationServer3D.parse_source_geometry_data(nav_mesh, source_data, source_root)
 	_append_sloped_terrain_side_curbs(source_root, source_data)
 	_store_static_geometry_cache(source_root, source_data)
+	_append_registered_building_geometry(source_data, [])
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_data)
 	_last_bake_ms = float(Time.get_ticks_usec() - bake_start_usec) / 1000.0
 
@@ -286,7 +502,25 @@ func find_path(from_pos: Vector3, to_pos: Vector3, optimize: bool = true) -> Pat
 		not_ready.resolved_target = from_pos
 		not_ready.reason = "navigation_not_ready"
 		return not_ready
-	return query_path_on_map(get_navigation_map(), from_pos, to_pos, optimize)
+	if from_pos.is_finite() and to_pos.is_finite():
+		var direct_reason: String = get_pending_route_reason(from_pos, to_pos)
+		if not direct_reason.is_empty():
+			return _blocked_path_result(from_pos, direct_reason)
+	var result: PathResult = query_path_on_map(get_navigation_map(), from_pos, to_pos, optimize)
+	if not _pending_building_blockers.is_empty():
+		for idx: int in range(result.path.size() - 1):
+			var path_reason: String = get_pending_route_reason(result.path[idx], result.path[idx + 1])
+			if not path_reason.is_empty():
+				return _blocked_path_result(from_pos, path_reason)
+	return result
+
+
+func _blocked_path_result(origin: Vector3, reason: String) -> PathResult:
+	var result := PathResult.new()
+	result.status = QueryStatus.NOT_READY if reason == "pending_building_nav_sync" else QueryStatus.PARTIAL_UNREACHABLE
+	result.resolved_target = origin
+	result.reason = reason
+	return result
 
 
 static func query_path_on_map(
@@ -468,6 +702,7 @@ func _prepare_candidate_build_inputs(candidate_boxes: Array[Dictionary]) -> Dict
 		NavigationServer3D.parse_source_geometry_data(cand_nav, source_data, source_root)
 		_append_sloped_terrain_side_curbs(source_root, source_data)
 		_store_static_geometry_cache(source_root, source_data)
+	_append_registered_building_geometry(source_data, candidate_boxes)
 
 	for box_entry: Dictionary in candidate_boxes:
 		var box_pos: Variant = box_entry.get("position")
@@ -491,6 +726,35 @@ func _prepare_candidate_build_inputs(candidate_boxes: Array[Dictionary]) -> Dict
 		"source_data": source_data,
 		"prepare_ms": prepare_ms,
 	}
+
+
+func _append_registered_building_geometry(source: NavigationMeshSourceGeometryData3D, supplied_boxes: Array[Dictionary]) -> void:
+	# Read the actual permanent collision shapes, not rendered meshes. Candidate
+	# callers already supply some building boxes; include each obstacle only once.
+	var visited: Dictionary = {}
+	for idx: int in range(_additional_source_roots.size() - 1, -1, -1):
+		var extra: Node = _additional_source_roots[idx]
+		if not is_instance_valid(extra) or not extra.is_inside_tree():
+			_additional_source_roots.remove_at(idx)
+			continue
+		if not (extra is Node3D) or (extra as Node3D).get_world_3d() != get_world_3d() or StringName(extra.get_meta(&"region_id", &"default")) != get_region_id():
+			continue
+		for child: Node in extra.get_children():
+			var building: BuildingInstance = child as BuildingInstance
+			if not _is_regional_building(building) or visited.has(building.get_instance_id()):
+				continue
+			visited[building.get_instance_id()] = true
+			var box: BoxShape3D = building._shape.shape as BoxShape3D
+			var supplied: bool = false
+			for entry: Dictionary in supplied_boxes:
+				if entry.get("position") == building.global_position and entry.get("size") == box.size:
+					supplied = true
+					break
+			if not supplied:
+				# Same below-floor overlap as placement boxes, including sloped ground.
+				var shape_transform: Transform3D = building._shape.global_transform
+				shape_transform.origin -= shape_transform.basis.y * 0.15
+				source.add_faces(_build_box_faces(box.size + Vector3(0, 0.3, 0)), shape_transform)
 
 
 func _finalize_candidate_session(

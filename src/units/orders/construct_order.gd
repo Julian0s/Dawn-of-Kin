@@ -50,6 +50,8 @@ var _target_resource_id: StringName = &""
 var _target_resource_def: ResourceDefinition = null
 var _target_pile_pos: Vector3 = Vector3.ZERO
 var _planned_pickup_amount: int = 0
+var _waiting_for_navigation: bool = false
+var _slot_navigation_pending: bool = false
 var _deliver_suborder: DeliverToCampOrder = null
 
 
@@ -163,6 +165,9 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 
 	if not _world_nav.is_navigation_ready():
 		# Wait briefly if a dynamic rebake is syncing rather than failing immediately.
+		return
+
+	if _waiting_for_navigation:
 		return
 
 	var current_rev: int = _world_nav.get_navigation_revision()
@@ -360,6 +365,9 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 
 	if not bool(candidate.get("found", false)):
 		var fail_reason: String = str(candidate.get("reason", "no_reserved_piles"))
+		if fail_reason == "pending_building_nav_sync":
+			_wait_for_navigation()
+			return
 		if fail_reason == "pile_unreachable":
 			_finish_failed(REASON_PILE_UNREACHABLE)
 			return
@@ -578,6 +586,9 @@ func _start_moving_to_site_dropoff(movement: UnitMovement) -> void:
 		occupied
 	)
 	if not bool(slot_res.get("valid", false)):
+		if slot_res.get("reason", "") == "pending_building_nav_sync":
+			_wait_for_navigation()
+			return
 		_finish_failed(REASON_SITE_UNREACHABLE)
 		return
 
@@ -672,6 +683,7 @@ func _execute_site_dropoff(movement: UnitMovement) -> void:
 
 
 func _resolve_or_assign_builder_anchor(slot_idx: int) -> Vector3:
+	_slot_navigation_pending = false
 	var existing: Dictionary = site.get_assigned_builder_slot_position(_unit)
 	if not existing.is_empty() and int(existing.get("slot_idx", -1)) == slot_idx:
 		var existing_pos: Vector3 = existing.get("position", Vector3(INF, INF, INF)) as Vector3
@@ -694,6 +706,7 @@ func _resolve_or_assign_builder_anchor(slot_idx: int) -> Vector3:
 		slot_idx
 	)
 	if not bool(slot_res.get("valid", false)):
+		_slot_navigation_pending = slot_res.get("reason", "") == "pending_building_nav_sync"
 		return Vector3(INF, INF, INF)
 
 	var resolved_pos: Vector3 = slot_res["position"] as Vector3
@@ -999,6 +1012,9 @@ func _start_waiting_for_peer_supply(movement: UnitMovement) -> void:
 		occupied
 	)
 	if not bool(slot_res.get("valid", false)):
+		if slot_res.get("reason", "") == "pending_building_nav_sync":
+			_wait_for_navigation()
+			return
 		_finish_failed(REASON_SITE_UNREACHABLE)
 		return
 
@@ -1110,6 +1126,10 @@ func _bind_site_signals() -> void:
 
 
 func _unbind_site_signals() -> void:
+	_waiting_for_navigation = false
+	if is_instance_valid(_world_nav) and _world_nav.navigation_ready.is_connected(_on_pending_navigation_ready):
+		_world_nav.navigation_ready.disconnect(_on_pending_navigation_ready)
+		_world_nav.navigation_rebake_degraded.disconnect(_on_pending_navigation_degraded)
 	if not _site_signals_bound:
 		return
 	if site != null and is_instance_valid(site):
@@ -1156,7 +1176,31 @@ func _finish_succeeded() -> void:
 	mark_succeeded()
 
 
+func _wait_for_navigation() -> void:
+	_waiting_for_navigation = true
+	_slot_navigation_pending = false
+	if _movement != null:
+		_movement.stop_movement()
+	if not _world_nav.navigation_ready.is_connected(_on_pending_navigation_ready):
+		_world_nav.navigation_ready.connect(_on_pending_navigation_ready)
+		_world_nav.navigation_rebake_degraded.connect(_on_pending_navigation_degraded)
+
+
+func _on_pending_navigation_ready() -> void:
+	_waiting_for_navigation = false
+	_replan_requested = true
+
+
+func _on_pending_navigation_degraded(_count: int, _reason: String) -> void:
+	if _waiting_for_navigation:
+		_waiting_for_navigation = false
+		_finish_failed(REASON_UNREACHABLE)
+
+
 func _finish_failed(reason: String) -> void:
+	if _slot_navigation_pending and reason == REASON_SITE_UNREACHABLE:
+		_wait_for_navigation()
+		return
 	_deliver_suborder = null
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)

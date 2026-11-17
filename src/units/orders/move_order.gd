@@ -52,6 +52,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	var path_result: WorldNavigation.PathResult = nav.find_path(unit_body.global_position, target_position)
 	match path_result.status:
 		WorldNavigation.QueryStatus.NOT_READY:
+			navigation_reason = path_result.reason
 			mark_failed(REASON_NAVIGATION_NOT_READY)
 			return
 		WorldNavigation.QueryStatus.INVALID_QUERY:

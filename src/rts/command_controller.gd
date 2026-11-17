@@ -117,6 +117,11 @@ func command_at(pick: PickResult) -> bool:
 
 	if not requested_target.is_finite():
 		return false
+	for unit: Unit in units:
+		if _world_navigation.is_route_blocked_by_pending_building(unit.global_position, requested_target):
+			_last_command_reason = _world_navigation.get_pending_route_reason(unit.global_position, requested_target)
+			command_rejected.emit(pick, _last_command_reason)
+			return false
 
 	var unit_positions: Array[Vector3] = []
 	for unit: Unit in units:
@@ -138,7 +143,16 @@ func command_at(pick: PickResult) -> bool:
 	_last_plan = plan
 	if not plan.valid or plan.targets.size() != units.size():
 		return false
-
+	# Validate all members before issuing any order: fallback formation geometry
+	# must never bypass a pending blocker or partially replace the group's orders.
+	if not _world_navigation._pending_building_blockers.is_empty():
+		for idx: int in range(units.size()):
+			var origin: Vector3 = units[idx].global_position
+			var query: WorldNavigation.PathResult = _world_navigation.find_path(origin, plan.targets[idx])
+			if _world_navigation.is_route_blocked_by_pending_building(origin, plan.targets[idx]) or query.reason in ["pending_building_nav_sync", "pending_building_blocker", "navigation_rebake_degraded"]:
+				_last_command_reason = query.reason
+				command_rejected.emit(pick, _last_command_reason)
+				return false
 	for idx: int in range(units.size()):
 		var unit: Unit = units[idx]
 		if unit.get_world_navigation() == null:

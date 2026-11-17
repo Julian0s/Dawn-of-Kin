@@ -71,6 +71,8 @@ var _no_progress_timer: float = 0.0
 var _repath_attempts: int = 0
 var _safe_velocity: Vector3 = Vector3.ZERO
 var _has_safe_velocity: bool = false
+var _awaiting_pending_nav_sync: bool = false
+var _navigation_failure_reason: String = ""
 
 
 func _ready() -> void:
@@ -81,6 +83,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_disconnect_navigation_signals()
 	_disconnect_agent_signals()
 	_disconnect_carry_load_signals()
 
@@ -96,7 +99,9 @@ func configure(body: CharacterBody3D, agent: NavigationAgent3D = null) -> void:
 
 
 func set_world_navigation(world_nav: WorldNavigation) -> void:
+	_disconnect_navigation_signals()
 	_world_navigation = world_nav
+	_connect_navigation_signals()
 	_bind_agent_map()
 
 
@@ -204,11 +209,22 @@ func begin_move_to(target: Vector3) -> bool:
 	_bind_agent_map()
 	_recompute_target_speed(_move_state != MoveState.MOVING)
 	_target_position = target
+	_navigation_failure_reason = ""
+	_awaiting_pending_nav_sync = false
 	_repath_attempts = 0
 	_no_progress_timer = 0.0
 	_progress_anchor_xz = Vector2(_body.global_position.x, _body.global_position.z)
 	_safe_velocity = Vector3.ZERO
 	_has_safe_velocity = false
+	if _world_navigation != null:
+		var query: WorldNavigation.PathResult = _world_navigation.find_path(_body.global_position, target)
+		if query.reason == "pending_building_nav_sync":
+			_move_state = MoveState.MOVING
+			_wait_for_pending_navigation()
+			return true
+		if query.reason in ["pending_building_blocker", "navigation_rebake_degraded"]:
+			_fail_pending_navigation(query.reason)
+			return false
 
 	if is_at_target(_target_position):
 		_move_state = MoveState.ARRIVED
@@ -222,10 +238,12 @@ func begin_move_to(target: Vector3) -> bool:
 	_agent.get_next_path_position()
 	_refresh_active_path()
 	_move_state = MoveState.MOVING
+	_check_pending_path()
 	return true
 
 
 func stop_movement() -> void:
+	_awaiting_pending_nav_sync = false
 	_move_state = MoveState.IDLE
 	_no_progress_timer = 0.0
 	_repath_attempts = 0
@@ -266,6 +284,12 @@ func step_movement(delta: float) -> void:
 		vel.y -= _gravity * delta
 	elif vel.y < 0.0:
 		vel.y = 0.0
+	if _move_state == MoveState.MOVING:
+		_check_pending_path()
+	if _awaiting_pending_nav_sync:
+		_body.velocity = Vector3(0.0, vel.y, 0.0)
+		_body.move_and_slide()
+		return
 
 	if _move_state != MoveState.MOVING:
 		if _agent != null and _agent.avoidance_enabled:
@@ -292,6 +316,10 @@ func step_movement(delta: float) -> void:
 	_advance_effective_speed(delta)
 
 	var steer_point: Vector3 = _resolve_steer_point()
+	if _awaiting_pending_nav_sync or _move_state == MoveState.FAILED_INVALID:
+		_body.velocity = Vector3(0, vel.y, 0)
+		_body.move_and_slide()
+		return
 	var body_pos: Vector3 = _body.global_position
 	var delta_xz: Vector2 = Vector2(steer_point.x - body_pos.x, steer_point.z - body_pos.z)
 	var dist_xz: float = delta_xz.length()
@@ -320,6 +348,12 @@ func step_movement(delta: float) -> void:
 
 	vel.x = applied_xz.x
 	vel.z = applied_xz.y
+	if _world_navigation != null and _world_navigation.is_route_blocked_by_pending_building(body_pos, body_pos + Vector3(applied_xz.x, 0, applied_xz.y) * delta):
+		_check_pending_path()
+		_wait_for_pending_navigation()
+		_body.velocity = Vector3(0, vel.y, 0)
+		_body.move_and_slide()
+		return
 
 	if applied_xz.length() > AVOIDANCE_MIN_ROTATION_SPEED:
 		var move_dir: Vector2 = applied_xz.normalized()
@@ -389,6 +423,7 @@ func _refresh_active_path() -> void:
 				_active_path_index += 1
 			else:
 				break
+	_check_pending_path()
 
 
 func _update_stuck_detection(delta: float) -> void:
@@ -417,6 +452,15 @@ func _update_stuck_detection(delta: float) -> void:
 func _perform_controlled_repath() -> void:
 	if _world_navigation != null and _world_navigation.is_navigation_ready():
 		var repath_result: WorldNavigation.PathResult = _world_navigation.find_path(_body.global_position, _target_position)
+		if repath_result.reason == "pending_building_nav_sync":
+			_wait_for_pending_navigation()
+			return
+		if repath_result.reason in ["navigation_rebake_degraded", "pending_building_blocker"]:
+			_fail_pending_navigation(repath_result.reason)
+			return
+		if repath_result.path.is_empty() and not repath_result.is_ok():
+			_fail_pending_navigation(repath_result.reason)
+			return
 		if repath_result.status == WorldNavigation.QueryStatus.OK or (
 			repath_result.status == WorldNavigation.QueryStatus.PARTIAL_UNREACHABLE
 			and not repath_result.path.is_empty()
@@ -426,6 +470,80 @@ func _perform_controlled_repath() -> void:
 	_agent.target_position = _target_position
 	_agent.get_next_path_position()
 	_refresh_active_path()
+	_check_pending_path()
+
+
+func _connect_navigation_signals() -> void:
+	if not is_instance_valid(_world_navigation):
+		return
+	if not _world_navigation.building_blocker_added.is_connected(_on_building_blocker_added):
+		_world_navigation.building_blocker_added.connect(_on_building_blocker_added)
+		_world_navigation.navigation_ready.connect(_on_navigation_ready)
+		_world_navigation.navigation_rebake_degraded.connect(_on_navigation_degraded)
+
+
+func _disconnect_navigation_signals() -> void:
+	if is_instance_valid(_world_navigation) and _world_navigation.building_blocker_added.is_connected(_on_building_blocker_added):
+		_world_navigation.building_blocker_added.disconnect(_on_building_blocker_added)
+		_world_navigation.navigation_ready.disconnect(_on_navigation_ready)
+		_world_navigation.navigation_rebake_degraded.disconnect(_on_navigation_degraded)
+
+
+func _on_building_blocker_added(_rect: Rect2) -> void:
+	_check_pending_path()
+
+
+func _check_pending_path() -> void:
+	if _move_state != MoveState.MOVING or _world_navigation == null or _world_navigation._pending_building_blockers.is_empty():
+		return
+	var path: PackedVector3Array = PackedVector3Array([_body.global_position])
+	for idx: int in range(_active_path_index, _active_path.size()):
+		path.append(_active_path[idx])
+	if path.size() == 1:
+		path.append(_target_position)
+	# Also protect paths cached directly in NavigationAgent3D on the old mesh.
+	var agent_path: PackedVector3Array = _agent.get_current_navigation_path() if _agent != null else PackedVector3Array()
+	var intersects_agent: bool = _world_navigation.does_path_intersect_pending_blockers(agent_path, _agent.get_current_navigation_path_index() if _agent != null else 0)
+	if not _world_navigation.does_path_intersect_pending_blockers(path) and not intersects_agent:
+		return
+	for idx: int in range(path.size() - 1):
+		if _world_navigation.get_pending_route_reason(path[idx], path[idx + 1]) == "navigation_rebake_degraded":
+			_fail_pending_navigation("navigation_rebake_degraded")
+			return
+	_wait_for_pending_navigation()
+
+
+func _wait_for_pending_navigation() -> void:
+	_awaiting_pending_nav_sync = true
+	_no_progress_timer = 0.0
+	_safe_velocity = Vector3.ZERO
+	_has_safe_velocity = false
+	if _body != null:
+		_body.velocity.x = 0.0
+		_body.velocity.z = 0.0
+	if _agent != null:
+		_agent.set_velocity(Vector3.ZERO)
+
+
+func _fail_pending_navigation(reason: String) -> void:
+	_wait_for_pending_navigation()
+	_awaiting_pending_nav_sync = false
+	_navigation_failure_reason = reason
+	_move_state = MoveState.FAILED_INVALID
+
+
+func _on_navigation_ready() -> void:
+	if not _awaiting_pending_nav_sync or _move_state != MoveState.MOVING:
+		return
+	_awaiting_pending_nav_sync = false
+	_no_progress_timer = 0.0
+	_progress_anchor_xz = Vector2(_body.global_position.x, _body.global_position.z)
+	_perform_controlled_repath()
+
+
+func _on_navigation_degraded(_count: int, _reason: String) -> void:
+	if _awaiting_pending_nav_sync:
+		_fail_pending_navigation("navigation_rebake_degraded")
 
 
 func _try_terrain_step_up(dir_xz: Vector2, desired_step: float) -> void:
@@ -483,7 +601,7 @@ func _resolve_nodes() -> void:
 	if _agent == null:
 		_agent = get_node_or_null(navigation_agent_path) as NavigationAgent3D
 	if _world_navigation == null:
-		_world_navigation = _find_world_navigation()
+		set_world_navigation(_find_world_navigation())
 
 
 func _configure_body_and_agent() -> void:

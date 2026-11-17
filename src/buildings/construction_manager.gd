@@ -26,6 +26,7 @@ var _completed_buildings: Array[BuildingInstance] = []
 var _queued_completions: Dictionary = {}
 var _completion_in_progress: bool = false
 var _retry_timers: Dictionary = {}
+var _navigation_retry_timer: Timer = null
 
 
 func configure(
@@ -47,6 +48,35 @@ func configure(
 		_buildings_root.name = "CompletedBuildings"
 		_buildings_root.set_meta(&"region_id", _region_id)
 		_sites_root.get_parent().add_child(_buildings_root)
+		if is_instance_valid(_world_navigation):
+			_world_navigation.register_additional_source_root(_buildings_root)
+			if not _world_navigation.navigation_rebake_failed.is_connected(_on_navigation_rebake_failed):
+				_world_navigation.navigation_rebake_failed.connect(_on_navigation_rebake_failed)
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(_world_navigation):
+		_world_navigation.unregister_additional_source_root(_buildings_root)
+		if _world_navigation.navigation_rebake_failed.is_connected(_on_navigation_rebake_failed):
+			_world_navigation.navigation_rebake_failed.disconnect(_on_navigation_rebake_failed)
+
+
+func _on_navigation_rebake_failed(_reason: String) -> void:
+	if not is_instance_valid(_world_navigation) or not _world_navigation.can_retry_active_rebake() or is_instance_valid(_navigation_retry_timer):
+		return
+	_navigation_retry_timer = Timer.new()
+	_navigation_retry_timer.one_shot = true
+	_navigation_retry_timer.wait_time = WorldNavigation.NAV_REBAKE_RETRY_COOLDOWN_SEC
+	add_child(_navigation_retry_timer)
+	_navigation_retry_timer.timeout.connect(_retry_navigation_bake)
+	_navigation_retry_timer.start()
+
+
+func _retry_navigation_bake() -> void:
+	_navigation_retry_timer.queue_free()
+	_navigation_retry_timer = null
+	if is_instance_valid(_world_navigation) and _world_navigation.can_retry_active_rebake() and _world_navigation._active_rebake_token == null:
+		_world_navigation.request_async_active_rebake()
 
 
 func get_region_id() -> StringName:
@@ -169,12 +199,14 @@ func complete_site_transaction(site: ConstructionSite, building_instance: Buildi
 		return false
 	_completed_buildings.append(building)
 	# Both footprints are registered before any completion callback can run.
+	if is_instance_valid(_world_navigation):
+		_world_navigation.notify_building_geometry_changed(building)
 	site.commit_completed_building(building)
 	_sites.erase(site)
 	_sites_root.remove_child(site)
 	site.queue_free()
 	if is_instance_valid(_world_navigation):
-		_world_navigation.notify_building_geometry_changed()
+		_world_navigation.request_async_active_rebake()
 	_completion_in_progress = false
 	return true
 
