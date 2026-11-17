@@ -1,14 +1,21 @@
-# DAWN OF KIN — RELATÓRIO TÉCNICO CANDIDATO T3.4.1
+# DAWN OF KIN — RELATÓRIO TÉCNICO E REGISTRO DE HOMOLOGAÇÃO T3.4.1
 
 **Etapa:** `T3.4.1` — Contabilidade Separada, Complementação Manual (`DEC-11B`), Intenção Tipada (`ManualComplementIntent`) e Estados do Canteiro<br>
-**Status:** **CANDIDATA PARA AUDITORIA INDEPENDENTE — NÃO HOMOLOGADA / SEM MERGE**<br>
+**Status:** **T3.4.1 HOMOLOGADA FORMALMENTE PELO PROPRIETÁRIO** *(SEM MERGE / `T3.4.2–T3.4.5` BLOQUEADAS)*<br>
+**Data da Homologação:** `16/11/2026`<br>
+**Commit Homologado:** `ac88139a40f2b1cd38ca039f191e06fc1be96ac3`<br>
 **Branch:** `feat/t3-4-1-accounting-reservations`<br>
 **Worktree Isolado:** `C:\Projetos\Dawn_of_Kin_wt_t3_4_1`<br>
 **Base Oficial (`origin/main`):** `518aec6da477c6105b60844a106cb7322246b53a`<br>
 **Arquitetura Referência Aprovada (`T3.4-R2.3`):** commit `da20244f4320f0ae5e03236553f5c0e3f57f3a6f` (registro de aprovação `39cdaac674d78111efd300b70b8f2f3909e347f9` em `planning/t3-4-architecture-r2`)<br>
-**Último Marco Homologado:** `t3-3-complete` (`c7947c9630c102a9d77603cac0bae68678247c95`)<br>
+**Último Marco Homologado Anterior:** `t3-3-complete` (`c7947c9630c102a9d77603cac0bae68678247c95`)<br>
 **Engine Validada:** Godot `4.7.2.stable.official.ed1daf0bf` (`--headless`)<br>
 **Data:** 16 de novembro de 2026
+
+> **Registro Formal de Homologação (`16/11/2026`):** O proprietário declarou: *"Homologo formalmente a implementação T3.4.1 do Dawn of Kin, na branch `feat/t3-4-1-accounting-reservations`, commit `ac88139a40f2b1cd38ca039f191e06fc1be96ac3`. Autorizo apenas o registro documental desta homologação. Não autorizo merge nem a implementação T3.4.2 ou etapas posteriores."*<br>
+> - **Escopo do registro:** o commit posterior a `ac88139` é exclusivamente o **registro documental da homologação do commit `ac88139`**, preservando integralmente todo o conteúdo técnico e de testes homologado (zero alterações funcionais).<br>
+> - **Ressalva de auditoria:** os testes automatizados (`35/35` suítes, `242/242` testes, `7.882` asserções, `0` falhas, com reconciliação documentada das contagens e atendimento às duas condições vinculantes `T34-AUT-01` e `T34-AUT-03`) foram executados pelo Antigravity e auditados estaticamente pelo ChatGPT, sem execução independente do Godot pelo ChatGPT.<br>
+> - **Bloqueio mantido:** nenhum merge para `main`, nenhuma tag nova e nenhuma implementação de `T3.4.2–T3.4.5` estão autorizados.
 
 ---
 
@@ -115,7 +122,7 @@ Todos os comandos abaixo foram executados no worktree isolado `C:\Projetos\Dawn_
 
 ---
 
-## 7. Pendências Técnicas e de Governança Reais
+## 7. Estado Formal de Homologação e Pendências de Governança
 
-- Auditoria independente do ChatGPT e revisão/aceite do proprietário sobre este candidato `T3.4.1` na branch `feat/t3-4-1-accounting-reservations`.
-- Autorização expressa futura antes de iniciar a implementação de **`T3.4.2`** (`contribute_work`, microssegundos e ocupação de slot) ou etapas subsequentes (`T3.4.3–T3.4.5`).
+- **Homologação concluída (`16/11/2026`):** implementação `T3.4.1` formalmente homologada pelo proprietário no commit `ac88139a40f2b1cd38ca039f191e06fc1be96ac3` (branch `feat/t3-4-1-accounting-reservations`), aderente à arquitetura `T3.4-R2.3` aprovada (`da20244f4320f0ae5e03236553f5c0e3f57f3a6f`), com `35/35` suítes (`242/242` testes, `7.882` asserções), reconciliação documentada das diferenças de contagem e ambas as condições vinculantes (`T34-AUT-01` e `T34-AUT-03`) atendidas.
+- **Pendências reais restantes:** autorização expressa futura do proprietário para eventual merge/integração e para iniciar a implementação de **`T3.4.2`** (`contribute_work`, microssegundos e ocupação de slot) ou etapas subsequentes (`T3.4.3–T3.4.5`), que permanecem estritamente bloqueadas.
