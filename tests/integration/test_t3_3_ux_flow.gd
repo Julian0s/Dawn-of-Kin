@@ -242,8 +242,10 @@ func test_03_c4_three_workers_fourth_rejected_and_promotion_on_interrupt() -> vo
 		await get_tree().physics_frame
 
 	assert_true(site.is_fully_supplied(), "C4-E promoted builder completes full supply")
-	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12, "Exact 12 wood delivered")
-	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6, "Exact 6 stone delivered")
+	assert_eq(site.get_total_received_amount(&"wood"), 12, "Exact 12 wood received (buffer + consumed)")
+	assert_eq(site.get_delivered_buffer_amount(&"wood") + site.get_consumed_amount(&"wood"), 12)
+	assert_eq(site.get_total_received_amount(&"stone"), 6, "Exact 6 stone received (buffer + consumed)")
+	assert_eq(site.get_delivered_buffer_amount(&"stone") + site.get_consumed_amount(&"stone"), 6)
 	var snap: Dictionary = site.get_status_snapshot()
-	assert_true(bool(snap.get("is_fully_supplied", false)), "Snapshot confirms ready for T3.4 without auto-building")
-	assert_eq(_scene.get_node("ConstructionSites").get_child_count(), 1, "Site remains ConstructionSite without T3.4 completion")
+	assert_true(bool(snap.get("is_fully_supplied", false)), "Snapshot confirms 100% material supply received")
+	assert_eq(_scene.get_node("ConstructionSites").get_child_count(), 1, "Site remains ConstructionSite without T3.4.4 transmutation")

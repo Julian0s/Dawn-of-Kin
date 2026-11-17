@@ -200,10 +200,10 @@ func test_01_full_e2e_shelter_placement_reserve_transport_and_no_t34_progress() 
 	assert_true(saw_loaded_slowdown, "Loaded transport speed must reflect UnitCarryLoad weight reduction")
 	assert_true(saw_zero_premature_buffer, "Buffer must not be credited before worker arrives at site perimeter")
 
-	# Wait a couple frames for order completion & confirm NO T3.4 auto-building occurs.
+	# In T3.4.3, once fully supplied, SOLO_SUPPLIER promotes to BUILDER and assembles to COMPLETING.
 	await wait_physics_frames(4)
-	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
-	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+	assert_eq(site.get_total_received_amount(&"wood"), 12)
+	assert_eq(site.get_total_received_amount(&"stone"), 6)
 	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 0)
 	assert_eq(site.get_reserved_in_piles_amount(&"stone"), 0)
 	assert_eq(site.get_in_transit_amount(&"wood"), 0)
@@ -211,9 +211,23 @@ func test_01_full_e2e_shelter_placement_reserve_transport_and_no_t34_progress() 
 	assert_eq(inventory.get_physical_amount(&"wood"), 2, "Only excess unreserved wood stays in camp")
 	assert_eq(inventory.get_physical_amount(&"stone"), 2)
 	assert_true(worker.get_carry_load().is_empty())
-	assert_eq(worker.get_state(), Unit.State.IDLE, "Solo supplier finishes cleanly once site is supplied")
-	assert_true(site.is_inside_tree() and site.is_valid(), "T3.3 must keep ConstructionSite incomplete (no T3.4 transmutation)")
-	assert_eq(nav.navigation_mesh.get_polygon_count(), poly_before, "Active NavMesh stays unchanged after supply completion")
+	assert_eq(site.get_worker_role(worker), ConstructionSite.WorkerRole.BUILDER, "Solo supplier promotes to BUILDER once supplied")
+	assert_true(worker.get_state() == Unit.State.WORKING or worker.get_state() == Unit.State.MOVING)
+
+	var build_frames: int = 0
+	while not site.is_completed_or_completing() and build_frames < MAX_SIM_FRAMES * 2:
+		await wait_physics_frames(1)
+		build_frames += 1
+	await wait_physics_frames(4)
+
+	assert_eq(site.get_site_state(), ConstructionSite.SiteState.COMPLETING, "Solo builder must complete assembly to COMPLETING")
+	assert_eq(site.get_consumed_amount(&"wood"), 12)
+	assert_eq(site.get_consumed_amount(&"stone"), 6)
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 0)
+	assert_eq(site.get_delivered_buffer_amount(&"stone"), 0)
+	assert_eq(worker.get_state(), Unit.State.IDLE, "Worker returns to IDLE after assembly reaches COMPLETING")
+	assert_true(site.is_inside_tree() and site.is_valid(), "T3.4.3 keeps ConstructionSite in tree (BuildingInstance belongs to T3.4.4)")
+	assert_eq(nav.navigation_mesh.get_polygon_count(), poly_before, "Active NavMesh stays unchanged before T3.4.5")
 
 	vp.queue_free()
 	await wait_process_frames(2)
