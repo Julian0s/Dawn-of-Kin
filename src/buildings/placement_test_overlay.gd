@@ -48,6 +48,7 @@ var _remove_c4_workers_btn: Button = null
 
 var _toast_remaining_sec: float = 0.0
 var _built_ui: bool = false
+var _use_context_inspector: bool = false
 
 
 func _ready() -> void:
@@ -107,6 +108,11 @@ func use_game_catalog() -> void:
 	_shelter_btn.visible = false
 	_depot_btn.visible = false
 	_bar_panel.visible = false
+
+
+func use_context_inspector() -> void:
+	_use_context_inspector = true
+	_refresh_site_panel()
 
 
 func configure(
@@ -765,6 +771,9 @@ func _refresh_resolution_label() -> void:
 
 func _refresh_site_panel() -> void:
 	if _site_panel == null:
+		return
+	if _use_context_inspector:
+		_site_panel.visible = false
 		return
 	if _selected_site == null or not is_instance_valid(_selected_site) or not _selected_site.is_valid():
 		_site_panel.visible = false

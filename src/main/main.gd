@@ -100,11 +100,16 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 		)
 		_placement_test_overlay.configure_test_workers(_test_workers_controller)
 		_placement_test_overlay.use_game_catalog()
+		_placement_test_overlay.use_context_inspector()
 	if _placement_controller != null:
 		var construction_hud := ConstructionHud.new()
 		construction_hud.name = "ConstructionHud"
 		$UiLayer.add_child(construction_hud)
 		construction_hud.configure(_placement_controller, [SHELTER_BASIC_DEFINITION, STORAGE_DEPOT_DEFINITION])
+	var inspector := BuildingInspectorPanel.new()
+	inspector.name = "BuildingInspectorPanel"
+	$UiLayer.add_child(inspector)
+	inspector.configure(_input_controller, _selection_manager)
 
 
 func _setup_construction(world_nav: WorldNavigation) -> void:
