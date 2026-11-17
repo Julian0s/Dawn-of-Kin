@@ -49,6 +49,24 @@ Estados: `COMPLETING → COMPLETED` no sucesso; em falha, `COMPLETING → COMPLE
 
 ## Testes executados
 
+### Correção de auditoria R2-03 — contexto antigo no hover
+
+A auditoria observou que `validate_hover()` não chama `refresh_dynamic_state()` diretamente. A inspeção do fluxo mostrou que ele chama `_validate_spatial_base()`, que atualiza o contexto antes das consultas espaciais e da verificação de `completed_buildings`. `PlacementController` também cria um contexto para cada avaliação de hover e limita atualizações periódicas. Logo, para o caso de ocupação recém-criada, já existe proteção no caminho de produção: não foi necessário acrescentar outra atualização nem uma consulta global adicional a cada movimento do mouse.
+
+O novo `test_09_t34_aut_07_stale_hover_context_after_site_removal_before_physics_sync` guarda um contexto que contém o canteiro e nenhum edifício, conclui a obra pela transação real e, sem aguardar outro frame de física, confirma que o site saiu da árvore e do registro do gerenciador. A atualização do contexto exclui o site e inclui o edifício da mesma região e mundo. O teste desativa temporariamente as camadas dos dois corpos no fixture e exige que `validate_hover()` com o **contexto antigo** retorne `REASON_OBSTACLE_OVERLAP` com o texto específico do footprint lógico do edifício. A camada do edifício é restaurada; após a sincronização física, o mesmo contexto continua rejeitando a posição. O teste confirma que outra região no mesmo mundo não inclui o edifício nem recebe `REASON_OBSTACLE_OVERLAP` por esse footprint; o teste 06 existente cobre mundos independentes.
+
+Na investigação do isolamento, uma expectativa inicial exigia hover válido na outra região, mas o fixture compartilha a NavMesh da primeira região e retornou `invalid_terrain`. A expectativa foi corrigida para verificar a propriedade pertinente — não herdar a ocupação — sem declarar que a NavMesh compartilhada representa uma região navegável independente. O motivo observado e a limitação do fixture foram preservados aqui; nenhuma guarda foi removida.
+
+Resultados desta correção:
+
+- Suíte específica T3.4.4: **9/9 testes, 1.355 asserções**, sem falhas ou erros de suíte. O novo teste passou com 155 asserções, incluindo os 120 passos de montagem.
+- Suíte completa `./tools/run_tests.ps1 -Segmented`: **38/38 suítes, 269/269 testes, 10.506 asserções**, zero falhas e erros de suíte; `Discovered=38`, `ExecutedUnique=38`, `Duplicates=0`, `Missing=0`. O log não contém linhas `ERROR`, `SCRIPT ERROR` ou `WARNING`.
+- Regressões T3.2: posicionamento unitário **7/7** (134 asserções) e integrado **5/5** (111). Regressões T3.3: canteiro **7/7** (164), UX unitário **2/2** (9), logística **11/11** (214) e UX integrado **3/3** (57).
+- `./tools/validate.ps1`: importação, checagem de **116 scripts** e inicialização headless da cena principal aprovadas, com **zero erros e zero avisos**.
+- `git diff --check`: sem erros de whitespace.
+
+Não houve mudança em scripts de produção, GDD ou arquitetura. As demais tabelas desta seção preservam os resultados históricos da candidata anterior.
+
 | Comando/verificação | Resultado |
 |---|---|
 | `./tools/run_tests.ps1 -Filter test_t3_4_4` | 8/8 testes, 1.200 asserções, zero falhas/erros de suíte |
