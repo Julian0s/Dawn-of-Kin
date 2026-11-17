@@ -1,6 +1,6 @@
 # T3.5.1 — Relatório da candidata
 
-Base: `2a6cce6d190f6d93679b7921cb973770a0c5f9a5`. Branch: `feat/t3-5-1-build-catalog-ui`. A candidata aguarda auditoria independente e testes manuais do proprietário.
+Base: `2a6cce6d190f6d93679b7921cb973770a0c5f9a5`. Branch: `feat/t3-5-1-build-catalog-ui`. A candidata recebeu aceite manual do proprietário e auditoria estática favorável conforme informado na solicitação de encerramento; veja o [registro de aceite](T3_5_1_closeout_ACCEPTANCE.md).
 
 ## Implementação
 
@@ -16,4 +16,4 @@ A suíte específica `test_t3_5_1_construction_hud` passou com 3 testes e 35 ass
 
 `tools/validate.ps1`: 120 scripts, inicialização headless, zero erros e avisos. `tools/run_tests.ps1 -Segmented`: 40 suítes, 281/281 testes e 12.854 asserções, zero falhas e erros de suíte; 40 descobertas e 40 executadas sem duplicação ou omissão. Foram incluídas as regressões de T1 a T3.4.5. `git diff --check`: sem erros.
 
-Inspeção gráfica: pendente. A sessão gráfica aberta pertence à execução anterior e foi preservada; não há captura da interface atualizada ou aprovação visual do proprietário neste registro.
+Em 17/11/2026 o proprietário declarou os seis testes manuais aprovados, sem observações, conforme o [protocolo](T3_5_1_manual_test_protocol.md). Essa validação visual e manual é atribuída ao proprietário. A inspeção gráfica da candidata pelo Codex permanecia pendente ao publicar a candidata; não há captura registrada pelo Codex. Os testes automatizados acima são históricos e não foram repetidos nesta etapa documental.
