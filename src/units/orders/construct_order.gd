@@ -207,20 +207,41 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	super.cancel(movement, reason)
 
 
+func _cancel_deliver_suborder(movement: UnitMovement) -> void:
+	if _deliver_suborder != null and _deliver_suborder.is_active():
+		_deliver_suborder.cancel(movement, REASON_CANCELLED)
+	_deliver_suborder = null
+
+
+func _return_unneeded_or_enter_builder_slot(movement: UnitMovement, carry_load: UnitCarryLoad) -> void:
+	var unneeded_cargo: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
+	if not unneeded_cargo.is_empty():
+		_start_returning_unneeded_cargo(movement)
+		return
+	_cancel_deliver_suborder(movement)
+	if carry_load != null and not carry_load.is_empty():
+		_finish_failed(REASON_UNNEEDED_CARGO_REJECTED)
+		return
+	_start_moving_to_builder_slot(movement)
+
+
 func _advance_by_role(movement: UnitMovement) -> void:
 	if site != null and is_instance_valid(site) and site.is_completed_or_completing():
+		_cancel_deliver_suborder(movement)
 		if movement != null:
 			movement.stop_movement()
 			movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 		_finish_succeeded()
 		return
 	if not _is_site_valid():
+		_cancel_deliver_suborder(movement)
 		_finish_failed(REASON_INVALID_SITE)
 		return
 
 	var role: ConstructionSite.WorkerRole = site.get_worker_role(_unit)
 	_last_known_role = role
 	if role == ConstructionSite.WorkerRole.UNASSIGNED:
+		_cancel_deliver_suborder(movement)
 		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
 
@@ -232,9 +253,10 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
 		if has_usable_site_cargo:
+			_cancel_deliver_suborder(movement)
 			_start_moving_to_site_dropoff(movement)
 			return
-		_start_moving_to_builder_slot(movement)
+		_return_unneeded_or_enter_builder_slot(movement, carry_load)
 		return
 
 	# Transporter or Solo Supplier role:
@@ -245,8 +267,9 @@ func _advance_by_role(movement: UnitMovement) -> void:
 			var post_supply_role: ConstructionSite.WorkerRole = site.rebalance_for_assembly_on_supply_complete(_unit)
 			_last_known_role = post_supply_role
 			if post_supply_role == ConstructionSite.WorkerRole.BUILDER:
-				_start_moving_to_builder_slot(movement)
+				_return_unneeded_or_enter_builder_slot(movement, carry_load)
 				return
+		_cancel_deliver_suborder(movement)
 		if movement != null:
 			movement.stop_movement()
 			movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
@@ -254,6 +277,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		return
 
 	if has_usable_site_cargo:
+		_cancel_deliver_suborder(movement)
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
 		_start_moving_to_site_dropoff(movement)
@@ -266,6 +290,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_start_returning_unneeded_cargo(movement)
 		return
 
+	_cancel_deliver_suborder(movement)
 	_select_and_approach_next_pile(movement)
 
 
@@ -280,6 +305,10 @@ func _has_any_deliverable_claim(site_claim: Dictionary, carry_load: UnitCarryLoa
 
 
 func _start_returning_unneeded_cargo(movement: UnitMovement) -> void:
+	if _phase == Phase.RETURNING_UNNEEDED_CARGO and _deliver_suborder != null and _deliver_suborder.is_active():
+		resolved_target = _deliver_suborder.get_reserved_target()
+		return
+	_cancel_deliver_suborder(movement)
 	var inventory: SettlementInventory = site.get_inventory()
 	if camp_zone == null or not is_instance_valid(camp_zone) or not camp_zone.is_valid() or inventory == null:
 		_finish_failed(REASON_UNNEEDED_CARGO_REJECTED)
@@ -635,6 +664,9 @@ func _execute_site_dropoff(movement: UnitMovement) -> void:
 		trips_completed += 1
 		for k: Variant in dropped.keys():
 			units_delivered_total += int(dropped[k])
+	elif _has_any_deliverable_claim(site.get_transit_claim_for_unit(_unit), carry_load):
+		_finish_failed(REASON_UNNEEDED_CARGO_REJECTED)
+		return
 	resolved_target = Vector3(INF, INF, INF)
 	_advance_by_role(movement)
 
@@ -854,7 +886,7 @@ func _enter_builder_slot_ready(movement: UnitMovement) -> void:
 		return
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
 	if carry_load != null and not carry_load.is_empty():
-		_enter_builder_standby(movement)
+		_advance_by_role(movement)
 		return
 	if site.get_work_progress_sec() == 0.0 and not site.has_any_received_materials():
 		_enter_builder_standby(movement)
@@ -888,6 +920,10 @@ func _update_builder_standby(movement: UnitMovement) -> void:
 	if site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
 		_advance_by_role(movement)
 		return
+	var carry_load: UnitCarryLoad = _unit.get_carry_load()
+	if carry_load != null and not carry_load.is_empty():
+		_advance_by_role(movement)
+		return
 	if site.has_consumable_work_available() and _can_unit_assemble_now():
 		_enter_builder_assembling(movement)
 
@@ -903,7 +939,7 @@ func _update_builder_assembling(movement: UnitMovement, delta: float) -> void:
 	if not _can_unit_assemble_now():
 		var carry_load: UnitCarryLoad = _unit.get_carry_load()
 		if carry_load != null and not carry_load.is_empty():
-			_enter_builder_standby(movement)
+			_advance_by_role(movement)
 		else:
 			_start_moving_to_builder_slot(movement)
 		return
@@ -1108,6 +1144,7 @@ func _is_site_valid() -> bool:
 
 
 func _finish_succeeded() -> void:
+	_deliver_suborder = null
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
@@ -1120,6 +1157,7 @@ func _finish_succeeded() -> void:
 
 
 func _finish_failed(reason: String) -> void:
+	_deliver_suborder = null
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
