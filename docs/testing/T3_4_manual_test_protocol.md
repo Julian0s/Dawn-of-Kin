@@ -1,6 +1,6 @@
 # T3.4 — Protocolo manual do proprietário
 
-Status: **NÃO EXECUTADO / AGUARDANDO HOMOLOGAÇÃO**. Testes automatizados e benchmark não preenchem estes campos.
+Status: **8/8 APROVADOS PELO PROPRIETÁRIO**, conforme declaração de 17/11/2026 nesta conversa. Os resultados abaixo são informados pelo proprietário, não atribuídos à execução do Codex. Hardware, alimentação, renderer e resoluções efetivas da execução do proprietário: não informados.
 
 Registrar antes da execução: data, SHA candidato, Godot, hardware, alimentação CA/DC, resolução e renderer. Executar a candidata T3.4.5, com Godot 4.7.2 / Compatibility / Jolt, sem integrar na main. Reiniciar a cena entre cenários quando necessário.
 
@@ -12,9 +12,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** transporta primeiro os reservados acessíveis; depois monta com o buffer disponível, até 100%. Um único edifício aparece, o canteiro desaparece, os materiais não reaparecem no estoque e o trabalhador fica IDLE.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-A2 — Dois trabalhadores
 
@@ -22,9 +22,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** 1 transporta e 1 monta em paralelo com suprimento parcial. Após a última entrega, o transportador assume o segundo slot; a taxa agregada passa de 1 para 2 segundos-construtor por segundo. Conclusão única, sem perda ou segundo consumo.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-A3 — Três trabalhadores e recusa do quarto
 
@@ -32,9 +32,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** 1 transportador e 2 construtores; o quarto é recusado com `no_worker_slot`, sem expulsar os outros. Ao terminar o suprimento, o transportador fica livre; permanecem no máximo dois construtores.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-B1 — Falta de material e retomada
 
@@ -42,9 +42,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** pausa em `PAUSED_STARVED` / `WAITING_FOR_MATERIALS`, sem saldo negativo ou movimento de montagem fictício. Novas entregas despertam o construtor e preservam exatamente o progresso e o consumo anterior. Este cenário usa reservas já existentes; não pressupõe a futura interface definitiva de complementação T3.5.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-B2 — Interrupção e retomada
 
@@ -52,9 +52,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** slot liberado corretamente, sem apagar progresso, buffer ou carga. A montagem retoma do valor anterior e não cobra novamente os materiais já incorporados.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-C1 — Contorno físico e proteção contra sobreposição
 
@@ -62,9 +62,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** durante o rebake, comandos afetados são rejeitados e unidades em trânsito aguardam sem bater na parede; rotas distantes continuam funcionando. Após sincronizar, as unidades contornam o prédio. A prévia e a confirmação rejeitam sobreposição, sem criar reservas. Cada obra gera apenas um edifício.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-C2 — Platô e rampa
 
@@ -72,9 +72,9 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** sobe e desce pela rampa, permanece entre os curbs laterais, contorna o edifício e não atravessa paredes nem cai pelas bordas. Posições que fecham a conectividade devem ser recusadas pela prévia.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## M-D1 — Resolução dinâmica 1280×720 ↔ 1920×1080
 
@@ -82,16 +82,16 @@ Preparação: coletar e descarregar fisicamente pelo menos 12 madeiras e 6 pedra
 
 **Esperado:** informações legíveis e corretamente posicionadas, sem controles fora da janela, confirmação indevida, reinício ou erros no console. A execução do benchmark em resolução fixa não substitui este cenário.
 
-**Resultado: [ ] Aprovado  [ ] Reprovado**
+**Resultado: [x] Aprovado  [ ] Reprovado**
 
-**Observações opcionais do proprietário:** ______________________________
+**Observações do proprietário:** Nenhuma.
 
 ## Registro final
 
-SHA: __________________ Data: __________________ Hardware/CA/DC: __________________
+SHA candidato: `afc43636db0e519462c40c9d94b12a2b0e90fb89` (identificado na solicitação). Data informada: 17/11/2026. Hardware/CA/DC: não informados.
 
-Godot/renderer/resoluções efetivas: ______________________________________________
+Godot, renderer e resoluções efetivas da execução do proprietário: não informados.
 
-Resultado do proprietário e eventuais itens a repetir: ____________________________
+Resultado declarado pelo proprietário: 8/8 aprovados, sem observações.
 
 Nenhum campo preenchido por um agente equivale à aprovação expressa do proprietário.

@@ -2,7 +2,7 @@
 
 ## Correção de auditoria — resultado de rota parcial após rebake
 
-**Candidata para nova auditoria; homologação manual continua pendente.** Base da correção: `6795fdfe12845720629c208a7e52dfe3d3fa46d0`. Commit técnico: `737482750675b7d580e10225571a5abd787843e4`. O commit documental é identificável por `git log -1 --format=%H -- docs/testing/T3_4_5_candidate_report.md`.
+**Aceite e integração autorizados em 17/11/2026; veja o [registro de encerramento](T3_4_5_closeout_ACCEPTANCE.md).** Base da correção: `6795fdfe12845720629c208a7e52dfe3d3fa46d0`. Commit técnico: `737482750675b7d580e10225571a5abd787843e4`. O commit documental é identificável por `git log -1 --format=%H -- docs/testing/T3_4_5_candidate_report.md`.
 
 O recálculo de uma rota originalmente alcançável podia substituir o alvo de movimento por um ponto parcial, enquanto `MoveOrder` ainda considerava a rota completa; ao chegar ao ponto parcial, a ordem reportava sucesso indevido. `UnitMovement` agora registra que um recálculo retornou `PARTIAL_UNREACHABLE` e seu motivo, zerando essa informação no início de cada movimento. Na chegada, `MoveOrder` consulta o resultado, atualiza o destino resolvido e encerra com `FAILED / unreachable`. O destino solicitado da ordem permanece disponível; uma ordem já parcial desde o início conserva seu comportamento anterior. A informação de parcialidade é preservada em recálculos subsequentes para o alvo parcial, evitando que um novo caminho `OK` até esse alvo apague a falha original. Não há dependência de `UnitMovement` para `MoveOrder`.
 
@@ -17,7 +17,7 @@ Resultados desta correção:
 
 O benchmark T34-PERF-01 não foi repetido: a nova atribuição ocorre exclusivamente quando há recálculo, e a consulta do resultado ocorre somente no evento de chegada, sem acrescentar trabalho ao processamento de movimento por quadro. A medição Intel UHD 620 em CA de **13,505 ms p95**, descrita abaixo, é histórica da candidata anterior e não uma nova medição desta correção.
 
-**Status: CANDIDATA, SEM HOMOLOGAÇÃO, SEM MERGE E SEM TAG.** Data: 17/11/2026.
+**Status histórico à publicação da correção:** candidata, sem homologação, merge ou tag. Data: 17/11/2026.
 
 ## Base, escopo e ambiente
 
@@ -135,9 +135,9 @@ As primeiras rodadas não foram aceitas como validação: houve chamadas a méto
 
 ## Pendências de aceitação
 
-Todos os oito itens M-A1, M-A2, M-A3, M-B1, M-B2, M-C1, M-C2 e M-D1 permanecem **NÃO EXECUTADOS PELO PROPRIETÁRIO / PENDENTES** no protocolo. Benchmark gráfico automatizado e movimento físico headless não são aprovação manual, artística ou homologação.
+O proprietário declarou em 17/11/2026 os oito itens **aprovados, sem observações**. Ver [protocolo](T3_4_manual_test_protocol.md). Essa declaração é distinta das observações parciais do Codex e dos testes automatizados.
 
-O modo degradado conserva a segurança e encerra ordens; não adiciona interface definitiva de recuperação. Persistência em disco, regiões futuras, cancelamento/reembolso, armazenamento protegido e HUD definitivo continuam fora deste incremento. A auditoria independente e a homologação expressa ainda são obrigatórias.
+O modo degradado conserva a segurança e encerra ordens; não adiciona interface definitiva de recuperação. Persistência em disco, regiões futuras, cancelamento/reembolso, armazenamento protegido e HUD definitivo continuam fora deste incremento. A solicitação de encerramento informa auditoria estática independente favorável do ChatGPT e autoriza o encerramento e a integração.
 
 ## Git e preservação
 
@@ -157,6 +157,6 @@ Tags oficiais conferidas, sem criação ou movimentação:
 | `t2-complete` | `049ba9c7714c9b90b5515ae6ac30a28830454773` | `f7c24592e3a6d936dbcb63f648c474280695ab9b` |
 | `t3-3-complete` | `c7947c9630c102a9d77603cac0bae68678247c95` | `3c6fc0bd36fc3828af5a89662fb23cfb60d37865` |
 
-**T3.4.5 IMPLEMENTADA COMO CANDIDATA — AGUARDANDO AUDITORIA INDEPENDENTE DO CHATGPT E TESTES MANUAIS/HOMOLOGAÇÃO DO PROPRIETÁRIO.**
+**Registro histórico:** a candidata aguardava auditoria e aceite quando publicada; a decisão posterior consta do [encerramento](T3_4_5_closeout_ACCEPTANCE.md).
 
-**PROIBIDO MERGE, TAG OU INÍCIO DA T3.5.**
+**Condição histórica na publicação:** merge, tag e início da T3.5 não estavam autorizados. A integração foi posteriormente autorizada; tag e T3.5 permanecem fora do escopo deste encerramento.
