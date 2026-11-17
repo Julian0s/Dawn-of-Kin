@@ -282,13 +282,20 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 		maxi(1, roundi(delta_sec * USEC_PER_SEC)), _required_amounts, _consumed_materials, _delivered_buffer)
 	if not evaluation["ok"]:
 		return evaluation
+	var prev_site_state: SiteState = _site_state
+	var prev_substate: AssemblySubstate = _assembly_substate
+	var prev_starved_resources: Array[StringName] = _starved_resources.duplicate()
 	_work_transaction_in_progress = true
 	_work_cycle_serial += 1
 	_last_work_physics_frame_by_unit[uid] = frame
 	var debits: Dictionary = evaluation["consumed"]
+	var buffer_mutated: bool = false
 	for res_id: StringName in _get_sorted_required_keys():
-		_delivered_buffer[res_id] = int(_delivered_buffer[res_id]) - int(debits[res_id])
-		_consumed_materials[res_id] = int(_consumed_materials[res_id]) + int(debits[res_id])
+		var debit: int = int(debits[res_id])
+		if debit > 0:
+			buffer_mutated = true
+		_delivered_buffer[res_id] = int(_delivered_buffer[res_id]) - debit
+		_consumed_materials[res_id] = int(_consumed_materials[res_id]) + debit
 	_work_progress_usec = int(evaluation["progress_usec"])
 	_starved_resources.assign(evaluation["starved_resources"])
 	if evaluation["completed"]:
@@ -296,8 +303,14 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 		_assembly_substate = AssemblySubstate.NONE
 	else:
 		_assembly_substate = AssemblySubstate.PAUSED_STARVED if evaluation["starved"] else AssemblySubstate.ASSEMBLING
-	buffer_changed.emit(self)
-	state_changed.emit(self)
+	if int(evaluation["advanced_usec"]) > 0:
+		buffer_changed.emit(self)
+		state_changed.emit(self)
+	else:
+		if buffer_mutated:
+			buffer_changed.emit(self)
+		if _site_state != prev_site_state or _assembly_substate != prev_substate or _starved_resources != prev_starved_resources:
+			state_changed.emit(self)
 	_work_transaction_in_progress = false
 	return evaluation
 

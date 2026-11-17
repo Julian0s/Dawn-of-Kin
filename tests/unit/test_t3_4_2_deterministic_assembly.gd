@@ -275,3 +275,104 @@ func test_10_pure_nondivisible_costs_integer_limits_and_partition_invariance() -
 	assert_eq(progress, 30_000_000)
 	assert_eq(used, COSTS)
 	assert_eq(buffer, ZERO)
+
+
+func test_11_no_redundant_signals_in_paused_starved_and_legitimate_resume() -> void:
+	var fx: Dictionary = _fixture({&"wood": 2, &"stone": 0})
+	var site: ConstructionSite = fx["site"]
+	var units: Array[Unit] = fx["units"]
+	var buffer_signals: Array[int] = [0]
+	var state_signals: Array[int] = [0]
+	site.buffer_changed.connect(func(_s: ConstructionSite) -> void: buffer_signals[0] += 1)
+	site.state_changed.connect(func(_s: ConstructionSite) -> void: state_signals[0] += 1)
+
+	# Cycles 1..20: advance to 4_999_999 usec (1 wood consumed, 0 stone) and transition to PAUSED_STARVED.
+	for i: int in range(20):
+		await wait_physics_frames(1)
+		var r: Dictionary = site.contribute_work(units[1], 0.25)
+		assert_true(r["ok"])
+		assert_eq(r["starved"], i == 19)
+	assert_eq(site.get_work_progress_sec(), 4.999999)
+	assert_eq(site.get_consumed_amounts(), {&"wood": 1, &"stone": 0})
+	assert_eq(site.get_delivered_buffer_amounts(), {&"wood": 1, &"stone": 0})
+	assert_eq(site.get_assembly_substate(), ConstructionSite.AssemblySubstate.PAUSED_STARVED)
+	assert_eq(buffer_signals[0], 20)
+	assert_eq(state_signals[0], 20)
+
+	# 4 subsequent valid calls across distinct physics frames while already PAUSED_STARVED:
+	# zero progress, starved=true, invariant valid, zero redundant buffer/state emissions.
+	for _idle_idx: int in range(4):
+		await wait_physics_frames(1)
+		var r_idle: Dictionary = site.contribute_work(units[1], 0.25)
+		assert_true(r_idle["ok"])
+		assert_eq(r_idle["advanced_sec"], 0.0)
+		assert_true(r_idle["starved"])
+		assert_eq(site.get_work_progress_sec(), 4.999999)
+		assert_eq(site.get_consumed_amounts(), {&"wood": 1, &"stone": 0})
+		assert_eq(site.get_delivered_buffer_amounts(), {&"wood": 1, &"stone": 0})
+		assert_eq(site.get_assembly_substate(), ConstructionSite.AssemblySubstate.PAUSED_STARVED)
+		assert_true(site.verify_accounting_invariant())
+		assert_eq(buffer_signals[0], 20, "Idle PAUSED_STARVED calls must not emit redundant buffer_changed")
+		assert_eq(state_signals[0], 20, "Idle PAUSED_STARVED calls must not emit redundant state_changed")
+
+	# Direct 0-advance transition into PAUSED_STARVED emits state_changed once and 0 buffer_changed.
+	var fx_zero: Dictionary = _fixture(ZERO)
+	var site_zero: ConstructionSite = fx_zero["site"]
+	var units_zero: Array[Unit] = fx_zero["units"]
+	for _j: int in range(9):
+		await wait_physics_frames(1)
+		assert_true(site_zero.contribute_work(units_zero[1], 0.25)["ok"])
+	await wait_physics_frames(1)
+	assert_true(site_zero.contribute_work(units_zero[1], 0.249999)["ok"])
+	assert_eq(site_zero.get_work_progress_sec(), 2.499999)
+	assert_eq(site_zero.get_assembly_substate(), ConstructionSite.AssemblySubstate.ASSEMBLING)
+	var z_buf: Array[int] = [0]
+	var z_state: Array[int] = [0]
+	site_zero.buffer_changed.connect(func(_s: ConstructionSite) -> void: z_buf[0] += 1)
+	site_zero.state_changed.connect(func(_s: ConstructionSite) -> void: z_state[0] += 1)
+	await wait_physics_frames(1)
+	var rz1: Dictionary = site_zero.contribute_work(units_zero[1], 0.25)
+	assert_true(rz1["ok"])
+	assert_eq(rz1["advanced_sec"], 0.0)
+	assert_true(rz1["starved"])
+	assert_eq(site_zero.get_assembly_substate(), ConstructionSite.AssemblySubstate.PAUSED_STARVED)
+	assert_eq(z_buf[0], 0, "0-advance transition to PAUSED_STARVED must not emit buffer_changed")
+	assert_eq(z_state[0], 1, "0-advance transition to PAUSED_STARVED must emit state_changed once")
+	await wait_physics_frames(1)
+	var rz2: Dictionary = site_zero.contribute_work(units_zero[1], 0.25)
+	assert_true(rz2["ok"])
+	assert_eq(z_buf[0], 0)
+	assert_eq(z_state[0], 1, "Repeated 0-advance call in PAUSED_STARVED must emit 0 state_changed")
+
+	# Physical delivery of 1 stone emits legitimate delivery signals (record_withdrawn -> state_changed,
+	# accept_delivery -> buffer_changed + state_changed), unblocks and resumes exact assembly.
+	_deliver(site, units[0], {&"stone": 1})
+	assert_eq(buffer_signals[0], 21)
+	assert_eq(state_signals[0], 22)
+	assert_eq(site.get_assembly_substate(), ConstructionSite.AssemblySubstate.ASSEMBLING)
+
+	# Reentrancy guard + duplicate same-worker/frame + two distinct workers in same frame.
+	var reentrant_results: Array[Dictionary] = []
+	var reentrant_cb: Callable = func(_s: ConstructionSite) -> void:
+		reentrant_results.append(site.contribute_work(units[2], 0.1))
+	site.state_changed.connect(reentrant_cb)
+	await wait_physics_frames(1)
+	var r_resume: Dictionary = site.contribute_work(units[1], 0.000001)
+	site.state_changed.disconnect(reentrant_cb)
+	assert_true(r_resume["ok"])
+	assert_eq(site.get_work_progress_sec(), 5.0)
+	assert_eq(site.get_consumed_amounts(), {&"wood": 2, &"stone": 1})
+	assert_eq(site.get_delivered_buffer_amounts(), ZERO)
+	assert_eq(buffer_signals[0], 22)
+	assert_eq(state_signals[0], 23)
+	assert_eq(reentrant_results.size(), 1)
+	assert_false(reentrant_results[0]["ok"])
+	assert_eq(reentrant_results[0]["reason"], "duplicate_cycle_contribution")
+	_reject(site, units[1], 0.1, "duplicate_cycle_contribution")
+
+	# Two distinct builders in the same frame after commit: deliver +1w/+1s and contribute with units[2].
+	_deliver(site, units[0], {&"wood": 1, &"stone": 1})
+	var r_second_worker: Dictionary = site.contribute_work(units[2], 0.25)
+	assert_true(r_second_worker["ok"])
+	assert_eq(site.get_work_progress_sec(), 5.25)
+	assert_true(site.verify_accounting_invariant())

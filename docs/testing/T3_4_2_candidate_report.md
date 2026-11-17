@@ -18,9 +18,9 @@
 
 ## Arquivos e contratos implementados
 
-- [`construction_site.gd`](../../src/buildings/construction_site.gd): progresso e duração em microssegundos; getters `get_work_progress_sec()` e `get_progress_ratio()`; avaliador puro `evaluate_work_transaction_usec(progress_usec, total_usec, delta_usec, costs, incorporated, buffer)`; API `contribute_work(unit, delta_sec)` com nove guardas ordenadas; registro de âncoras por trabalhador/slot; invalidação por remoção, pruning ou mudança de papel/índice; pausa por material e reavaliação após entrega física.
+- [`construction_site.gd`](../../src/buildings/construction_site.gd): progresso e duração em microssegundos; getters `get_work_progress_sec()` e `get_progress_ratio()`; avaliador puro `evaluate_work_transaction_usec(progress_usec, total_usec, delta_usec, costs, incorporated, buffer)`; API `contribute_work(unit, delta_sec)` com nove guardas ordenadas; registro de âncoras por trabalhador/slot; invalidação por remoção, pruning ou mudança de papel/índice; pausa por material e reavaliação após entrega física; e política enxuta de sinais em `contribute_work()` (preserva `buffer_changed` + `state_changed` quando `advanced_usec > 0`; quando `advanced_usec == 0`, emite `state_changed` uma única vez apenas se houver mudança operacional real e não emite `buffer_changed` sem mutação de buffer, suprimindo emissões redundantes quando já está em `PAUSED_STARVED`).
 - [`build_slot_planner.gd`](../../src/buildings/build_slot_planner.gd): `is_unit_at_assigned_builder_slot()`, raio horizontal de 0,75 m e tolerância vertical de 0,85 m. A ocupação da âncora e o alcance físico desobstruído são verificações separadas e obrigatórias.
-- [`test_t3_4_2_deterministic_assembly.gd`](../../tests/unit/test_t3_4_2_deterministic_assembly.gd): 10 testes específicos de backend, incluindo T34-AUT-08, T34-AUT-08B e T34-AUT-09 Parte A; arquivo UID gerado pela importação Godot.
+- [`test_t3_4_2_deterministic_assembly.gd`](../../tests/unit/test_t3_4_2_deterministic_assembly.gd): 11 testes específicos de backend, incluindo `T34-AUT-08`, `T34-AUT-08B`, `T34-AUT-09` Parte A e `test_11_no_redundant_signals_in_paused_starved_and_legitimate_resume`; arquivo UID gerado pela importação Godot.
 - Este relatório. Nenhum outro arquivo de produção foi alterado.
 
 O avaliador não modifica os dicionários recebidos. Calcula o teto de cada recurso por `((capacity + 1) * total_usec - 1) / cost`, usando divisão inteira, e toma o mínimo global. Depois calcula e valida todos os débitos antes do commit. Há proteção contra overflow dos produtos inteiros e contra quantidades inválidas. A conversão de segundos usa `max(1, roundi(delta_sec * 1_000_000))`, conforme a alternativa expressamente permitida na arquitetura.
@@ -37,15 +37,21 @@ Comandos executados neste worktree, na Godot 4.7.2:
 
 | Verificação | Resultado |
 |---|---|
-| `./tools/run_tests.ps1 -Filter test_t3_4_2` | 10/10 testes, 682 asserções, zero falhas/erros de suíte |
-| `./tools/run_tests.ps1 -Segmented` | 36/36 suítes, 252/252 testes, 8.565 asserções, zero falhas/erros de suíte |
+| `./tools/run_tests.ps1 -Filter test_t3_4_2` | 11/11 testes, 829 asserções, zero falhas/erros de suíte |
+| `./tools/run_tests.ps1 -Segmented` | 36/36 suítes, 253/253 testes, 8.710 asserções, zero falhas/erros de suíte |
 | Cobertura segmentada | 7 lotes aprovados; `Discovered=36`, `ExecutedUnique=36`, `Duplicates=0`, `Missing=0` |
 | Regressão T3.4.1 | 8/8 testes, 299 asserções, contabilidade/complementação preservadas |
 | Regressões T3.1–T3.3 | Reservas 17/17 (432); posicionamento unitário 7/7 (134), integração 5/5 (111); canteiro 7/7 (164); UX unitário 2/2 (9); logística 11/11 (205); UX integrado 3/3 (55) |
 | `git diff --check` | Aprovado, sem erros de whitespace |
 | `./tools/validate.ps1` | Importação, `--check-only` em 112 scripts e startup headless da cena principal aprovados; zero erros e zero avisos; exit code 0 |
 
-Os números entre parênteses nas regressões são asserções. Nenhuma suíte existente foi modificada. O total cresceu de 35 suítes/242 testes para 36 suítes/252 testes. Reconciliação com o relatório homologado T3.4.1: `7.882 + 682 - 2 + 3 = 8.565`. A nova suíte acrescenta 682; `tests/integration/test_t2_natural_source_states.gd` registra 102 em vez de 104 (-2); `tests/integration/test_t2_worker_cycle.gd` registra 2.659 em vez de 2.656 (+3). Esses dois testes contêm asserções por frame de física; a variação residual não representa teste adicional. O log segmentado não contém linhas `ERROR`, `SCRIPT ERROR` ou `WARNING`.
+Os números entre parênteses nas regressões são asserções. Nenhuma suíte anterior foi modificada. O total da suíte `test_t3_4_2` cresceu de `10` para `11` testes (`682 -> 829` asserções, `+147` em `test_11`). Reconciliação sobre a execução anterior de `T3.4.2` (`8.565` asserções): `8.565 + 147 + 1 - 3 = 8.710`, com `tests/integration/test_t2_natural_source_states.gd` em `103` (`+1` vs. `102`) e `tests/integration/test_t2_worker_cycle.gd` em `2.656` (`-3` vs. `2.659`), variação residual esperada por quadro de física. O log segmentado não contém linhas `ERROR`, `SCRIPT ERROR` ou `WARNING`.
+
+Contagem exata de sinais em `test_11_no_redundant_signals_in_paused_starved_and_legitimate_resume`:
+- Ciclos `1..20` até `4_999_999 µs` (`{wood: 2, stone: 0}`, consumo `{wood: 1, stone: 0}`, transição para `PAUSED_STARVED`): `20` `buffer_changed` e `20` `state_changed`.
+- `4` chamadas válidas subsequentes em frames distintos já em `PAUSED_STARVED`: antes da correção emitiriam `+4` `buffer_changed` e `+4` `state_changed`; após a correção emitem **`0` `buffer_changed` e `0` `state_changed`** (`20 -> 20`).
+- Transição direta com `advanced_usec == 0` para `PAUSED_STARVED` (`2_499_999 µs`, buffer `0`): **`0` `buffer_changed` e `1` `state_changed`**; chamada repetida subsequente: **`0` `buffer_changed` e `0` `state_changed`**.
+- Entrega física de `1` pedra (`_deliver`): `+1` `buffer_changed` (`21`) e `+2` `state_changed` (`22`, de `record_withdrawn_for_site` + `accept_delivery_from_carry_load`), desbloqueando para `ASSEMBLING`; retomada `0,000001 s` até `5,0 s`: `22` `buffer_changed` e `23` `state_changed`, mantendo proteção de reentrância, duplicação por frame e contribuição de dois trabalhadores distintos.
 
 Também foi iniciada a cena principal em execução gráfica com `--rendering-driver opengl3 --resolution 1280x720 --max-fps 60 --quit-after 1800`. O log identifica GTX 1060 e não registra erros/avisos. A tentativa de inspeção visual por Computer Use falhou com `foreground window did not report a process id`; por isso, não se registra aprovação visual/manual nem benchmark. A checagem gráfica não executou o fluxo futuro de montagem por ordens.
 
@@ -61,6 +67,7 @@ Cobertura específica: sete fronteiras exigidas; teto sem pedra; ausência de d�
 
 ## Limites e pendências
 
+- **Âncoras dos construtores (`§4`):** `assign_builder_slot_position()`, `is_unit_at_assigned_builder_slot()` e as guardas de `contribute_work()` atendem integralmente às verificações de backend pertinentes à `T3.4.2`. A chamada de integração pela ordem jogável (`ConstructOrder`) com a posição resolvida pelo `BuildSlotPlanner` está reservada à `T3.4.3` (dependência incremental prevista, não defeito).
 - Não implementados: T34-AUT-09 Parte B, promoções/fases novas de `ConstructOrder`, `WAITING_FOR_MATERIALS`, integração reativa de ordens, `BuildingInstance`, transação de conclusão, rebake/barreiras, UI, cancelamento/reembolso ou depósitos funcionais.
 - Testes de backend não constituem homologação visual ou manual da montagem. Essa interação só poderá ser avaliada após a integração autorizada da T3.4.3; a cena atual mantém as ordens T3.3.
 - O próximo incremento depende de auditoria independente desta candidata e revisão do proprietário. Nenhuma autorização para T3.4.3–T3.4.5 é inferida.
