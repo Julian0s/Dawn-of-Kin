@@ -223,6 +223,14 @@ func reserve_batch(_reservation_id: StringName, _amounts: Dictionary) -> bool:
 	return false
 
 
+func can_complement_reservation(_reservation_id: StringName, _extra_amounts: Dictionary) -> bool:
+	return false
+
+
+func complement_reservation(_reservation_id: StringName, _extra_amounts: Dictionary) -> bool:
+	return false
+
+
 func release_batch(_reservation_id: StringName, _amounts: Dictionary = {}) -> bool:
 	return false
 

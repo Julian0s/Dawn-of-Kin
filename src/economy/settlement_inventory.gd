@@ -183,6 +183,18 @@ func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	return _storage_source.reserve_batch(reservation_id, amounts)
 
 
+func can_complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.can_complement_reservation(reservation_id, extra_amounts)
+
+
+func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if _storage_source == null:
+		return false
+	return _storage_source.complement_reservation(reservation_id, extra_amounts)
+
+
 func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
 	if _storage_source == null:
 		return false

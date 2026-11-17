@@ -13,6 +13,23 @@ enum WorkerRole {
 	BUILDER,
 }
 
+enum SiteState {
+	UNCONFIGURED,
+	ACTIVE,
+	COMPLETING,
+	COMPLETION_FAILED_RETRYABLE,
+	COMPLETION_BLOCKED_ERROR,
+	COMPLETED,
+}
+
+enum AssemblySubstate {
+	NONE,
+	WAITING_ASSEMBLY,
+	ASSEMBLING,
+	PAUSED_STARVED,
+	PAUSED_NO_WORKERS,
+}
+
 const DEFAULT_COLLIDER_MIN_HEIGHT: float = 1.2
 const DEFAULT_DROPOFF_OUTWARD_MARGIN: float = 0.85
 const DEFAULT_DROPOFF_REACH_TOLERANCE: float = 1.35
@@ -33,6 +50,7 @@ var _inventory: SettlementInventory = null
 var _resource_defs: Dictionary = {}
 var _required_amounts: Dictionary = {}
 var _delivered_buffer: Dictionary = {}
+var _consumed_materials: Dictionary = {}
 var _pending_pickups: Dictionary = {}
 var _transit_claims: Dictionary = {}
 var _assigned_workers: Dictionary = {}
@@ -44,6 +62,9 @@ var _visual_root: Node3D = null
 var _is_configured: bool = false
 var _signals_bound: bool = false
 var _was_fully_supplied: bool = false
+var _site_state: SiteState = SiteState.UNCONFIGURED
+var _assembly_substate: AssemblySubstate = AssemblySubstate.NONE
+var _is_complementing: bool = false
 
 
 func _exit_tree() -> void:
@@ -83,8 +104,10 @@ func configure(
 	_resource_defs = p_resource_defs.duplicate()
 	_required_amounts = parsed_costs
 	_delivered_buffer.clear()
+	_consumed_materials.clear()
 	for res_id: StringName in _required_amounts.keys():
 		_delivered_buffer[res_id] = 0
+		_consumed_materials[res_id] = 0
 
 	name = String(site_id)
 	add_to_group(GROUP_CONSTRUCTION_SITES)
@@ -95,6 +118,8 @@ func configure(
 		return false
 	_build_foundation_visual()
 	_bind_inventory()
+	_site_state = SiteState.ACTIVE
+	_assembly_substate = AssemblySubstate.WAITING_ASSEMBLY
 	_is_configured = true
 	_was_fully_supplied = is_fully_supplied()
 	return true
@@ -103,6 +128,7 @@ func configure(
 func is_valid() -> bool:
 	return (
 		_is_configured
+		and _site_state != SiteState.UNCONFIGURED
 		and definition != null
 		and definition.is_valid()
 		and not site_id.is_empty()
@@ -110,6 +136,20 @@ func is_valid() -> bool:
 		and _inventory != null
 		and is_instance_valid(_site_body)
 	)
+
+
+func get_site_state() -> SiteState:
+	return _site_state
+
+
+func get_assembly_substate() -> AssemblySubstate:
+	if _site_state != SiteState.ACTIVE:
+		return AssemblySubstate.NONE
+	return _assembly_substate
+
+
+func is_active() -> bool:
+	return _site_state == SiteState.ACTIVE
 
 
 func get_footprint_rect() -> Rect2:
@@ -157,11 +197,30 @@ func get_delivered_buffer_amounts() -> Dictionary:
 
 
 func get_delivered_buffer_amount(resource_id: StringName) -> int:
-	return int(_delivered_buffer.get(resource_id, 0))
+	return maxi(0, int(_delivered_buffer.get(resource_id, 0)))
+
+
+func get_consumed_amounts() -> Dictionary:
+	return _consumed_materials.duplicate()
+
+
+func get_consumed_amount(resource_id: StringName) -> int:
+	return maxi(0, int(_consumed_materials.get(resource_id, 0)))
+
+
+func get_total_received_amounts() -> Dictionary:
+	var result: Dictionary = {}
+	for res_id: StringName in _required_amounts.keys():
+		result[res_id] = get_total_received_amount(res_id)
+	return result
+
+
+func get_total_received_amount(resource_id: StringName) -> int:
+	return get_delivered_buffer_amount(resource_id) + get_consumed_amount(resource_id)
 
 
 func get_remaining_need_for_dropoff(resource_id: StringName) -> int:
-	return maxi(0, get_required_amount(resource_id) - get_delivered_buffer_amount(resource_id))
+	return maxi(0, get_required_amount(resource_id) - get_total_received_amount(resource_id))
 
 
 func get_reserved_in_piles_amounts() -> Dictionary:
@@ -216,19 +275,193 @@ func get_missing_amounts() -> Dictionary:
 
 func get_missing_amount(resource_id: StringName) -> int:
 	var required: int = get_required_amount(resource_id)
-	var delivered: int = get_delivered_buffer_amount(resource_id)
+	var received: int = get_total_received_amount(resource_id)
 	var reserved: int = get_reserved_in_piles_amount(resource_id)
 	var in_transit: int = get_in_transit_amount(resource_id)
-	return maxi(0, required - delivered - reserved - in_transit)
+	return maxi(0, required - received - reserved - in_transit)
 
 
 func is_fully_supplied() -> bool:
 	if _required_amounts.is_empty():
 		return false
 	for res_id: StringName in _required_amounts.keys():
-		if get_delivered_buffer_amount(res_id) < get_required_amount(res_id):
+		if get_total_received_amount(res_id) < get_required_amount(res_id):
 			return false
 	return true
+
+
+func get_accounting_breakdown(resource_id: StringName) -> Dictionary:
+	var required: int = get_required_amount(resource_id)
+	var reserved: int = get_reserved_in_piles_amount(resource_id)
+	var in_transit: int = get_in_transit_amount(resource_id)
+	var delivered_buffer: int = get_delivered_buffer_amount(resource_id)
+	var consumed: int = get_consumed_amount(resource_id)
+	var uncovered_missing: int = get_missing_amount(resource_id)
+	return {
+		"required": required,
+		"reserved": reserved,
+		"in_transit": in_transit,
+		"delivered_buffer": delivered_buffer,
+		"consumed": consumed,
+		"uncovered_missing": uncovered_missing,
+		"sum": reserved + in_transit + delivered_buffer + consumed + uncovered_missing,
+	}
+
+
+func verify_accounting_invariant() -> bool:
+	for res_id: StringName in _required_amounts.keys():
+		var b: Dictionary = get_accounting_breakdown(res_id)
+		if (
+			int(b["reserved"]) < 0
+			or int(b["in_transit"]) < 0
+			or int(b["delivered_buffer"]) < 0
+			or int(b["consumed"]) < 0
+			or int(b["uncovered_missing"]) < 0
+		):
+			return false
+		if int(b["sum"]) != int(b["required"]):
+			return false
+	return true
+
+
+func get_complementable_missing_amounts() -> Dictionary:
+	var result: Dictionary = {}
+	for res_id: StringName in _get_sorted_required_keys():
+		var missing: int = get_missing_amount(res_id)
+		if missing > 0:
+			result[res_id] = missing
+	return result
+
+
+func can_authorize_manual_complement(
+	requested_amounts: Dictionary = {},
+	allow_partial: bool = false
+) -> Dictionary:
+	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
+		return {"ok": false, "complemented": {}, "remaining_missing": {}, "reason": "site_not_active"}
+	return _plan_manual_complement(requested_amounts, allow_partial)
+
+
+func authorize_manual_complement(
+	intent: ManualComplementIntent,
+	requested_amounts: Dictionary = {},
+	allow_partial: bool = false
+) -> Dictionary:
+	if intent == null or not is_instance_valid(intent) or not intent.is_structurally_valid_for(self):
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "unauthorized_or_missing_intent"}
+
+	# One-shot consumption occurs immediately after structural intent validation,
+	# including when downstream preconditions or free stock validation fail.
+	intent.consumed = true
+
+	if _is_complementing:
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
+
+	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "site_not_active"}
+
+	var plan: Dictionary = _plan_manual_complement(requested_amounts, allow_partial)
+	if not (plan["ok"] as bool):
+		return {
+			"ok": false,
+			"complemented": {},
+			"remaining_missing": plan.get("remaining_missing", get_complementable_missing_amounts()),
+			"reason": String(plan.get("reason", "insufficient_free_stock")),
+		}
+
+	var target_batch: Dictionary = plan["target_batch"] as Dictionary
+	if target_batch.is_empty():
+		return {
+			"ok": true,
+			"complemented": {},
+			"remaining_missing": {},
+			"reason": String(plan.get("reason", "nothing_missing")),
+		}
+
+	_is_complementing = true
+	var committed: bool = _inventory.complement_reservation(reservation_id, target_batch)
+	var should_emit_direct: bool = committed and not _signals_bound
+	if should_emit_direct:
+		state_changed.emit(self)
+	_is_complementing = false
+
+	if not committed:
+		return {
+			"ok": false,
+			"complemented": {},
+			"remaining_missing": get_complementable_missing_amounts(),
+			"reason": "insufficient_free_stock",
+		}
+
+	return {
+		"ok": true,
+		"complemented": target_batch.duplicate(),
+		"remaining_missing": get_complementable_missing_amounts(),
+		"reason": "",
+	}
+
+
+func _plan_manual_complement(requested_amounts: Dictionary, allow_partial: bool) -> Dictionary:
+	var missing: Dictionary = get_complementable_missing_amounts()
+	if missing.is_empty():
+		return {
+			"ok": true,
+			"target_batch": {},
+			"remaining_missing": {},
+			"reason": "nothing_missing",
+		}
+
+	var normalized: Dictionary = {}
+	if requested_amounts.is_empty():
+		normalized = missing.duplicate()
+	else:
+		for raw_key: Variant in requested_amounts.keys():
+			if not (raw_key is StringName or raw_key is String):
+				return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "invalid_requested_amounts"}
+			var res_id: StringName = StringName(raw_key)
+			var raw_val: Variant = requested_amounts[raw_key]
+			if res_id.is_empty() or not (raw_val is int) or (raw_val as int) <= 0:
+				return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "invalid_requested_amounts"}
+			var req_amt: int = raw_val as int
+			var cur_missing: int = int(missing.get(res_id, 0))
+			var capped: int = mini(req_amt, cur_missing)
+			if capped > 0:
+				normalized[res_id] = capped
+		if normalized.is_empty():
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "invalid_requested_amounts"}
+
+	var target_batch: Dictionary = {}
+	if not allow_partial:
+		if not _inventory.can_complement_reservation(reservation_id, normalized):
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "insufficient_free_stock"}
+		target_batch = normalized
+	else:
+		for res_id: StringName in _get_sorted_required_keys():
+			if not normalized.has(res_id):
+				continue
+			var want: int = int(normalized[res_id])
+			var avail: int = _inventory.get_available_amount(res_id)
+			var take: int = mini(want, avail)
+			if take > 0:
+				target_batch[res_id] = take
+		if target_batch.is_empty() or not _inventory.can_complement_reservation(reservation_id, target_batch):
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "insufficient_free_stock"}
+
+	var projected_remaining: Dictionary = missing.duplicate()
+	for res_key: Variant in target_batch.keys():
+		var res_id: StringName = res_key as StringName
+		var left: int = maxi(0, int(projected_remaining.get(res_id, 0)) - int(target_batch[res_id]))
+		if left <= 0:
+			projected_remaining.erase(res_id)
+		else:
+			projected_remaining[res_id] = left
+
+	return {
+		"ok": true,
+		"target_batch": target_batch,
+		"remaining_missing": projected_remaining,
+		"reason": "",
+	}
 
 
 func get_pending_pickup_amount(pile_id: int, resource_id: StringName, exclude_unit: Unit = null) -> int:
@@ -309,7 +542,7 @@ func release_pickup_claim(unit: Unit) -> void:
 
 func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int) -> void:
 	_prune_stale_state()
-	if unit == null or not is_instance_valid(unit) or resource_id.is_empty() or amount <= 0:
+	if not is_active() or unit == null or not is_instance_valid(unit) or resource_id.is_empty() or amount <= 0:
 		return
 	var carry_load: UnitCarryLoad = unit.get_carry_load()
 	if carry_load == null:
@@ -321,7 +554,7 @@ func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int)
 	var accounting_headroom: int = maxi(
 		0,
 		get_required_amount(resource_id)
-		- get_delivered_buffer_amount(resource_id)
+		- get_total_received_amount(resource_id)
 		- get_reserved_in_piles_amount(resource_id)
 		- get_in_transit_amount(resource_id)
 	)
@@ -387,7 +620,7 @@ func has_active_peer_transport_for_site(exclude_unit: Unit = null) -> bool:
 
 func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> Dictionary:
 	_prune_stale_state()
-	if not is_valid() or unit == null or not is_instance_valid(unit) or carry_load == null or carry_load.is_empty():
+	if not is_valid() or not is_active() or unit == null or not is_instance_valid(unit) or carry_load == null or carry_load.is_empty():
 		return {}
 
 	var unit_claim: Dictionary = get_transit_claim_for_unit(unit)
@@ -406,7 +639,7 @@ func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> D
 		var invariant_cap: int = maxi(
 			0,
 			get_required_amount(res_id)
-			- get_delivered_buffer_amount(res_id)
+			- get_total_received_amount(res_id)
 			- get_reserved_in_piles_amount(res_id)
 			- other_in_transit
 		)
@@ -574,10 +807,14 @@ func get_status_snapshot() -> Dictionary:
 		"region_id": region_id,
 		"definition_id": definition.definition_id if definition != null else &"",
 		"display_name": definition.display_name if definition != null else "",
+		"site_state": _site_state,
+		"assembly_substate": get_assembly_substate(),
 		"required": get_required_amounts(),
 		"reserved_in_piles": get_reserved_in_piles_amounts(),
 		"in_transit": get_in_transit_amounts(),
 		"delivered_buffer": get_delivered_buffer_amounts(),
+		"consumed": get_consumed_amounts(),
+		"total_received": get_total_received_amounts(),
 		"missing": get_missing_amounts(),
 		"is_fully_supplied": is_fully_supplied(),
 		"workers": get_assigned_worker_entries(),

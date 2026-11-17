@@ -351,23 +351,53 @@ func withdraw_batch(amounts: Dictionary) -> bool:
 func can_reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	if is_locked():
 		return false
-	var plan: Dictionary = _build_reserve_plan(reservation_id, amounts)
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, false)
 	return plan["ok"] as bool
 
 
 func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	if is_locked():
 		return false
-	var plan: Dictionary = _build_reserve_plan(reservation_id, amounts)
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, false)
 	if not (plan["ok"] as bool):
 		return false
+	return _commit_reserve_entries(plan["entries"] as Array[Dictionary], reservation_id)
 
+
+func can_complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, extra_amounts, true)
+	return plan["ok"] as bool
+
+
+func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, extra_amounts, true)
+	if not (plan["ok"] as bool):
+		return false
+	return _commit_reserve_entries(plan["entries"] as Array[Dictionary], reservation_id)
+
+
+func _commit_reserve_entries(entries: Array[Dictionary], reservation_id: StringName) -> bool:
+	if entries.is_empty():
+		return false
+	var snapshot: Dictionary = _ledger.snapshot_state()
 	_is_mutating = true
-	var entries: Array[Dictionary] = plan["entries"] as Array[Dictionary]
 	for entry: Dictionary in entries:
 		var pile: GroundResourcePile = entry["pile"] as GroundResourcePile
 		var res_id: StringName = entry["resource_id"] as StringName
 		var allocate_amt: int = entry["amount"] as int
+		if pile == null or not is_instance_valid(pile) or allocate_amt <= 0:
+			_ledger.restore_state(snapshot)
+			_is_mutating = false
+			return false
+		var pile_free: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
+		if pile_free < allocate_amt:
+			_ledger.restore_state(snapshot)
+			_is_mutating = false
+			return false
 		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
 	_is_mutating = false
 
@@ -784,7 +814,17 @@ func _build_withdraw_plan(amounts: Dictionary) -> Dictionary:
 
 
 func _build_reserve_plan(reservation_id: StringName, amounts: Dictionary) -> Dictionary:
-	if reservation_id.is_empty() or _ledger.has_reservation(reservation_id):
+	return _build_reserve_plan_internal(reservation_id, amounts, false)
+
+
+func _build_reserve_plan_internal(
+	reservation_id: StringName,
+	amounts: Dictionary,
+	allow_existing: bool
+) -> Dictionary:
+	if reservation_id.is_empty():
+		return {"ok": false, "entries": []}
+	if not allow_existing and _ledger.has_reservation(reservation_id):
 		return {"ok": false, "entries": []}
 	var parsed: Dictionary = parse_positive_batch(amounts)
 	if not (parsed["ok"] as bool):

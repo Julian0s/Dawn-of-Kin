@@ -113,6 +113,50 @@ func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	return true
 
 
+func can_complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if reservation_id.is_empty():
+		return false
+	var parsed: Dictionary = parse_positive_batch(extra_amounts)
+	if not (parsed["ok"] as bool):
+		return false
+	var items: Dictionary = parsed["items"] as Dictionary
+	for key: Variant in items.keys():
+		var res_id: StringName = key as StringName
+		if get_available_amount(res_id) < int(items[res_id]):
+			return false
+	return true
+
+
+func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+	if not can_complement_reservation(reservation_id, extra_amounts):
+		return false
+	var parsed: Dictionary = parse_positive_batch(extra_amounts)
+	if not (parsed["ok"] as bool):
+		return false
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+	var snapshot: Variant = _create_rollback_snapshot()
+
+	if not _reservations.has(reservation_id):
+		_reservations[reservation_id] = {}
+	var bucket: Dictionary = _reservations[reservation_id] as Dictionary
+	for res_id: StringName in sorted_keys:
+		var add_amt: int = int(items[res_id])
+		if get_available_amount(res_id) < add_amt:
+			_restore_rollback_snapshot(snapshot)
+			return false
+		bucket[res_id] = int(bucket.get(res_id, 0)) + add_amt
+	if not _reservation_order.has(reservation_id):
+		_reservation_order[reservation_id] = _next_reservation_seq
+		_next_reservation_seq += 1
+
+	begin_batch()
+	_emit_reservations_changed()
+	_emit_storage_changed()
+	end_batch(false)
+	return true
+
+
 func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
 	if not has_reservation(reservation_id):
 		return false
