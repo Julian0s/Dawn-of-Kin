@@ -1,12 +1,14 @@
 # Dawn of Kin — T3.4.3 — Relatório técnico da candidata
 
-**Status:** **T3.4.3 IMPLEMENTADA COMO CANDIDATA — AGUARDANDO AUDITORIA INDEPENDENTE DO CHATGPT E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO. SEM MERGE, SEM TAG, T3.4.4–T3.4.5 BLOQUEADAS.**
+**Status:** **T3.4.3 — CANDIDATA CORRIGIDA, AGUARDANDO NOVA AUDITORIA INDEPENDENTE E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO. SEM MERGE, SEM TAG, T3.4.4–T3.4.5 BLOQUEADAS.**
 
 **Data:** 17/11/2026. **Branch:** `feat/t3-4-3-reactive-construction-orders`.
 
 **Worktree:** `C:/Projetos/Dawn_of_Kin_wt_t3_4_3`.
 
-**Commit de implementação funcional:** `bb55f9a195a3deb45ca329553631c774cbb7a48f`. **Commit de testes automatizados:** `194e1f44bd159a82acf6ad142881ccd41af5d235`. *(O commit seguinte nesta branch é estritamente documental.)*
+**Commits funcionais e de testes nesta branch:**
+- Implementação inicial T3.4.3: `bb55f9a195a3deb45ca329553631c774cbb7a48f` / testes iniciais: `194e1f44bd159a82acf6ad142881ccd41af5d235` / relatório inicial auditado: `62c5acba3a635e2f13ae2473f1c822baa77dbe81`.
+- Revisão corretiva (carga excedente em construtores): `1c1f9c9539a026ff25a199789df015fef5961b23` (`fix(t3-4-3)`) e testes complementares `cb0b8e224163833f6effb5e19f18f1f86a8cc77d` (`test(t3-4-3)`). *(O commit seguinte nesta branch é estritamente documental.)*
 
 ---
 
@@ -79,21 +81,42 @@
 4. Ajustes pontuais documentados em duas asserções pré-T3.4 de regressões T3.3 *(nenhuma guarda ou invariante foi flexibilizado; asserções passaram a verificar explicitamente o comportamento `T3.4.3` + conservação integral)*:
    - [`tests/integration/test_t3_3_construction_logistics.gd`](../../tests/integration/test_t3_3_construction_logistics.gd) (`test_01`, L203–230): antes verificava `Unit.State.IDLE` `4` quadros após `is_fully_supplied()` quando ainda não havia montagem na T3.3. Atualizado para confirmar os `12 wood / 6 stone` recebidos e a promoção `SOLO_SUPPLIER -> BUILDER` (`WORKING`/`MOVING`) `4` quadros após suprimento, aguardando em seguida a conclusão física para verificar `SiteState.COMPLETING`, `consumed = {12, 6}`, `buffer = {0, 0}`, `Unit.State.IDLE` e ausência de `BuildingInstance` (`T3.4.4`).
    - [`tests/integration/test_t3_3_ux_flow.gd`](../../tests/integration/test_t3_3_ux_flow.gd) (`test_03`, L244–251): na montagem paralela de `2` trabalhadores promovidos, parte da madeira já havia sido consumida antes de `is_fully_supplied()` (`delivered_buffer = 11`, `consumed = 1`). Atualizado para verificar conservação exata via `get_total_received_amount` (`buffer + consumed == 12` madeira e `== 6` pedra) conforme o contrato da `T3.4.1` §3.2.
+   - [`tests/integration/test_t3_3_construction_logistics.gd`](../../tests/integration/test_t3_3_construction_logistics.gd) (`test_08`, L868–908): a versão T3.3 mantinha `w3` (`BUILDER` com `2` madeiras externas não atribuídas) em `Phase.BUILDER_STANDBY` com a mochila intacta. Como a revisão corretiva da `T3.4.3` exige que construtores com carga não necessária devolvam fisicamente a carga ao acampamento antes da montagem (sem retê-la em espera infinita), `test_08` foi alinhado para verificar explicitamente a devolução de `w3` via `Phase.RETURNING_UNNEEDED_CARGO` (`inventory.get_available_amount(&"wood") == 2`, zero vazamento para o canteiro via `get_total_received_amount(&"wood") == 12 - orphan_wood` / `12`) e o prosseguimento para a montagem após esvaziar a mochila.
+
+---
+
+## 2.1 Revisão corretiva — Carga excedente e mista em construtores (17/11/2026)
+
+### Causa identificada (auditoria sobre `62c5acba3a635e2f13ae2473f1c822baa77dbe81`)
+- No ramo `WorkerRole.BUILDER` de `ConstructOrder._advance_by_role()`, quando não havia carga utilizável reivindicada (`has_usable_site_cargo == false`), o fluxo seguia diretamente para `_start_moving_to_builder_slot(movement)` sem chamar `site.get_unneeded_cargo_for_unit()` / `_start_returning_unneeded_cargo()`.
+- Ao alcançar o slot, `_enter_builder_slot_ready()` colocava qualquer unidade com mochila não vazia em `Phase.BUILDER_STANDBY`, `_can_unit_assemble_now()` bloqueava montagem enquanto houvesse carga, e `_update_builder_standby()` não disparava devolução — deixando o construtor permanentemente impedido de montar se trouxesse carga externa de ordem anterior.
+
+### Correção aplicada ([`construct_order.gd`](../../src/units/orders/construct_order.gd))
+- Adicionados os helpers `_cancel_deliver_suborder()` e `_return_unneeded_or_enter_builder_slot()`:
+  1. Se `BUILDER` possui carga atribuída utilizável (`has_usable_site_cargo`), prioriza entrega ao canteiro (`_start_moving_to_site_dropoff()`).
+  2. Restando carga não necessária (`not site.get_unneeded_cargo_for_unit(_unit, carry_load).is_empty()`), aciona `_start_returning_unneeded_cargo()` reutilizando `DeliverToCampOrder` (preservando `_deliver_suborder` ativo durante sinais de reequilíbrio). Em falha física/acampamento inválido, termina explicitamente com `FAILED` preservando integralmente a mochila e sem espera silenciosa.
+  3. Somente após esvaziar legitimamente a mochila prossegue para `_start_moving_to_builder_slot()` e inicia `BUILDER_ASSEMBLING`.
+- Aplicada a mesma checagem pós-promoção (`rebalance_for_assembly_on_supply_complete`) em `_advance_by_role()`, e redirecionados `_enter_builder_slot_ready()`, `_update_builder_standby()` e `_update_builder_assembling()` para `_advance_by_role()` caso a mochila não esteja vazia. Adicionada guarda em `_execute_site_dropoff()` contra loop caso carga reivindicada permanecesse aceitável com retorno vazio.
+
+### Novos testes complementares adicionados ([`test_t3_4_3_reactive_construction_orders.gd`](../../tests/integration/test_t3_4_3_reactive_construction_orders.gd))
+- **`test_05_t34_builder_with_unneeded_cargo_returns_to_camp_then_assembles` (Caso A — `36` asserções):** construtor recebe carga externa (`3 food + 2 wood`), assume `BUILDER`, devolve fisicamente ao acampamento via `DeliverToCampOrder`, move-se ao slot e conclui `BUILDER_ASSEMBLING` sem perda/duplicação; também valida falha explícita (`REASON_UNNEEDED_CARGO_REJECTED`) preservando a mochila intacta quando o acampamento é inválido/ausente.
+- **`test_06_t34_builder_with_usable_and_unneeded_cargo_delivers_then_returns_then_assembles` (Caso B — `26` asserções):** construtor com carga mista (`3` madeira reivindicada ao canteiro + `2` madeira externa + `2` alimento dentro da capacidade `12/20 kg`) entrega primeiro exatamente as `3` madeiras ao canteiro, depois devolve (`2 wood + 2 food`) ao acampamento e em seguida monta até `COMPLETING` sem vazamento nem consumo de material não entregue.
+- **`test_07_t34_reactive_wait_zero_polling_after_cargo_return_and_duplicate_guard` (Caso C — `40` asserções):** confirma que após devolver `2 food` e pausar em `4_999_999 µs` (`PAUSED_STARVED` / `Phase.WAITING_FOR_MATERIALS`), ocorrem **`0` chamadas** a `contribute_work()` e `0` sinais redundantes em `20` quadros ociosos, preservando a guarda de duplicidade no mesmo frame (`"duplicate_cycle_contribution"`), conservação com carga em trânsito (`in_transit`) e retomada por sinal após entrega de pedra.
 
 ---
 
 ## 3. Resultados completos de validação e testes
 
-Todos os comandos abaixo foram executados diretamente na worktree `C:\Projetos\Dawn_of_Kin_wt_t3_4_3` após a última edição:
+Todos os comandos abaixo foram executados diretamente na worktree `C:\Projetos\Dawn_of_Kin_wt_t3_4_3` após a última edição funcional e de testes (`cb0b8e22`):
 
 | Verificação | Resultado observado |
 |---|---|
 | `.\tools\validate.ps1` | **APROVADO** — importação headless, `--check-only` em **113 scripts** e boot headless da cena principal com **0 erros e 0 avisos** (`exit 0`). |
-| `.\tools\run_tests.ps1 -Segmented` | **37/37 suítes, 257/257 testes, 9.004 asserções, 0 falhas, 0 erros de suíte, 0 avisos/erros** em 8 lotes disjuntos (`Discovered=37`, `ExecutedUnique=37`, `Duplicates=0`, `Missing=0`, `SumGodotElapsed=341.957,1 ms`, `TotalWallElapsed=349.234,9 ms`). |
-| Suíte `test_t3_4_3_reactive_construction_orders.gd` *(no lote `integration-06`)* | **4/4 testes, 282 asserções, 0 falhas** (`42.853,4 ms`). |
-| Regressão `test_t3_4_1_accounting_and_complement.gd` | **8/8 testes, 299 asserções, 0 falhas** (`43,8 ms`). |
-| Regressão `test_t3_4_2_deterministic_assembly.gd` | **11/11 testes, 829 asserções, 0 falhas** (`3.030,8 ms`). |
-| Regressões `T3.3` | `test_t3_3_construction_site.gd`: **7/7** (`164`); `test_t3_3_ux_display_and_workers.gd`: **2/2** (`9`); `test_t3_3_construction_logistics.gd`: **11/11** (`212`); `test_t3_3_ux_flow.gd`: **3/3** (`57`). |
+| `.\tools\run_tests.ps1 -Segmented` | **37/37 suítes, 260/260 testes, 9.108 asserções, 0 falhas, 0 erros de suíte, 0 avisos/erros** em 8 lotes disjuntos (`Discovered=37`, `ExecutedUnique=37`, `Duplicates=0`, `Missing=0`, `SumGodotElapsed=349.864,8 ms`, `TotalWallElapsed=355.912,2 ms`). |
+| Suíte `test_t3_4_3_reactive_construction_orders.gd` *(no lote `integration-06`)* | **7/7 testes, 384 asserções, 0 falhas** (`55.700,0 ms` no lote segmentado; `56.861,9 ms` isolado). |
+| Regressão `test_t3_4_1_accounting_and_complement.gd` | **8/8 testes, 299 asserções, 0 falhas** (`49,1 ms`). |
+| Regressão `test_t3_4_2_deterministic_assembly.gd` | **11/11 testes, 829 asserções, 0 falhas** (`3.035,9 ms`). |
+| Regressões `T3.3` | `test_t3_3_construction_site.gd`: **7/7** (`164`); `test_t3_3_ux_display_and_workers.gd`: **2/2** (`9`); `test_t3_3_construction_logistics.gd`: **11/11** (`214`); `test_t3_3_ux_flow.gd`: **3/3** (`57`). |
 | Regressões `T1`, `T2`, `T3.1`, `T3.2` | Todas as demais `28/28` suítes unitárias e de integração aprovadas (`0` falhas). |
 | `git diff --check` | **Aprovado**, `0` erros de formatação/whitespace. |
 
@@ -109,8 +132,8 @@ Todos os comandos abaixo foram executados diretamente na worktree `C:\Projetos\D
 
 ## 5. Classificação estrita de estado (`implementado` vs. `não verificado` vs. `bloqueado`)
 
-- **Implementado e testado automaticamente (headless):** fases `BUILDER_ASSEMBLING` e `WAITING_FOR_MATERIALS`, despertar reativo orientado a sinais sem polling por frame, registro e verificação contínua de âncora perimetral de construtor, promoções `D9` / `DEC-18` (1, 2, 3, recusa do 4º e retorno do solitário pós-complemento `DEC-11B`), encerramento em `SiteState.COMPLETING` e suíte `T34-AUT-09B`, `T34-AUT-10`, `T34-AUT-10B`, `T34-AUT-11` integradas às regressões globais (`257/257`).
-- **Não verificado visualmente/manualmente:** execução interativa por jogador humano com mouse, inspeção visual em tela das animações/posturas/painéis temporários durante montagem em andamento e medição empírica de desempenho em GPU alvo (`Intel UHD 620`, prevista para o incremento `T3.4.5`).
+- **Implementado e testado automaticamente (headless):** fases `BUILDER_ASSEMBLING` e `WAITING_FOR_MATERIALS`, despertar reativo orientado a sinais sem polling por frame, registro e verificação contínua de âncora perimetral de construtor, devolução de carga excedente e entrega prévia de carga mista em construtores, promoções `D9` / `DEC-18` (1, 2, 3, recusa do 4º e retorno do solitário pós-complemento `DEC-11B`), encerramento em `SiteState.COMPLETING` e suíte `T34-AUT-09B`, `T34-AUT-10`, `T34-AUT-10B`, `T34-AUT-11` + Casos A/B/C integrados às regressões globais (`260/260`).
+- **Não verificado visualmente/manualmente:** execução interativa por jogador humano com mouse, inspeção visual em tela das animações/posturas/painéis temporários durante devolução de carga ou montagem em andamento e medição empírica de desempenho em GPU alvo (`Intel UHD 620`, prevista para o incremento `T3.4.5`).
 - **Bloqueado / fora de escopo:** criação e validação transacional de `BuildingInstance` com cooldown de retentativa e proteção de sobreposição em `PlacementValidator` (`T3.4.4`), camada regional `_buildings_root` / rebake assíncrono N1 / barreira transitória `_pending_building_blockers` / benchmark `T34-PERF-01` (`T3.4.5`), UI definitiva (`T3.5`), cancelamento/reembolso (`T3.6`), depósito funcional (`T3.7`) e persistência (`T3.8`).
 
-**T3.4.3 IMPLEMENTADA COMO CANDIDATA — AGUARDANDO AUDITORIA INDEPENDENTE DO CHATGPT E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO. SEM MERGE. T3.4.4–T3.4.5 BLOQUEADAS.**
+**T3.4.3 — CANDIDATA CORRIGIDA, AGUARDANDO NOVA AUDITORIA INDEPENDENTE E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO.**
