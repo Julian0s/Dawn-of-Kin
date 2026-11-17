@@ -9,8 +9,8 @@
 **Commits da branch candidata:**
 - Implementação inicial T3.4.4: `5d0207201dfc530b698bc736ad017542613623c9` (`feat(t3.4.4)`).
 - Testes e regressões iniciais: `35c45e5334d7264aff5a059764750a67d0f0526c` (`test(t3.4.4)`).
-- Relatório inicial da candidata e evidência gráfica: `3d3c25838421c60d80c7fc051bb0cf15c26dafd9` (`docs(t3.4.4)`).
-- Teste complementar R2-03 (contexto antigo de hover): `a612026723b7e7a5c8df71f25b3fc019ec81643c` (`test(t3.4.4)`).
+- Relatório inicial da candidata e evidência gráfica: `3d3c258960dce56ea6962131dbb17bd9ac83f096` (`docs(t3.4.4)`).
+- Teste complementar R2-03 (contexto antigo de hover): `a6120266b4e10ea12af3b11ea65b294866856f78` (`test(t3.4.4)`).
 - **Commit técnico homologado pelo proprietário:** `7e3f961359558839c2cb5ef107a62ab691eb8557` (`docs(t3.4.4)`). *(O commit subsequente nesta branch é estritamente documental e não altera nem substitui o objeto técnico homologado).*
 
 ## Registro formal de homologação — 17/11/2026
