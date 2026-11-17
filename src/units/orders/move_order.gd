@@ -100,6 +100,10 @@ func physics_update(movement: UnitMovement, _delta: float) -> void:
 		UnitMovement.MoveState.MOVING:
 			return
 		UnitMovement.MoveState.ARRIVED:
+			if movement.is_repath_partial_unreachable():
+				is_partial_unreachable = true
+				navigation_reason = movement.get_repath_navigation_reason()
+				resolved_target = movement.get_target_position()
 			movement.stop_movement()
 			if is_partial_unreachable:
 				mark_failed(REASON_UNREACHABLE)

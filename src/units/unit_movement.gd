@@ -73,6 +73,8 @@ var _safe_velocity: Vector3 = Vector3.ZERO
 var _has_safe_velocity: bool = false
 var _awaiting_pending_nav_sync: bool = false
 var _navigation_failure_reason: String = ""
+var _repath_partial_unreachable: bool = false
+var _repath_navigation_reason: String = ""
 
 
 func _ready() -> void:
@@ -183,6 +185,14 @@ func get_target_position() -> Vector3:
 	return _target_position
 
 
+func is_repath_partial_unreachable() -> bool:
+	return _repath_partial_unreachable
+
+
+func get_repath_navigation_reason() -> String:
+	return _repath_navigation_reason
+
+
 func get_repath_attempts() -> int:
 	return _repath_attempts
 
@@ -209,6 +219,8 @@ func begin_move_to(target: Vector3) -> bool:
 	_bind_agent_map()
 	_recompute_target_speed(_move_state != MoveState.MOVING)
 	_target_position = target
+	_repath_partial_unreachable = false
+	_repath_navigation_reason = ""
 	_navigation_failure_reason = ""
 	_awaiting_pending_nav_sync = false
 	_repath_attempts = 0
@@ -465,6 +477,9 @@ func _perform_controlled_repath() -> void:
 			repath_result.status == WorldNavigation.QueryStatus.PARTIAL_UNREACHABLE
 			and not repath_result.path.is_empty()
 		):
+			if repath_result.status == WorldNavigation.QueryStatus.PARTIAL_UNREACHABLE:
+				_repath_partial_unreachable = true
+				_repath_navigation_reason = repath_result.reason
 			_target_position = repath_result.resolved_target
 
 	_agent.target_position = _target_position

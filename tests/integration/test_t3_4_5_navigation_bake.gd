@@ -145,6 +145,40 @@ func _traveller(fx: Dictionary, at: Vector3 = Vector3(-8, 0, 0)) -> Unit:
 	return unit
 
 
+func test_09_repath_to_partial_target_fails_after_real_rebake() -> void:
+	var fx: Dictionary = await _fixture()
+	var nav: ControlledNavigation = fx["nav"]
+	var unit: Unit = _traveller(fx)
+	await _assemble(fx)
+	var original := Vector3.ZERO
+	assert_true(nav.find_path(unit.global_position, original).is_ok())
+	var order := MoveOrder.new(original)
+	unit.issue_order(order)
+	assert_true(order.is_active())
+	assert_false(order.is_partial_unreachable)
+	assert_true((fx["cm"] as ConstructionManager).complete_site_transaction(fx["site"]))
+	assert_true(unit.get_movement()._awaiting_pending_nav_sync)
+	assert_eq(nav.find_path(unit.global_position, original).reason, "pending_building_blocker")
+	await _wait_held(nav)
+	nav.release()
+	await _wait_applied(nav)
+	var result: WorldNavigation.PathResult = nav.find_path(unit.global_position, original)
+	assert_eq(result.status, WorldNavigation.QueryStatus.PARTIAL_UNREACHABLE)
+	assert_false(result.path.is_empty())
+	assert_true(unit.get_movement().is_repath_partial_unreachable())
+	assert_ne(unit.get_movement().get_target_position(), original)
+	for _frame: int in range(300):
+		await wait_physics_frames(1)
+		assert_false(Rect2(-2, -2, 4, 4).has_point(Vector2(unit.global_position.x, unit.global_position.z)))
+		if order.is_finished():
+			break
+	assert_eq(order.status, UnitOrder.Status.FAILED)
+	assert_eq(order.failure_reason, UnitOrder.REASON_UNREACHABLE)
+	assert_true(order.is_partial_unreachable)
+	assert_eq(order.requested_target, original)
+	assert_eq((fx["cm"] as ConstructionManager).get_completed_buildings()[0].incorporated_materials, COSTS)
+
+
 func test_01_t34_aut_06_coalescence_stale_callback_and_two_buildings() -> void:
 	var fx: Dictionary = await _fixture()
 	var nav: ControlledNavigation = fx["nav"]
