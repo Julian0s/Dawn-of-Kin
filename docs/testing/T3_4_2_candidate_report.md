@@ -1,12 +1,26 @@
-# Dawn of Kin — T3.4.2 — Relatório técnico candidato
+# Dawn of Kin — T3.4.2 — Relatório técnico e registro de homologação
 
-**Status:** IMPLEMENTADA COMO CANDIDATA; aguardando auditoria independente e homologação do proprietário. Sem merge ou tag.
+**Status:** **T3.4.2 FORMALMENTE HOMOLOGADA PELO PROPRIETÁRIO EM 17/11/2026** no commit `54cc0818cc54a4b4275e64bc92946773c5842173`. Autorizado exclusivamente o registro documental na branch candidata. **SEM MERGE, SEM TAG, SEM INÍCIO DA T3.4.3.**
 
 **Data:** 17/11/2026. **Branch:** `feat/t3-4-2-deterministic-assembly`.
 
 **Worktree:** `C:/Projetos/Dawn_of_Kin_wt_t3_4_2`.
 
-**Commit de implementação e testes:** `8302e6accce4317b02e49cb864add725fa4ea3e1`. O commit documental posterior contém somente este relatório.
+**Commit de implementação e testes inicial:** `8302e6accce4317b02e49cb864add725fa4ea3e1`. **Commit técnico homologado após a correção de sinais e os testes complementares:** `54cc0818cc54a4b4275e64bc92946773c5842173`. O commit posterior de homologação é estritamente documental.
+
+## Registro formal de homologação — 17/11/2026
+
+**Decisão expressa do proprietário (sem observações):**
+
+> Homologo formalmente a implementação T3.4.2 do Dawn of Kin no commit 54cc0818cc54a4b4275e64bc92946773c5842173. Autorizo exclusivamente o registro documental da homologação na branch candidata. Não autorizo merge, tag nem início da T3.4.3. Observações: Nenhuma.
+
+- **Objeto homologado:** implementação e testes da T3.4.2 no SHA exato `54cc0818cc54a4b4275e64bc92946773c5842173`, incluindo a supressão de sinais redundantes de `contribute_work()` em chamadas com `advanced_usec == 0` e o teste adicional de regressão.
+- **Fundamento técnico:** auditoria estática independente do diff, do código-fonte, do teste de sinais e do relatório de validação, comparados com a arquitetura aprovada `T3.4-R2.3`. Não foram identificados defeitos bloqueantes no escopo da T3.4.2.
+- **Evidência de execução (Antigravity):** `36/36` suítes, `253/253` testes, `8.710` asserções; validação de `112` scripts sem erros ou avisos. Essas execuções foram **relatadas pelo Antigravity e auditadas estaticamente pelo ChatGPT**, sem execução independente de Godot pelo ChatGPT nem homologação visual da montagem.
+- **Limite deliberado:** registro da âncora real por `ConstructOrder`, fases `BUILDER_ASSEMBLING` e `WAITING_FOR_MATERIALS` e teste de ausência de polling pertencem à T3.4.3 e permanecem não implementados, sem constituir defeito retroativo da T3.4.2.
+- **Escopo desta autorização:** somente esta alteração documental de homologação na mesma branch; **nenhuma alteração funcional, nenhum merge para `main`, nenhuma tag e nenhuma autorização para iniciar a T3.4.3**. O commit documental posterior não altera o SHA técnico homologado.
+
+---
 
 ## Base e autorização
 
@@ -70,6 +84,6 @@ Cobertura específica: sete fronteiras exigidas; teto sem pedra; ausência de d�
 - **Âncoras dos construtores (`§4`):** `assign_builder_slot_position()`, `is_unit_at_assigned_builder_slot()` e as guardas de `contribute_work()` atendem integralmente às verificações de backend pertinentes à `T3.4.2`. A chamada de integração pela ordem jogável (`ConstructOrder`) com a posição resolvida pelo `BuildSlotPlanner` está reservada à `T3.4.3` (dependência incremental prevista, não defeito).
 - Não implementados: T34-AUT-09 Parte B, promoções/fases novas de `ConstructOrder`, `WAITING_FOR_MATERIALS`, integração reativa de ordens, `BuildingInstance`, transação de conclusão, rebake/barreiras, UI, cancelamento/reembolso ou depósitos funcionais.
 - Testes de backend não constituem homologação visual ou manual da montagem. Essa interação só poderá ser avaliada após a integração autorizada da T3.4.3; a cena atual mantém as ordens T3.3.
-- O próximo incremento depende de auditoria independente desta candidata e revisão do proprietário. Nenhuma autorização para T3.4.3–T3.4.5 é inferida.
+- A auditoria independente da candidata e a homologação formal foram concluídas em `17/11/2026`. **O merge na `main`, a criação de tags e qualquer implementação da T3.4.3–T3.4.5 continuam bloqueados** até autorização expressa posterior e separada.
 
-**T3.4.2 IMPLEMENTADA COMO CANDIDATA. AINDA NÃO AUDITADA NEM HOMOLOGADA. SEM MERGE. T3.4.3–T3.4.5 BLOQUEADAS.**
+**T3.4.2 FORMALMENTE HOMOLOGADA NO COMMIT `54cc0818`. SEM MERGE. SEM TAG. T3.4.3–T3.4.5 BLOQUEADAS.**
