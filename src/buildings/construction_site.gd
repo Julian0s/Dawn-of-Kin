@@ -2,7 +2,8 @@ class_name ConstructionSite
 extends Node3D
 ## Modular T3.3 construction site holding reservation identity, delivered material buffer,
 ## per-unit transit/pickup tracking, D9 worker role assignments, and footprint picking collision.
-## Does not advance construction progress or trigger active NavMesh rebakes (T3.4+).
+## T3.4.2 exposes guarded deterministic assembly; orders remain T3.3 until T3.4.3.
+## Does not instantiate buildings or trigger active NavMesh rebakes.
 
 const GROUP_CONSTRUCTION_SITES: StringName = &"construction_sites"
 
@@ -34,6 +35,8 @@ const DEFAULT_COLLIDER_MIN_HEIGHT: float = 1.2
 const DEFAULT_DROPOFF_OUTWARD_MARGIN: float = 0.85
 const DEFAULT_DROPOFF_REACH_TOLERANCE: float = 1.35
 const DEFAULT_PILE_PICKUP_REACH: float = 1.45
+const MAX_WORK_DELTA_SEC: float = 0.25
+const USEC_PER_SEC: int = 1_000_000
 
 signal state_changed(site: ConstructionSite)
 signal buffer_changed(site: ConstructionSite)
@@ -65,6 +68,13 @@ var _was_fully_supplied: bool = false
 var _site_state: SiteState = SiteState.UNCONFIGURED
 var _assembly_substate: AssemblySubstate = AssemblySubstate.NONE
 var _is_complementing: bool = false
+var _work_progress_usec: int = 0
+var _total_work_usec: int = 1
+var _builder_slot_positions: Dictionary = {}
+var _last_work_physics_frame_by_unit: Dictionary = {}
+var _work_cycle_serial: int = 0
+var _work_transaction_in_progress: bool = false
+var _starved_resources: Array[StringName] = []
 
 
 func _exit_tree() -> void:
@@ -73,6 +83,8 @@ func _exit_tree() -> void:
 	_pending_pickups.clear()
 	_assigned_workers.clear()
 	_worker_order_ids.clear()
+	_builder_slot_positions.clear()
+	_last_work_physics_frame_by_unit.clear()
 
 
 func configure(
@@ -100,6 +112,7 @@ func configure(
 	reservation_id = p_reservation_id
 	region_id = p_region_id if not p_region_id.is_empty() else &"default"
 	definition = p_definition
+	_total_work_usec = maxi(1, roundi(definition.build_work_required_sec * USEC_PER_SEC))
 	_inventory = p_inventory
 	_resource_defs = p_resource_defs.duplicate()
 	_required_amounts = parsed_costs
@@ -150,6 +163,172 @@ func get_assembly_substate() -> AssemblySubstate:
 
 func is_active() -> bool:
 	return _site_state == SiteState.ACTIVE
+
+
+func get_work_progress_sec() -> float:
+	return float(_work_progress_usec) / float(USEC_PER_SEC)
+
+
+func get_progress_ratio() -> float:
+	return float(_work_progress_usec) / float(_total_work_usec)
+
+
+# Pure production evaluator. Inputs and returned debit plan never alias mutable site state.
+# The caller supplies a positive delta; public seconds validation belongs to guard 2.
+static func evaluate_work_transaction_usec(
+	progress_usec: int, total_usec: int, delta_usec: int,
+	costs: Dictionary, incorporated: Dictionary, buffer: Dictionary
+) -> Dictionary:
+	var result: Dictionary = _work_rejection("insufficient_buffer_transaction_aborted")
+	result["progress_usec"] = progress_usec
+	result["advanced_usec"] = 0
+	result["starved_resources"] = []
+	if total_usec <= 0 or progress_usec < 0 or progress_usec > total_usec or delta_usec <= 0 or costs.is_empty():
+		return result
+	var ceiling: int = total_usec
+	var ceilings: Dictionary = {}
+	for key: Variant in costs:
+		var cost: int = int(costs[key])
+		var used: int = int(incorporated.get(key, 0))
+		var available: int = int(buffer.get(key, 0))
+		# Bound integer products before evaluating them (signed 64-bit arithmetic).
+		if cost <= 0 or total_usec > 9223372036854775807 / cost:
+			return result
+		if used < 0 or available < 0 or used > cost or available > cost - used:
+			return result
+		var capacity: int = used + available
+		var resource_ceiling: int = total_usec
+		if capacity < cost:
+			resource_ceiling = ((capacity + 1) * total_usec - 1) / cost
+		ceilings[key] = resource_ceiling
+		ceiling = mini(ceiling, resource_ceiling)
+	var candidate: int = progress_usec + mini(delta_usec, total_usec - progress_usec)
+	var effective: int = mini(candidate, ceiling)
+	if effective < progress_usec:
+		return result
+	var debits: Dictionary = {}
+	for key: Variant in costs:
+		var target: int = (effective * int(costs[key])) / total_usec
+		var debit: int = target - int(incorporated.get(key, 0))
+		if debit < 0 or debit > int(buffer.get(key, 0)):
+			return result
+		debits[key] = debit
+	var starved: bool = candidate > ceiling
+	var blocked: Array[StringName] = []
+	if starved:
+		for key: Variant in ceilings:
+			if int(ceilings[key]) == ceiling:
+				blocked.append(StringName(key))
+	result.merge({"ok": true, "reason": "", "progress_usec": effective,
+		"advanced_usec": effective - progress_usec,
+		"advanced_sec": float(effective - progress_usec) / float(USEC_PER_SEC),
+		"consumed": debits, "starved": starved, "starved_resources": blocked,
+		"completed": effective == total_usec}, true)
+	return result
+
+
+static func _work_rejection(reason: String) -> Dictionary:
+	return {"ok": false, "advanced_sec": 0.0, "consumed": {},
+		"starved": false, "completed": false, "reason": reason}
+
+
+func assign_builder_slot_position(unit: Unit, slot_idx: int, resolved_slot_pos: Vector3) -> bool:
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or not is_valid():
+		return false
+	if get_worker_role(unit) != WorkerRole.BUILDER or slot_idx != get_builder_slot_index(unit):
+		return false
+	if slot_idx < 0 or slot_idx >= mini(2, maxi(0, definition.max_builders)):
+		return false
+	if not resolved_slot_pos.is_finite() or get_footprint_rect().has_point(Vector2(resolved_slot_pos.x, resolved_slot_pos.z)):
+		return false
+	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(resolved_slot_pos, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()):
+		return false
+	_builder_slot_positions[unit.get_instance_id()] = {"slot_idx": slot_idx, "position": resolved_slot_pos}
+	_refresh_assembly_substate()
+	return true
+
+
+func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
+	# Nine ordered guards; no progress, economic state or signals change on rejection.
+	if not is_valid() or not is_inside_tree() or _site_state != SiteState.ACTIVE:
+		return _work_rejection("site_completing_or_completed" if _site_state in [SiteState.COMPLETING, SiteState.COMPLETED] else "invalid_site_state")
+	if not is_finite(delta_sec) or delta_sec <= 0.0 or delta_sec > MAX_WORK_DELTA_SEC:
+		return _work_rejection("invalid_delta")
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
+		return _work_rejection("invalid_unit")
+	_prune_stale_state()
+	var uid: int = unit.get_instance_id()
+	if not _assigned_workers.has(uid):
+		return _work_rejection("worker_not_registered")
+	if get_worker_role(unit) != WorkerRole.BUILDER:
+		return _work_rejection("worker_not_builder")
+	var slot_idx: int = get_builder_slot_index(unit)
+	if slot_idx < 0 or slot_idx >= mini(2, maxi(0, definition.max_builders)):
+		return _work_rejection("invalid_builder_slot")
+	var anchor: Dictionary = _builder_slot_positions.get(uid, {})
+	if anchor.is_empty() or int(anchor["slot_idx"]) != slot_idx or not (anchor["position"] as Vector3).is_finite():
+		return _work_rejection("builder_slot_position_not_assigned")
+	var order: UnitOrder = unit.get_current_order()
+	if not (order is ConstructOrder) or not order.is_active() or (order as ConstructOrder).site != self or order != _assigned_workers[uid]["order"]:
+		return _work_rejection("invalid_active_order")
+	if not BuildSlotPlanner.is_unit_at_assigned_builder_slot(unit.global_position, self, anchor["position"]):
+		return _work_rejection("worker_not_in_assigned_slot")
+	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(unit.global_position, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()):
+		return _work_rejection("worker_out_of_reach")
+	var frame: int = Engine.get_physics_frames()
+	if _work_transaction_in_progress or int(_last_work_physics_frame_by_unit.get(uid, -1)) == frame:
+		return _work_rejection("duplicate_cycle_contribution")
+	var evaluation: Dictionary = evaluate_work_transaction_usec(_work_progress_usec, _total_work_usec,
+		maxi(1, roundi(delta_sec * USEC_PER_SEC)), _required_amounts, _consumed_materials, _delivered_buffer)
+	if not evaluation["ok"]:
+		return evaluation
+	_work_transaction_in_progress = true
+	_work_cycle_serial += 1
+	_last_work_physics_frame_by_unit[uid] = frame
+	var debits: Dictionary = evaluation["consumed"]
+	for res_id: StringName in _get_sorted_required_keys():
+		_delivered_buffer[res_id] = int(_delivered_buffer[res_id]) - int(debits[res_id])
+		_consumed_materials[res_id] = int(_consumed_materials[res_id]) + int(debits[res_id])
+	_work_progress_usec = int(evaluation["progress_usec"])
+	_starved_resources.assign(evaluation["starved_resources"])
+	if evaluation["completed"]:
+		_site_state = SiteState.COMPLETING
+		_assembly_substate = AssemblySubstate.NONE
+	else:
+		_assembly_substate = AssemblySubstate.PAUSED_STARVED if evaluation["starved"] else AssemblySubstate.ASSEMBLING
+	buffer_changed.emit(self)
+	state_changed.emit(self)
+	_work_transaction_in_progress = false
+	return evaluation
+
+
+func _can_unblock_starvation() -> bool:
+	var evaluation: Dictionary = evaluate_work_transaction_usec(_work_progress_usec, _total_work_usec,
+		1, _required_amounts, _consumed_materials, _delivered_buffer)
+	return bool(evaluation["ok"]) and int(evaluation["advanced_usec"]) > 0
+
+
+func _refresh_assembly_substate() -> void:
+	if not is_active():
+		return
+	if _assembly_substate == AssemblySubstate.PAUSED_STARVED:
+		if not _can_unblock_starvation():
+			return
+		_starved_resources.clear()
+	var has_builder: bool = false
+	var has_ready_builder: bool = false
+	for uid: int in _worker_order_ids:
+		if not _assigned_workers.has(uid) or int(_assigned_workers[uid]["role"]) != WorkerRole.BUILDER:
+			continue
+		has_builder = true
+		var worker: Unit = _assigned_workers[uid]["unit"] as Unit
+		var anchor: Dictionary = _builder_slot_positions.get(uid, {})
+		if is_instance_valid(worker) and worker.is_inside_tree() and not anchor.is_empty():
+			has_ready_builder = has_ready_builder or (BuildSlotPlanner.is_unit_at_assigned_builder_slot(worker.global_position, self, anchor["position"]) and BuildSlotPlanner.is_unit_in_site_dropoff_range(worker.global_position, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()))
+	if _work_progress_usec > 0 and not has_builder:
+		_assembly_substate = AssemblySubstate.PAUSED_NO_WORKERS
+	else:
+		_assembly_substate = AssemblySubstate.ASSEMBLING if has_ready_builder else AssemblySubstate.WAITING_ASSEMBLY
 
 
 func get_footprint_rect() -> Rect2:
@@ -681,6 +860,7 @@ func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> D
 				_clamp_unit_transit_claim(uid)
 
 	carry_load.end_batch(false)
+	_refresh_assembly_substate()
 	buffer_changed.emit(self)
 	state_changed.emit(self)
 
@@ -744,6 +924,7 @@ func unregister_worker(unit: Unit, order: UnitOrder = null) -> void:
 		if entry.get("order") != order:
 			return
 	_assigned_workers.erase(uid)
+	_builder_slot_positions.erase(uid)
 	_worker_order_ids.erase(uid)
 	_rebalance_worker_roles(true)
 
@@ -1082,6 +1263,7 @@ func _prune_stale_state() -> void:
 	if not dead_workers.is_empty():
 		for uid: int in dead_workers:
 			_assigned_workers.erase(uid)
+			_builder_slot_positions.erase(uid)
 			_worker_order_ids.erase(uid)
 		_rebalance_worker_roles(false)
 
@@ -1137,6 +1319,18 @@ func _rebalance_worker_roles(emit_changes: bool) -> void:
 			else:
 				entry["role"] = WorkerRole.UNASSIGNED
 
+	# Anchors survive stable roles, but never a role/ordered slot change.
+	var builder_idx: int = 0
+	for uid: int in _worker_order_ids:
+		if not _assigned_workers.has(uid):
+			continue
+		var is_builder: bool = int(_assigned_workers[uid]["role"]) == WorkerRole.BUILDER
+		var anchor: Dictionary = _builder_slot_positions.get(uid, {})
+		if not is_builder or (not anchor.is_empty() and int(anchor["slot_idx"]) != builder_idx):
+			_builder_slot_positions.erase(uid)
+		if is_builder:
+			builder_idx += 1
+	_refresh_assembly_substate()
 	var changed: bool = false
 	for uid: int in _worker_order_ids:
 		if not _assigned_workers.has(uid):

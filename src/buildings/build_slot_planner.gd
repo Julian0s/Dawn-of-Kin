@@ -5,6 +5,7 @@ extends RefCounted
 ## exact reach checks, and World3D-isolated occupied position collection.
 
 const PILE_ANGLE_SAMPLES: int = 8
+const BUILDER_SLOT_OCCUPANCY_RADIUS: float = 0.75
 const HEIGHT_TOLERANCE: float = 0.85
 const NAV_SURFACE_Y_TOLERANCE: float = 0.75
 const REACH_PROBE_HEIGHT: float = 0.55
@@ -140,6 +141,20 @@ static func is_unit_in_site_dropoff_range(
 		return true
 	var edge_target := Vector3(closest_x, site_pos.y, closest_z)
 	return has_clear_physical_access(unit_pos, edge_target, resolved_world)
+
+
+static func is_unit_at_assigned_builder_slot(
+	unit_pos: Vector3, site: ConstructionSite, assigned_slot_pos: Vector3,
+	occupancy_radius: float = BUILDER_SLOT_OCCUPANCY_RADIUS,
+	height_tolerance: float = HEIGHT_TOLERANCE
+) -> bool:
+	if site == null or not is_instance_valid(site) or not site.is_valid():
+		return false
+	if not unit_pos.is_finite() or not assigned_slot_pos.is_finite():
+		return false
+	if not is_finite(occupancy_radius) or occupancy_radius < 0.0 or not is_finite(height_tolerance) or height_tolerance < 0.0:
+		return false
+	return absf(unit_pos.y - assigned_slot_pos.y) <= height_tolerance and Vector2(unit_pos.x - assigned_slot_pos.x, unit_pos.z - assigned_slot_pos.z).length() <= occupancy_radius
 
 
 static func compute_pile_approach_slot(
