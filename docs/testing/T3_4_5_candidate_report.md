@@ -1,5 +1,22 @@
 # T3.4.5 — Relatório da implementação candidata
 
+## Correção de auditoria — resultado de rota parcial após rebake
+
+**Candidata para nova auditoria; homologação manual continua pendente.** Base da correção: `6795fdfe12845720629c208a7e52dfe3d3fa46d0`. Commit técnico: `737482750675b7d580e10225571a5abd787843e4`. O commit documental é identificável por `git log -1 --format=%H -- docs/testing/T3_4_5_candidate_report.md`.
+
+O recálculo de uma rota originalmente alcançável podia substituir o alvo de movimento por um ponto parcial, enquanto `MoveOrder` ainda considerava a rota completa; ao chegar ao ponto parcial, a ordem reportava sucesso indevido. `UnitMovement` agora registra que um recálculo retornou `PARTIAL_UNREACHABLE` e seu motivo, zerando essa informação no início de cada movimento. Na chegada, `MoveOrder` consulta o resultado, atualiza o destino resolvido e encerra com `FAILED / unreachable`. O destino solicitado da ordem permanece disponível; uma ordem já parcial desde o início conserva seu comportamento anterior. A informação de parcialidade é preservada em recálculos subsequentes para o alvo parcial, evitando que um novo caminho `OK` até esse alvo apague a falha original. Não há dependência de `UnitMovement` para `MoveOrder`.
+
+O novo teste `test_09_repath_to_partial_target_fails_after_real_rebake` inicia uma ordem com caminho `OK`, conclui o abrigo com materiais reais, verifica espera pelo blocker, libera o callback do bake e aguarda sincronização. A consulta real retorna `PARTIAL_UNREACHABLE` com caminho não vazio; a unidade chega ao ponto parcial sem atravessar a footprint e a ordem encerra com `FAILED / unreachable`. O teste também confere o destino solicitado e os materiais incorporados. Os testes existentes 02 e 03 da T3.4.5 cobrem, respectivamente, retomada bem-sucedida para rota ainda alcançável e falha explícita em modo degradado. `test_04_closed_enclosure_unreachable_resolves_exterior_and_fails` da T1 cobre uma ordem parcialmente inacessível desde o início até a chegada ao ponto parcial.
+
+Resultados desta correção:
+
+- `./tools/run_tests.ps1 -Filter test_t3_4_5`: **9/9 testes, 2.305 asserções**, zero falhas e erros de suíte.
+- `./tools/validate.ps1`: importação, **118 scripts** e inicialização headless aprovados, zero erros e avisos.
+- `./tools/run_tests.ps1 -Segmented`: **39/39 suítes, 278/278 testes, 12.821 asserções**, zero falhas ou erros de suíte; `Discovered=39`, `ExecutedUnique=39`, `Duplicates=0`, `Missing=0`. Inclui regressões T1 de movimento e ordens, T2 de coleta/transporte e T3 de construção/logística.
+- `git diff --check`: aprovado.
+
+O benchmark T34-PERF-01 não foi repetido: a nova atribuição ocorre exclusivamente quando há recálculo, e a consulta do resultado ocorre somente no evento de chegada, sem acrescentar trabalho ao processamento de movimento por quadro. A medição Intel UHD 620 em CA de **13,505 ms p95**, descrita abaixo, é histórica da candidata anterior e não uma nova medição desta correção.
+
 **Status: CANDIDATA, SEM HOMOLOGAÇÃO, SEM MERGE E SEM TAG.** Data: 17/11/2026.
 
 ## Base, escopo e ambiente
