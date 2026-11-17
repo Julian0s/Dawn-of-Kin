@@ -99,6 +99,12 @@ Todos os comandos abaixo foram executados no worktree isolado `C:\Projetos\Dawn_
    - `test_t3_3_construction_logistics.gd`: **`11/11`** (`205` asserções).
    - `test_t3_3_ux_flow.gd`: **`3/3`** (`55` asserções).
    - **Totais da suíte segmentada completa (`7` lotes isolados):** **`35/35` suítes**, **`242/242` testes aprovados**, **`0` falhas**, **`0` erros de suíte**, **`7.882` asserções**, `Discovered=35 | ExecutedUnique=35 | Duplicates=0 | Missing=0` (`exit code 0`).
+   - **Reconciliação exata das asserções entre a execução anterior (`240` testes / `7.798` asserções) e a atual (`242` testes / `7.882` asserções, $\Delta = +84$):**
+     - `test_t3_4_1_accounting_and_complement.gd`: **`+87`** (`212 -> 299`, pelos `2` novos testes: `test_07` = `36` e `test_08` = `51`).
+     - [`test_t2_natural_source_states.gd`](../../tests/integration/test_t2_natural_source_states.gd): **`+1`** (`103 -> 104`, em `test_03_concurrent_workers_single_felling_and_cancel_before_vs_after_extract`: `34 -> 35`, pois o loop `while` executa `assert_eq(total_w, initial_1)` por quadro de física até concluir, variando em `+1` quadro de simulação).
+     - [`test_t2_worker_cycle.gd`](../../tests/integration/test_t2_worker_cycle.gd): **`-4`** (`2660 -> 2656`, em `test_03_solid_obstacle_approach_clearance_and_two_concurrent_workers_no_deadlock`: `142 -> 138`, pois o loop `while` executa `2` asserções de distância por trabalhador em `Unit.State.WORKING` por quadro de física, variando em `-2` worker-frames em `WORKING`).
+     - Demais `32` suítes (incluindo todas as `7` suítes `T3.1–T3.3` e todas as `17` unitárias anteriores): **`0`** de variação (`delta = 0`).
+     - Soma exata: `87 + 1 - 4 = +84` (`7.798 + 84 = 7.882`). Zero erro de transcrição e zero falha.
 4. **Não verificado / fora do escopo:** testes visuais/UI interativos do botão manual (não aplicável nesta etapa porque `BuildingInspectorPanel` pertence à `T3.5`).
 
 ---
