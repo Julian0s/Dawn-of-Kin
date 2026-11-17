@@ -228,7 +228,16 @@ func test_01_full_e2e_shelter_placement_reserve_transport_and_no_t34_progress() 
 	await wait_physics_frames(4)
 	assert_eq(worker.get_state(), Unit.State.IDLE)
 	assert_false(is_instance_valid(site))
-	assert_eq(nav.navigation_mesh.get_polygon_count(), poly_before, "Active NavMesh stays unchanged before T3.4.5")
+	var sync_frames: int = 0
+	while not nav._pending_building_blockers.is_empty() and sync_frames < MAX_NAV_FRAMES:
+		await wait_physics_frames(1)
+		sync_frames += 1
+	assert_true(nav._pending_building_blockers.is_empty(), "T3.4.5 must synchronize the completed structure")
+	assert_gt(float(nav._applied_building_revision), float(nav_rev_before))
+	var through: WorldNavigation.PathResult = nav.find_path(building.global_position + Vector3(-5, 0, 0), building.global_position + Vector3(5, 0, 0))
+	assert_true(through.is_ok())
+	for idx: int in range(through.path.size() - 1):
+		assert_false(WorldNavigation._segment_intersects_rect(through.path[idx], through.path[idx + 1], building.get_footprint_rect()))
 
 	vp.queue_free()
 	await wait_process_frames(2)

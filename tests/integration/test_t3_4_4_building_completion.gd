@@ -273,7 +273,7 @@ func test_05_t34_aut_07_adversarial_pending_async_and_revision_without_cache() -
 	nav.invalidate_static_geometry_cache()
 	nav.notify_building_geometry_changed()
 	assert_gt(float(nav.get_navigation_revision()), float(revision))
-	assert_true(nav.is_navigation_ready(), "No active rebake in T3.4.4")
+	assert_true(nav.is_navigation_ready(), "T3.4.5 preserves the last ready mesh during active rebake")
 
 
 func test_06_t34_aut_07_world_and_region_isolation() -> void:
