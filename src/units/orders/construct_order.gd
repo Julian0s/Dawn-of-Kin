@@ -1,9 +1,10 @@
 class_name ConstructOrder
 extends UnitOrder
-## Order assigning a worker to supply and/or stand by at a ConstructionSite (T3.3).
+## Order assigning a worker to supply and assemble a ConstructionSite (T3.3/T3.4.3).
 ## Implements physical targeted pile withdrawal, bounded carrying, perimeter drop-off,
-## D9 worker role balancing/promotion, dynamic nav replanning, and safe cargo handling.
-## Does not advance construction progress or trigger completed-building transmutation (T3.4).
+## real perimeter builder slot occupancy, reactive non-polling assembly (BUILDER_ASSEMBLING /
+## WAITING_FOR_MATERIALS), D9/DEC-18 worker role promotions, dynamic nav replanning, and safe cargo handling.
+## Does not trigger completed-building transmutation (T3.4.4).
 
 enum Phase {
 	RETURNING_UNNEEDED_CARGO,
@@ -11,6 +12,8 @@ enum Phase {
 	MOVING_TO_SITE_DROPOFF,
 	MOVING_TO_BUILDER_SLOT,
 	BUILDER_STANDBY,
+	BUILDER_ASSEMBLING,
+	WAITING_FOR_MATERIALS,
 	WAITING_FOR_PEER_SUPPLY,
 }
 
@@ -39,6 +42,7 @@ var _last_nav_revision: int = -1
 var _approach_retries: int = 0
 var _replan_requested: bool = false
 var _site_signals_bound: bool = false
+var _last_known_role: ConstructionSite.WorkerRole = ConstructionSite.WorkerRole.UNASSIGNED
 
 var _target_pile_id: int = 0
 var _target_pile: GroundResourcePile = null
@@ -68,7 +72,12 @@ func get_phase() -> Phase:
 
 
 func is_preparing_work() -> bool:
-	return _phase == Phase.BUILDER_STANDBY or _phase == Phase.WAITING_FOR_PEER_SUPPLY
+	return (
+		_phase == Phase.BUILDER_STANDBY
+		or _phase == Phase.BUILDER_ASSEMBLING
+		or _phase == Phase.WAITING_FOR_MATERIALS
+		or _phase == Phase.WAITING_FOR_PEER_SUPPLY
+	)
 
 
 func get_reserved_target() -> Vector3:
@@ -124,6 +133,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if assigned_role == ConstructionSite.WorkerRole.UNASSIGNED:
 		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
+	_last_known_role = assigned_role
 
 	_bind_site_signals()
 	_advance_by_role(_movement)
@@ -140,6 +150,10 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 		return
 	_movement = movement
 
+	if site != null and is_instance_valid(site) and site.is_completed_or_completing():
+		movement.stop_movement()
+		_finish_succeeded()
+		return
 	if not _is_site_valid():
 		_finish_failed(REASON_INVALID_SITE)
 		return
@@ -170,6 +184,10 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 			_update_moving_to_builder_slot(movement)
 		Phase.BUILDER_STANDBY:
 			_update_builder_standby(movement)
+		Phase.BUILDER_ASSEMBLING:
+			_update_builder_assembling(movement, delta)
+		Phase.WAITING_FOR_MATERIALS:
+			_update_waiting_for_materials(movement)
 		Phase.WAITING_FOR_PEER_SUPPLY:
 			_update_waiting_for_peer_supply(movement)
 
@@ -190,18 +208,32 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 
 
 func _advance_by_role(movement: UnitMovement) -> void:
+	if site != null and is_instance_valid(site) and site.is_completed_or_completing():
+		if movement != null:
+			movement.stop_movement()
+			movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+		_finish_succeeded()
+		return
 	if not _is_site_valid():
 		_finish_failed(REASON_INVALID_SITE)
 		return
 
 	var role: ConstructionSite.WorkerRole = site.get_worker_role(_unit)
+	_last_known_role = role
 	if role == ConstructionSite.WorkerRole.UNASSIGNED:
 		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
 
+	var carry_load: UnitCarryLoad = _unit.get_carry_load()
+	var site_claim: Dictionary = site.get_transit_claim_for_unit(_unit)
+	var has_usable_site_cargo: bool = _has_any_deliverable_claim(site_claim, carry_load)
+
 	if role == ConstructionSite.WorkerRole.BUILDER:
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
+		if has_usable_site_cargo:
+			_start_moving_to_site_dropoff(movement)
+			return
 		_start_moving_to_builder_slot(movement)
 		return
 
@@ -209,16 +241,17 @@ func _advance_by_role(movement: UnitMovement) -> void:
 	if site.is_fully_supplied():
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
+		if not force_transporter:
+			var post_supply_role: ConstructionSite.WorkerRole = site.rebalance_for_assembly_on_supply_complete(_unit)
+			_last_known_role = post_supply_role
+			if post_supply_role == ConstructionSite.WorkerRole.BUILDER:
+				_start_moving_to_builder_slot(movement)
+				return
 		if movement != null:
 			movement.stop_movement()
 			movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 		_finish_succeeded()
 		return
-
-	var carry_load: UnitCarryLoad = _unit.get_carry_load()
-	var unneeded: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
-	var site_claim: Dictionary = site.get_transit_claim_for_unit(_unit)
-	var has_usable_site_cargo: bool = _has_any_deliverable_claim(site_claim, carry_load)
 
 	if has_usable_site_cargo:
 		_clear_pickup_target()
@@ -226,6 +259,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_start_moving_to_site_dropoff(movement)
 		return
 
+	var unneeded: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
 	if not unneeded.is_empty():
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
@@ -299,6 +333,17 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 		var fail_reason: String = str(candidate.get("reason", "no_reserved_piles"))
 		if fail_reason == "pile_unreachable":
 			_finish_failed(REASON_PILE_UNREACHABLE)
+			return
+		# DEC-18: SOLO_SUPPLIER transitions to BUILDER only once no more deliveries are possible
+		# and consumable materials already exist in the site buffer.
+		if (
+			not force_transporter
+			and site.get_worker_role(_unit) == ConstructionSite.WorkerRole.SOLO_SUPPLIER
+			and site.has_consumable_work_available()
+			and site.try_promote_solo_to_builder(_unit)
+		):
+			_last_known_role = ConstructionSite.WorkerRole.BUILDER
+			_start_moving_to_builder_slot(movement)
 			return
 		# Distinguish an active peer transporter currently supplying this site from orphaned/interrupted claims.
 		if site.has_active_peer_transport_for_site(_unit):
@@ -594,12 +639,18 @@ func _execute_site_dropoff(movement: UnitMovement) -> void:
 	_advance_by_role(movement)
 
 
-func _start_moving_to_builder_slot(movement: UnitMovement) -> void:
-	_phase = Phase.MOVING_TO_BUILDER_SLOT
-	_approach_retries = 0
-	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+func _resolve_or_assign_builder_anchor(slot_idx: int) -> Vector3:
+	var existing: Dictionary = site.get_assigned_builder_slot_position(_unit)
+	if not existing.is_empty() and int(existing.get("slot_idx", -1)) == slot_idx:
+		var existing_pos: Vector3 = existing.get("position", Vector3(INF, INF, INF)) as Vector3
+		if existing_pos.is_finite() and BuildSlotPlanner.is_unit_in_site_dropoff_range(
+			existing_pos,
+			site,
+			ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+			_get_world_3d()
+		):
+			return existing_pos
 
-	var slot_idx: int = maxi(0, site.get_builder_slot_index(_unit))
 	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
 	var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
 		_unit.global_position,
@@ -611,13 +662,42 @@ func _start_moving_to_builder_slot(movement: UnitMovement) -> void:
 		slot_idx
 	)
 	if not bool(slot_res.get("valid", false)):
+		return Vector3(INF, INF, INF)
+
+	var resolved_pos: Vector3 = slot_res["position"] as Vector3
+	if not site.assign_builder_slot_position(_unit, slot_idx, resolved_pos):
+		return Vector3(INF, INF, INF)
+	return resolved_pos
+
+
+func _start_moving_to_builder_slot(movement: UnitMovement) -> void:
+	_phase = Phase.MOVING_TO_BUILDER_SLOT
+	_approach_retries = 0
+	movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+
+	var slot_idx: int = site.get_builder_slot_index(_unit)
+	if slot_idx < 0:
+		_replan_requested = true
+		return
+
+	var anchor_pos: Vector3 = _resolve_or_assign_builder_anchor(slot_idx)
+	if not anchor_pos.is_finite():
 		_finish_failed(REASON_SITE_UNREACHABLE)
 		return
 
-	resolved_target = slot_res["position"] as Vector3
-	if _unit.global_position.distance_to(resolved_target) <= UnitMovement.ARRIVAL_TOLERANCE_XZ + 0.05:
+	resolved_target = anchor_pos
+	if (
+		_unit.global_position.distance_to(resolved_target) <= UnitMovement.ARRIVAL_TOLERANCE_XZ + 0.05
+		and BuildSlotPlanner.is_unit_at_assigned_builder_slot(_unit.global_position, site, resolved_target)
+		and BuildSlotPlanner.is_unit_in_site_dropoff_range(
+			_unit.global_position,
+			site,
+			ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+			_get_world_3d()
+		)
+	):
 		movement.stop_movement()
-		_enter_builder_standby(movement)
+		_enter_builder_slot_ready(movement)
 		return
 
 	if not movement.begin_move_to(resolved_target):
@@ -627,7 +707,61 @@ func _start_moving_to_builder_slot(movement: UnitMovement) -> void:
 
 	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
 		movement.stop_movement()
-		_enter_builder_standby(movement)
+		_handle_builder_slot_arrival(movement)
+
+
+func _retry_builder_slot_move(movement: UnitMovement, slot_idx: int) -> bool:
+	if _approach_retries >= MAX_APPROACH_RETRIES:
+		return false
+	_approach_retries += 1
+	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
+	var slot_res: Dictionary = BuildSlotPlanner.compute_site_perimeter_slot(
+		_unit.global_position,
+		site,
+		_world_nav,
+		occupied,
+		WorldNavigation.DEFAULT_AGENT_RADIUS,
+		ConstructionSite.DEFAULT_DROPOFF_OUTWARD_MARGIN,
+		slot_idx
+	)
+	if not bool(slot_res.get("valid", false)):
+		return false
+	var new_anchor: Vector3 = slot_res["position"] as Vector3
+	if not site.assign_builder_slot_position(_unit, slot_idx, new_anchor):
+		return false
+	resolved_target = new_anchor
+	if not movement.begin_move_to(resolved_target):
+		return false
+	_unit.set_order_state(self, Unit.State.MOVING)
+	return true
+
+
+func _handle_builder_slot_arrival(movement: UnitMovement) -> void:
+	var slot_idx: int = site.get_builder_slot_index(_unit)
+	if slot_idx < 0:
+		_advance_by_role(movement)
+		return
+	var anchor: Dictionary = site.get_assigned_builder_slot_position(_unit)
+	var anchor_pos: Vector3 = anchor.get("position", Vector3(INF, INF, INF)) as Vector3
+	if (
+		not anchor.is_empty()
+		and int(anchor.get("slot_idx", -1)) == slot_idx
+		and anchor_pos.is_finite()
+		and BuildSlotPlanner.is_unit_at_assigned_builder_slot(_unit.global_position, site, anchor_pos)
+		and BuildSlotPlanner.is_unit_in_site_dropoff_range(
+			_unit.global_position,
+			site,
+			ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+			_get_world_3d()
+		)
+	):
+		resolved_target = anchor_pos
+		_enter_builder_slot_ready(movement)
+		return
+
+	if _retry_builder_slot_move(movement, slot_idx):
+		return
+	_finish_failed(REASON_SITE_UNREACHABLE)
 
 
 func _update_moving_to_builder_slot(movement: UnitMovement) -> void:
@@ -636,57 +770,173 @@ func _update_moving_to_builder_slot(movement: UnitMovement) -> void:
 			return
 		UnitMovement.MoveState.ARRIVED:
 			movement.stop_movement()
-			_enter_builder_standby(movement)
+			_handle_builder_slot_arrival(movement)
 		UnitMovement.MoveState.FAILED_STUCK:
 			movement.stop_movement()
-			if BuildSlotPlanner.is_unit_in_site_dropoff_range(
-				_unit.global_position,
-				site,
-				ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
-				_get_world_3d()
-			):
-				_enter_builder_standby(movement)
-			elif site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
+			if site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
 				_advance_by_role(movement)
-			elif not _retry_perimeter_slot_move(movement, Unit.State.MOVING):
-				_finish_failed(REASON_SITE_UNREACHABLE)
+			else:
+				_handle_builder_slot_arrival(movement)
 		UnitMovement.MoveState.FAILED_INVALID:
 			movement.stop_movement()
 			_finish_failed(REASON_SITE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:
-			if BuildSlotPlanner.is_unit_in_site_dropoff_range(
-				_unit.global_position,
-				site,
-				ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
-				_get_world_3d()
+			var slot_idx: int = site.get_builder_slot_index(_unit)
+			var anchor: Dictionary = site.get_assigned_builder_slot_position(_unit)
+			var anchor_pos: Vector3 = anchor.get("position", Vector3(INF, INF, INF)) as Vector3
+			if (
+				slot_idx >= 0
+				and not anchor.is_empty()
+				and int(anchor.get("slot_idx", -1)) == slot_idx
+				and anchor_pos.is_finite()
+				and BuildSlotPlanner.is_unit_at_assigned_builder_slot(_unit.global_position, site, anchor_pos)
+				and BuildSlotPlanner.is_unit_in_site_dropoff_range(
+					_unit.global_position,
+					site,
+					ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+					_get_world_3d()
+				)
 			):
-				_enter_builder_standby(movement)
+				_enter_builder_slot_ready(movement)
 			else:
 				_replan_requested = true
 
 
-func _enter_builder_standby(movement: UnitMovement) -> void:
-	_phase = Phase.BUILDER_STANDBY
-	if movement != null:
-		movement.stop_movement()
-		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
-	if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+func _can_unit_assemble_now() -> bool:
+	if not _is_site_valid() or not site.is_active():
+		return false
+	if _unit == null or not is_instance_valid(_unit) or not _unit.is_inside_tree():
+		return false
+	if site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
+		return false
+	var carry_load: UnitCarryLoad = _unit.get_carry_load()
+	if carry_load != null and not carry_load.is_empty():
+		return false
+	var slot_idx: int = site.get_builder_slot_index(_unit)
+	var anchor: Dictionary = site.get_assigned_builder_slot_position(_unit)
+	if slot_idx < 0 or anchor.is_empty() or int(anchor.get("slot_idx", -1)) != slot_idx:
+		return false
+	var anchor_pos: Vector3 = anchor.get("position", Vector3(INF, INF, INF)) as Vector3
+	if not BuildSlotPlanner.is_unit_at_assigned_builder_slot(_unit.global_position, site, anchor_pos):
+		return false
+	return BuildSlotPlanner.is_unit_in_site_dropoff_range(
 		_unit.global_position,
 		site,
 		ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
 		_get_world_3d()
-	):
-		var site_pos: Vector3 = site.global_position
-		if _unit.global_position.distance_squared_to(site_pos) > 0.01:
-			var look_dir := Vector3(site_pos.x - _unit.global_position.x, 0.0, site_pos.z - _unit.global_position.z)
-			if look_dir.length_squared() > 0.001:
-				_unit.rotation.y = atan2(-look_dir.x, -look_dir.z)
-	_unit.set_order_state(self, Unit.State.WORKING)
+	)
+
+
+func _hold_builder_station(movement: UnitMovement) -> void:
+	if movement != null:
+		movement.stop_movement()
+		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
+	if _unit != null and is_instance_valid(_unit) and _is_site_valid():
+		if BuildSlotPlanner.is_unit_in_site_dropoff_range(
+			_unit.global_position,
+			site,
+			ConstructionSite.DEFAULT_DROPOFF_REACH_TOLERANCE,
+			_get_world_3d()
+		):
+			var site_pos: Vector3 = site.global_position
+			if _unit.global_position.distance_squared_to(site_pos) > 0.01:
+				var look_dir := Vector3(site_pos.x - _unit.global_position.x, 0.0, site_pos.z - _unit.global_position.z)
+				if look_dir.length_squared() > 0.001:
+					_unit.rotation.y = atan2(-look_dir.x, -look_dir.z)
+		_unit.set_order_state(self, Unit.State.WORKING)
+
+
+func _enter_builder_slot_ready(movement: UnitMovement) -> void:
+	if site.is_completed_or_completing():
+		if movement != null:
+			movement.stop_movement()
+		_finish_succeeded()
+		return
+	var carry_load: UnitCarryLoad = _unit.get_carry_load()
+	if carry_load != null and not carry_load.is_empty():
+		_enter_builder_standby(movement)
+		return
+	if site.get_work_progress_sec() == 0.0 and not site.has_any_received_materials():
+		_enter_builder_standby(movement)
+		return
+	if site.has_consumable_work_available():
+		_enter_builder_assembling(movement)
+		return
+	_enter_waiting_for_materials(movement)
+
+
+func _enter_builder_standby(movement: UnitMovement) -> void:
+	_phase = Phase.BUILDER_STANDBY
+	_hold_builder_station(movement)
+
+
+func _enter_builder_assembling(movement: UnitMovement) -> void:
+	_phase = Phase.BUILDER_ASSEMBLING
+	_hold_builder_station(movement)
+
+
+func _enter_waiting_for_materials(movement: UnitMovement) -> void:
+	_phase = Phase.WAITING_FOR_MATERIALS
+	_hold_builder_station(movement)
 
 
 func _update_builder_standby(movement: UnitMovement) -> void:
+	if site.is_completed_or_completing():
+		movement.stop_movement()
+		_finish_succeeded()
+		return
 	if site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
 		_advance_by_role(movement)
+		return
+	if site.has_consumable_work_available() and _can_unit_assemble_now():
+		_enter_builder_assembling(movement)
+
+
+func _update_builder_assembling(movement: UnitMovement, delta: float) -> void:
+	if site.is_completed_or_completing():
+		movement.stop_movement()
+		_finish_succeeded()
+		return
+	if site.get_worker_role(_unit) != ConstructionSite.WorkerRole.BUILDER:
+		_advance_by_role(movement)
+		return
+	if not _can_unit_assemble_now():
+		var carry_load: UnitCarryLoad = _unit.get_carry_load()
+		if carry_load != null and not carry_load.is_empty():
+			_enter_builder_standby(movement)
+		else:
+			_start_moving_to_builder_slot(movement)
+		return
+	if not is_finite(delta) or delta <= 0.0:
+		return
+
+	var step_delta: float = minf(delta, ConstructionSite.MAX_WORK_DELTA_SEC)
+	var work_res: Dictionary = site.contribute_work(_unit, step_delta)
+	if bool(work_res.get("completed", false)) or site.is_completed_or_completing():
+		movement.stop_movement()
+		_finish_succeeded()
+		return
+	if not bool(work_res.get("ok", false)):
+		var reason: String = str(work_res.get("reason", ""))
+		if reason == "site_completing_or_completed":
+			movement.stop_movement()
+			_finish_succeeded()
+			return
+		if reason == "worker_not_builder" or reason == "worker_not_registered" or reason == "invalid_builder_slot":
+			_advance_by_role(movement)
+			return
+		if reason == "builder_slot_position_not_assigned" or reason == "worker_not_in_assigned_slot" or reason == "worker_out_of_reach":
+			_start_moving_to_builder_slot(movement)
+			return
+		return
+	if bool(work_res.get("starved", false)) or site.get_assembly_substate() == ConstructionSite.AssemblySubstate.PAUSED_STARVED:
+		_enter_waiting_for_materials(movement)
+
+
+func _update_waiting_for_materials(movement: UnitMovement) -> void:
+	if movement != null and movement.get_move_state() == UnitMovement.MoveState.MOVING:
+		movement.stop_movement()
+	_unit.set_order_state(self, Unit.State.WORKING)
 
 
 func _start_waiting_for_peer_supply(movement: UnitMovement) -> void:
@@ -761,16 +1011,54 @@ func _has_claimable_reserved_piles() -> bool:
 
 
 func _on_site_workers_changed(_changed_site: ConstructionSite) -> void:
-	if status != Status.RUNNING:
+	if status != Status.RUNNING or site == null or not is_instance_valid(site):
+		return
+	var cur_role: ConstructionSite.WorkerRole = site.get_worker_role(_unit)
+	var role_changed: bool = cur_role != _last_known_role
+	if _phase == Phase.WAITING_FOR_MATERIALS or _phase == Phase.BUILDER_STANDBY or _phase == Phase.BUILDER_ASSEMBLING:
+		if site.is_completed_or_completing() or role_changed:
+			_replan_requested = true
+			return
+		if cur_role == ConstructionSite.WorkerRole.BUILDER:
+			var slot_idx: int = site.get_builder_slot_index(_unit)
+			var anchor: Dictionary = site.get_assigned_builder_slot_position(_unit)
+			if slot_idx < 0 or anchor.is_empty() or int(anchor.get("slot_idx", -1)) != slot_idx:
+				_replan_requested = true
+				return
+			if (_phase == Phase.WAITING_FOR_MATERIALS or _phase == Phase.BUILDER_STANDBY) and site.has_consumable_work_available() and _can_unit_assemble_now():
+				_enter_builder_assembling(_movement)
 		return
 	_replan_requested = true
 
 
-func _on_site_state_changed(_changed_site: ConstructionSite) -> void:
-	if status != Status.RUNNING or _phase != Phase.WAITING_FOR_PEER_SUPPLY:
+func _on_site_buffer_changed(_changed_site: ConstructionSite) -> void:
+	if status != Status.RUNNING or site == null or not is_instance_valid(site):
 		return
-	if site.is_fully_supplied() or not site.has_active_peer_transport_for_site(_unit) or _has_claimable_reserved_piles():
+	if site.is_completed_or_completing():
 		_replan_requested = true
+		return
+	if (_phase == Phase.WAITING_FOR_MATERIALS or _phase == Phase.BUILDER_STANDBY) and _can_unit_assemble_now() and site.has_consumable_work_available():
+		_enter_builder_assembling(_movement)
+	elif _phase == Phase.WAITING_FOR_PEER_SUPPLY and site.is_fully_supplied():
+		_replan_requested = true
+
+
+func _on_site_state_changed(_changed_site: ConstructionSite) -> void:
+	if status != Status.RUNNING or site == null or not is_instance_valid(site):
+		return
+	if site.is_completed_or_completing():
+		_replan_requested = true
+		return
+	var cur_role: ConstructionSite.WorkerRole = site.get_worker_role(_unit)
+	if cur_role != _last_known_role:
+		_replan_requested = true
+		return
+	if (_phase == Phase.WAITING_FOR_MATERIALS or _phase == Phase.BUILDER_STANDBY) and _can_unit_assemble_now() and site.has_consumable_work_available():
+		_enter_builder_assembling(_movement)
+		return
+	if _phase == Phase.WAITING_FOR_PEER_SUPPLY:
+		if site.is_fully_supplied() or not site.has_active_peer_transport_for_site(_unit) or _has_claimable_reserved_piles():
+			_replan_requested = true
 
 
 func _bind_site_signals() -> void:
@@ -778,6 +1066,8 @@ func _bind_site_signals() -> void:
 		return
 	if not site.workers_changed.is_connected(_on_site_workers_changed):
 		site.workers_changed.connect(_on_site_workers_changed)
+	if not site.buffer_changed.is_connected(_on_site_buffer_changed):
+		site.buffer_changed.connect(_on_site_buffer_changed)
 	if not site.state_changed.is_connected(_on_site_state_changed):
 		site.state_changed.connect(_on_site_state_changed)
 	_site_signals_bound = true
@@ -789,6 +1079,8 @@ func _unbind_site_signals() -> void:
 	if site != null and is_instance_valid(site):
 		if site.workers_changed.is_connected(_on_site_workers_changed):
 			site.workers_changed.disconnect(_on_site_workers_changed)
+		if site.buffer_changed.is_connected(_on_site_buffer_changed):
+			site.buffer_changed.disconnect(_on_site_buffer_changed)
 		if site.state_changed.is_connected(_on_site_state_changed):
 			site.state_changed.disconnect(_on_site_state_changed)
 	_site_signals_bound = false

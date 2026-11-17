@@ -1,9 +1,9 @@
 class_name ConstructionSite
 extends Node3D
-## Modular T3.3 construction site holding reservation identity, delivered material buffer,
-## per-unit transit/pickup tracking, D9 worker role assignments, and footprint picking collision.
-## T3.4.2 exposes guarded deterministic assembly; orders remain T3.3 until T3.4.3.
-## Does not instantiate buildings or trigger active NavMesh rebakes.
+## Modular T3.3/T3.4.3 construction site holding reservation identity, delivered/consumed buffers,
+## per-unit transit/pickup tracking, D9 worker role assignments/promotions, guarded deterministic
+## assembly, and footprint picking collision.
+## Does not instantiate BuildingInstance (T3.4.4) or trigger active NavMesh rebakes (T3.4.5).
 
 const GROUP_CONSTRUCTION_SITES: StringName = &"construction_sites"
 
@@ -75,6 +75,7 @@ var _last_work_physics_frame_by_unit: Dictionary = {}
 var _work_cycle_serial: int = 0
 var _work_transaction_in_progress: bool = false
 var _starved_resources: Array[StringName] = []
+var _supply_rebalance_completed: bool = false
 
 
 func _exit_tree() -> void:
@@ -85,6 +86,7 @@ func _exit_tree() -> void:
 	_worker_order_ids.clear()
 	_builder_slot_positions.clear()
 	_last_work_physics_frame_by_unit.clear()
+	_supply_rebalance_completed = false
 
 
 func configure(
@@ -163,6 +165,23 @@ func get_assembly_substate() -> AssemblySubstate:
 
 func is_active() -> bool:
 	return _site_state == SiteState.ACTIVE
+
+
+func is_completed_or_completing() -> bool:
+	return _site_state == SiteState.COMPLETING or _site_state == SiteState.COMPLETED
+
+
+func has_any_received_materials() -> bool:
+	for res_id: StringName in _required_amounts.keys():
+		if get_total_received_amount(res_id) > 0:
+			return true
+	return false
+
+
+func has_consumable_work_available() -> bool:
+	if not is_active() or not has_any_received_materials():
+		return false
+	return _can_unblock_starvation()
 
 
 func get_work_progress_sec() -> float:
@@ -246,6 +265,16 @@ func assign_builder_slot_position(unit: Unit, slot_idx: int, resolved_slot_pos: 
 	_builder_slot_positions[unit.get_instance_id()] = {"slot_idx": slot_idx, "position": resolved_slot_pos}
 	_refresh_assembly_substate()
 	return true
+
+
+func get_assigned_builder_slot_position(unit: Unit) -> Dictionary:
+	_prune_stale_state()
+	if unit == null or not is_instance_valid(unit):
+		return {}
+	var uid: int = unit.get_instance_id()
+	if not _builder_slot_positions.has(uid):
+		return {}
+	return (_builder_slot_positions[uid] as Dictionary).duplicate()
 
 
 func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
@@ -901,6 +930,7 @@ func register_worker(
 		var existing: Dictionary = _assigned_workers[uid] as Dictionary
 		existing["order"] = order
 		existing["force_transporter"] = force_transporter
+		existing["solo_promoted_builder"] = false
 		_rebalance_worker_roles(true)
 		return get_worker_role(unit)
 
@@ -915,12 +945,104 @@ func register_worker(
 		"order": order,
 		"role": WorkerRole.UNASSIGNED,
 		"force_transporter": force_transporter,
+		"solo_promoted_builder": false,
 	}
 	if not _worker_order_ids.has(uid):
 		_worker_order_ids.append(uid)
 
 	_rebalance_worker_roles(true)
 	return get_worker_role(unit)
+
+
+func has_deliverable_transit_claim_for_unit(unit: Unit) -> bool:
+	_prune_stale_state()
+	if unit == null or not is_instance_valid(unit):
+		return false
+	var carry_load: UnitCarryLoad = unit.get_carry_load()
+	if carry_load == null or carry_load.is_empty():
+		return false
+	var site_claim: Dictionary = get_transit_claim_for_unit(unit)
+	if site_claim.is_empty():
+		return false
+	for res_key: Variant in site_claim.keys():
+		var res_id: StringName = res_key as StringName
+		if int(site_claim[res_id]) > 0 and carry_load.get_amount(res_id) > 0 and get_remaining_need_for_dropoff(res_id) > 0:
+			return true
+	return false
+
+
+func try_promote_solo_to_builder(unit: Unit) -> bool:
+	_prune_stale_state()
+	if not is_active() or unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or definition == null:
+		return false
+	var uid: int = unit.get_instance_id()
+	if not _assigned_workers.has(uid):
+		return false
+	var entry: Dictionary = _assigned_workers[uid] as Dictionary
+	if bool(entry.get("force_transporter", false)):
+		return false
+	var cur_role: WorkerRole = entry.get("role", WorkerRole.UNASSIGNED) as WorkerRole
+	if cur_role == WorkerRole.BUILDER:
+		return true
+	if cur_role != WorkerRole.SOLO_SUPPLIER:
+		return false
+	if mini(2, maxi(0, definition.max_builders)) < 1:
+		return false
+	if has_deliverable_transit_claim_for_unit(unit):
+		return false
+	var can_promote: bool = is_fully_supplied() or (not _has_claimable_reserved_piles_for(unit) and has_consumable_work_available())
+	if not can_promote:
+		return false
+
+	entry["role"] = WorkerRole.BUILDER
+	entry["solo_promoted_builder"] = true
+	if is_fully_supplied():
+		_supply_rebalance_completed = true
+	_builder_slot_positions.erase(uid)
+	_refresh_assembly_substate()
+	workers_changed.emit(self)
+	state_changed.emit(self)
+	return true
+
+
+func rebalance_for_assembly_on_supply_complete(unit: Unit) -> WorkerRole:
+	_prune_stale_state()
+	if unit == null or not is_instance_valid(unit):
+		return WorkerRole.UNASSIGNED
+	var uid: int = unit.get_instance_id()
+	if not _assigned_workers.has(uid):
+		return WorkerRole.UNASSIGNED
+	var entry: Dictionary = _assigned_workers[uid] as Dictionary
+	var cur_role: WorkerRole = entry.get("role", WorkerRole.UNASSIGNED) as WorkerRole
+	if not is_active() or not is_fully_supplied():
+		return cur_role
+	if bool(entry.get("force_transporter", false)):
+		return WorkerRole.TRANSPORTER
+	if cur_role == WorkerRole.BUILDER:
+		_supply_rebalance_completed = true
+		return WorkerRole.BUILDER
+	if cur_role == WorkerRole.SOLO_SUPPLIER:
+		if try_promote_solo_to_builder(unit):
+			return WorkerRole.BUILDER
+		return get_worker_role(unit)
+
+	_supply_rebalance_completed = true
+	var max_b: int = mini(2, maxi(0, definition.max_builders if definition != null else 2))
+	var current_builders: int = _count_builders()
+	if current_builders < max_b:
+		# Place newly promoted builder after existing builders so slot 0's anchor remains stable.
+		_worker_order_ids.erase(uid)
+		_worker_order_ids.append(uid)
+		entry["role"] = WorkerRole.BUILDER
+		entry["solo_promoted_builder"] = true
+		_clear_mismatched_builder_anchors()
+		_refresh_assembly_substate()
+		workers_changed.emit(self)
+		state_changed.emit(self)
+		return WorkerRole.BUILDER
+
+	unregister_worker(unit)
+	return WorkerRole.UNASSIGNED
 
 
 func unregister_worker(unit: Unit, order: UnitOrder = null) -> void:
@@ -1161,7 +1283,22 @@ func _unbind_inventory() -> void:
 
 
 func _on_inventory_reservations_changed() -> void:
-	state_changed.emit(self)
+	var demoted: bool = false
+	if is_active() and not is_fully_supplied() and _count_auto_workers() == 1:
+		for uid: int in _worker_order_ids:
+			if not _assigned_workers.has(uid):
+				continue
+			var entry: Dictionary = _assigned_workers[uid] as Dictionary
+			if bool(entry.get("force_transporter", false)):
+				continue
+			if int(entry.get("role", WorkerRole.UNASSIGNED)) == WorkerRole.BUILDER and bool(entry.get("solo_promoted_builder", false)):
+				var unit: Unit = entry.get("unit") as Unit
+				if unit != null and is_instance_valid(unit) and _has_claimable_reserved_piles_for(unit):
+					_rebalance_worker_roles(true)
+					demoted = true
+					break
+	if not demoted:
+		state_changed.emit(self)
 
 
 func _on_inventory_reservation_lost_to_decay(
@@ -1292,6 +1429,46 @@ func _count_auto_workers() -> int:
 	return count
 
 
+func _count_builders() -> int:
+	var count: int = 0
+	for uid: int in _worker_order_ids:
+		if not _assigned_workers.has(uid):
+			continue
+		if int((_assigned_workers[uid] as Dictionary).get("role", WorkerRole.UNASSIGNED)) == WorkerRole.BUILDER:
+			count += 1
+	return count
+
+
+func _has_claimable_reserved_piles_for(unit: Unit) -> bool:
+	if _inventory == null or reservation_id.is_empty() or not is_active():
+		return false
+	for res_id: StringName in _required_amounts.keys():
+		var remaining_claim: int = get_remaining_supply_to_claim(res_id, unit)
+		if remaining_claim <= 0:
+			continue
+		var entries: Array[Dictionary] = _inventory.get_reserved_pile_entries(reservation_id, res_id)
+		for entry: Dictionary in entries:
+			var pile_id: int = int(entry.get("pile_id", 0))
+			var reserved_amt: int = int(entry.get("reserved_amount", 0))
+			var other_pending: int = get_pending_pickup_amount(pile_id, res_id, unit)
+			if maxi(0, reserved_amt - other_pending) > 0:
+				return true
+	return false
+
+
+func _clear_mismatched_builder_anchors() -> void:
+	var builder_idx: int = 0
+	for uid: int in _worker_order_ids:
+		if not _assigned_workers.has(uid):
+			continue
+		var is_builder: bool = int(_assigned_workers[uid]["role"]) == WorkerRole.BUILDER
+		var anchor: Dictionary = _builder_slot_positions.get(uid, {})
+		if not is_builder or (not anchor.is_empty() and int(anchor["slot_idx"]) != builder_idx):
+			_builder_slot_positions.erase(uid)
+		if is_builder:
+			builder_idx += 1
+
+
 func _rebalance_worker_roles(emit_changes: bool) -> void:
 	var auto_ids: Array[int] = []
 	var prev_roles: Dictionary = {}
@@ -1305,44 +1482,86 @@ func _rebalance_worker_roles(emit_changes: bool) -> void:
 		else:
 			auto_ids.append(uid)
 
-	if auto_ids.size() == 1:
-		var sole_entry: Dictionary = _assigned_workers[auto_ids[0]] as Dictionary
-		sole_entry["role"] = WorkerRole.SOLO_SUPPLIER
-	elif auto_ids.size() >= 2:
-		# Keep an existing transporter/solo_supplier in the transporter seat if present
-		# so adding a 2nd or 3rd worker does not flip the first worker off its trip.
-		var transporter_uid: int = -1
-		for uid: int in auto_ids:
-			var prev: int = int(prev_roles.get(uid, WorkerRole.UNASSIGNED))
-			if prev == WorkerRole.TRANSPORTER or prev == WorkerRole.SOLO_SUPPLIER:
-				transporter_uid = uid
-				break
-		if transporter_uid == -1:
-			transporter_uid = auto_ids[0]
+	var fully_supplied: bool = is_fully_supplied()
+	if not fully_supplied:
+		_supply_rebalance_completed = false
 
-		var max_b: int = definition.max_builders if definition != null else 2
-		var assigned_builders: int = 0
-		for uid: int in auto_ids:
-			var entry: Dictionary = _assigned_workers[uid] as Dictionary
-			if uid == transporter_uid:
-				entry["role"] = WorkerRole.TRANSPORTER
-			elif assigned_builders < max_b:
-				entry["role"] = WorkerRole.BUILDER
-				assigned_builders += 1
-			else:
-				entry["role"] = WorkerRole.UNASSIGNED
+	var max_b: int = mini(2, maxi(0, definition.max_builders if definition != null else 2))
+	if auto_ids.size() == 1:
+		var sole_uid: int = auto_ids[0]
+		var sole_entry: Dictionary = _assigned_workers[sole_uid] as Dictionary
+		var sole_unit: Unit = sole_entry.get("unit") as Unit
+		var keep_solo_builder: bool = (
+			bool(sole_entry.get("solo_promoted_builder", false))
+			and max_b >= 1
+			and (
+				fully_supplied
+				or (not _has_claimable_reserved_piles_for(sole_unit) and not has_deliverable_transit_claim_for_unit(sole_unit))
+			)
+		)
+		if (
+			not keep_solo_builder
+			and _supply_rebalance_completed
+			and fully_supplied
+			and max_b >= 1
+			and int(prev_roles.get(sole_uid, WorkerRole.UNASSIGNED)) == WorkerRole.BUILDER
+			and not has_deliverable_transit_claim_for_unit(sole_unit)
+		):
+			keep_solo_builder = true
+			sole_entry["solo_promoted_builder"] = true
+		if keep_solo_builder:
+			sole_entry["role"] = WorkerRole.BUILDER
+		else:
+			sole_entry["role"] = WorkerRole.SOLO_SUPPLIER
+			sole_entry["solo_promoted_builder"] = false
+	elif auto_ids.size() >= 2:
+		if _supply_rebalance_completed and fully_supplied:
+			# Supply completed & rebalanced: keep existing builders first and assign remaining slots up to max_b.
+			var existing_builders: Array[int] = []
+			var other_autos: Array[int] = []
+			for uid: int in auto_ids:
+				if int(prev_roles.get(uid, WorkerRole.UNASSIGNED)) == WorkerRole.BUILDER:
+					existing_builders.append(uid)
+				else:
+					other_autos.append(uid)
+			var ordered_autos: Array[int] = []
+			ordered_autos.append_array(existing_builders)
+			ordered_autos.append_array(other_autos)
+			var assigned_builders: int = 0
+			for uid: int in ordered_autos:
+				var entry: Dictionary = _assigned_workers[uid] as Dictionary
+				if assigned_builders < max_b:
+					entry["role"] = WorkerRole.BUILDER
+					assigned_builders += 1
+				else:
+					entry["role"] = WorkerRole.UNASSIGNED
+					entry["solo_promoted_builder"] = false
+		else:
+			# Keep an existing transporter/solo_supplier in the transporter seat if present
+			# so adding a 2nd or 3rd worker does not flip the first worker off its trip.
+			var transporter_uid: int = -1
+			for uid: int in auto_ids:
+				var prev: int = int(prev_roles.get(uid, WorkerRole.UNASSIGNED))
+				if prev == WorkerRole.TRANSPORTER or prev == WorkerRole.SOLO_SUPPLIER:
+					transporter_uid = uid
+					break
+			if transporter_uid == -1:
+				transporter_uid = auto_ids[0]
+
+			var assigned_builders: int = 0
+			for uid: int in auto_ids:
+				var entry: Dictionary = _assigned_workers[uid] as Dictionary
+				entry["solo_promoted_builder"] = false
+				if uid == transporter_uid:
+					entry["role"] = WorkerRole.TRANSPORTER
+				elif assigned_builders < max_b:
+					entry["role"] = WorkerRole.BUILDER
+					assigned_builders += 1
+				else:
+					entry["role"] = WorkerRole.UNASSIGNED
 
 	# Anchors survive stable roles, but never a role/ordered slot change.
-	var builder_idx: int = 0
-	for uid: int in _worker_order_ids:
-		if not _assigned_workers.has(uid):
-			continue
-		var is_builder: bool = int(_assigned_workers[uid]["role"]) == WorkerRole.BUILDER
-		var anchor: Dictionary = _builder_slot_positions.get(uid, {})
-		if not is_builder or (not anchor.is_empty() and int(anchor["slot_idx"]) != builder_idx):
-			_builder_slot_positions.erase(uid)
-		if is_builder:
-			builder_idx += 1
+	_clear_mismatched_builder_anchors()
 	_refresh_assembly_substate()
 	var changed: bool = false
 	for uid: int in _worker_order_ids:
