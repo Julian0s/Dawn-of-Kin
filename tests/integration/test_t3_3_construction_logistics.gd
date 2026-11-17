@@ -865,10 +865,11 @@ func test_08_r1_interrupted_transporter_does_not_stall_replacement_or_touch_buil
 	assert_eq(site.get_worker_role(w2), ConstructionSite.WorkerRole.TRANSPORTER)
 	assert_eq(site.get_worker_role(w3), ConstructionSite.WorkerRole.BUILDER)
 
-	# Track W2 phase transitions and W3 pack integrity while W2 works through remaining piles.
+	# Track W2 phase transitions and verify W3 safely returns its 2 external wood to camp without leaking into site.
 	var phase_changes: int = 0
 	var last_phase: ConstructOrder.Phase = o2.get_phase()
-	var saw_builder_standby_with_intact_pack: bool = false
+	var saw_builder_returning_unneeded: bool = false
+	var saw_builder_assembling_after_return: bool = false
 	var f: int = 0
 	while o2.is_active() and f < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
@@ -877,19 +878,26 @@ func test_08_r1_interrupted_transporter_does_not_stall_replacement_or_touch_buil
 		if cur_phase != last_phase:
 			phase_changes += 1
 			last_phase = cur_phase
-		if o3.is_active() and o3.get_phase() == ConstructOrder.Phase.BUILDER_STANDBY:
-			if w3.get_carry_load().get_amount(&"wood") == 2:
-				saw_builder_standby_with_intact_pack = true
+		if o3.is_active():
+			if o3.get_phase() == ConstructOrder.Phase.RETURNING_UNNEEDED_CARGO:
+				saw_builder_returning_unneeded = true
+			if w3.get_carry_load().is_empty() and (
+				o3.get_phase() == ConstructOrder.Phase.BUILDER_ASSEMBLING
+				or o3.get_phase() == ConstructOrder.Phase.WAITING_FOR_MATERIALS
+				or o3.get_phase() == ConstructOrder.Phase.BUILDER_STANDBY
+			):
+				saw_builder_assembling_after_return = true
 
 	# W2 must NOT stall in infinite wait/replanning; once piles are exhausted it must finish cleanly with REASON_RESERVATION_UNAVAILABLE.
 	assert_false(o2.is_active(), "Replacement transporter must NOT stall infinitely waiting on interrupted peer claim")
 	assert_eq(o2.status, UnitOrder.Status.FAILED)
 	assert_eq(o2.failure_reason, ConstructOrder.REASON_RESERVATION_UNAVAILABLE)
 	assert_true(phase_changes <= 24, "Replacement transporter must not loop/replan per frame (phase_changes=%d)" % phase_changes)
-	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12 - orphan_wood, "W2 must deliver all non-orphaned pile wood before exiting")
-	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6, "W2 must deliver all reserved stone before exiting")
-	assert_true(saw_builder_standby_with_intact_pack, "Standby BUILDER must keep pre-existing carry_load untouched")
-	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12 - orphan_wood, "BUILDER external wood must never leak into site buffer")
+	assert_eq(site.get_total_received_amount(&"wood"), 12 - orphan_wood, "W2 must deliver all non-orphaned pile wood before exiting")
+	assert_eq(site.get_total_received_amount(&"stone"), 6, "W2 must deliver all reserved stone before exiting")
+	assert_true(saw_builder_returning_unneeded, "BUILDER carrying unneeded external wood must route through camp return")
+	assert_true(w3.get_carry_load().is_empty() and inventory.get_available_amount(&"wood") == 2, "BUILDER external wood must return to camp stock without leaking into site")
+	assert_true(saw_builder_assembling_after_return, "BUILDER must proceed to builder slot after returning external wood")
 
 	# Cancel W3 cleanly if promoted after W2 exited, then re-issue W1 with its attributed wood -> site finishes 100%!
 	w3.issue_order(MoveOrder.new(Vector3(-11.0, 0.0, -8.0)))
@@ -902,8 +910,9 @@ func test_08_r1_interrupted_transporter_does_not_stall_replacement_or_touch_buil
 		await wait_physics_frames(1)
 		resume_f += 1
 	assert_true(site.is_fully_supplied(), "Re-issuing original interrupted worker must deliver its held claim and reach 100% supply")
-	assert_eq(site.get_delivered_buffer_amount(&"wood"), 12)
-	assert_eq(site.get_delivered_buffer_amount(&"stone"), 6)
+	assert_eq(site.get_total_received_amount(&"wood"), 12)
+	assert_eq(site.get_total_received_amount(&"stone"), 6)
+	assert_eq(inventory.get_available_amount(&"wood"), 2, "Returned external wood remains conserved in camp")
 
 	vp.queue_free()
 	await wait_process_frames(2)

@@ -8,6 +8,7 @@ const LEADER_A_DEF: CharacterDefinition = preload("res://data/characters/leader_
 const SHELTER_DEF: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
 const WOOD_DEF: ResourceDefinition = preload("res://data/resources/wood.tres")
 const STONE_DEF: ResourceDefinition = preload("res://data/resources/stone.tres")
+const FOOD_DEF: ResourceDefinition = preload("res://data/resources/food.tres")
 
 const MAX_NAV_FRAMES: int = 120
 const MAX_SIM_FRAMES: int = 3600
@@ -595,5 +596,288 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	assert_eq(w2.get_state(), Unit.State.IDLE)
 	assert_eq(w3.get_state(), Unit.State.IDLE)
 
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_05_t34_builder_with_unneeded_cargo_returns_to_camp_then_assembles() -> void:
+	# Caso A: BUILDER carrying excess external resources from prior work returns them via
+	# DeliverToCampOrder before moving to its assigned anchor and assembling, or fails cleanly
+	# without deleting backpack cargo when return is impossible.
+	var ctx: Dictionary = await _spawn_main_in_viewport(true)
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var w_trans: Unit = units[0]
+	var w_builder: Unit = units[1]
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
+	assert_true(bool(res["ok"]))
+	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	assert_not_null(spy)
+
+	# Seed initial partial materials {wood: 4, stone: 2} so BUILDER has valid work once pack is cleared.
+	_deliver_from_reserved(spy, inventory, w_trans, &"wood", 4)
+	_deliver_from_reserved(spy, inventory, w_trans, &"stone", 2)
+
+	# Give future BUILDER unneeded prior cargo (3 food + 2 unattributed wood = 7 kg <= 20 kg), standing near slot 0.
+	assert_true(w_builder.get_carry_load().add_units(FOOD_DEF.duplicate() as ResourceDefinition, 3))
+	assert_true(w_builder.get_carry_load().add_units(WOOD_DEF.duplicate() as ResourceDefinition, 2))
+	w_trans.global_position = camp.global_position + Vector3(-1.0, 0.0, 2.5)
+	w_builder.global_position = SITE_POS_A + Vector3(0.0, 0.0, 2.85)
+	await wait_physics_frames(2)
+
+	var o_trans := ConstructOrder.new(spy, camp)
+	var o_builder := ConstructOrder.new(spy, camp)
+	w_trans.issue_order(o_trans)
+	w_builder.issue_order(o_builder)
+
+	assert_eq(spy.get_worker_role(w_trans), ConstructionSite.WorkerRole.TRANSPORTER)
+	assert_eq(spy.get_worker_role(w_builder), ConstructionSite.WorkerRole.BUILDER)
+	assert_eq(o_builder.get_phase(), ConstructOrder.Phase.RETURNING_UNNEEDED_CARGO, "BUILDER with excess cargo must return it to camp instead of idling in BUILDER_STANDBY")
+	assert_eq(w_builder.get_carry_load().get_amount(&"food"), 3)
+	assert_eq(w_builder.get_carry_load().get_amount(&"wood"), 2)
+
+	var saw_camp_returned: bool = false
+	var saw_builder_assembling: bool = false
+	var f: int = 0
+	while not spy.is_completed_or_completing() and f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		f += 1
+		if not saw_camp_returned and w_builder.get_carry_load().is_empty():
+			if inventory.get_available_amount(&"food") == 3 and inventory.get_available_amount(&"wood") == 2:
+				saw_camp_returned = true
+		if o_builder.is_active() and o_builder.get_phase() == ConstructOrder.Phase.BUILDER_ASSEMBLING and spy.get_work_progress_sec() > 0.0:
+			saw_builder_assembling = true
+
+	await wait_physics_frames(4)
+	assert_true(saw_camp_returned, "BUILDER must physically return unneeded food and wood to camp stock")
+	assert_true(saw_builder_assembling, "BUILDER must move to slot and assemble after returning excess cargo")
+	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
+	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
+	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
+	assert_eq(inventory.get_available_amount(&"food"), 3, "Returned excess food must remain conserved at camp")
+	assert_eq(inventory.get_available_amount(&"wood"), 2, "Returned excess wood must never leak into site buffer or disappear")
+	assert_true(w_builder.get_carry_load().is_empty())
+	assert_eq(o_builder.status, UnitOrder.Status.SUCCEEDED)
+	assert_eq(w_builder.get_state(), Unit.State.IDLE)
+	assert_true(spy.verify_accounting_invariant())
+
+	# Subcheck (Contract #5 & #6): impossible camp return fails explicitly without deleting pack cargo or stalling silently.
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var site_fail: SpyConstructionSite = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_B)["site"] as SpyConstructionSite
+	assert_not_null(site_fail)
+	assert_true(w_builder.get_carry_load().add_units(FOOD_DEF.duplicate() as ResourceDefinition, 2))
+	w_trans.issue_order(ConstructOrder.new(site_fail, camp))
+	var o_fail := ConstructOrder.new(site_fail, null)
+	w_builder.issue_order(o_fail)
+	await wait_physics_frames(2)
+	assert_eq(o_fail.status, UnitOrder.Status.FAILED, "Missing camp zone for unneeded return must fail explicitly")
+	assert_eq(o_fail.failure_reason, ConstructOrder.REASON_UNNEEDED_CARGO_REJECTED)
+	assert_eq(w_builder.get_carry_load().get_amount(&"food"), 2, "Failed return must preserve unit backpack cargo intact")
+	assert_eq(w_builder.get_state(), Unit.State.IDLE)
+
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_06_t34_builder_with_usable_and_unneeded_cargo_delivers_then_returns_then_assembles() -> void:
+	# Caso B: BUILDER holds both site-attributed claimed cargo (3 wood) AND excess unneeded
+	# cargo (2 unattributed wood + 2 food) within weight capacity (12/20 kg).
+	# Must prioritize site drop-off of the 3 claimed wood first, then return (2 wood + 2 food) to camp,
+	# then occupy its builder slot and assemble without loss, duplication, or leakage.
+	var ctx: Dictionary = await _spawn_main_in_viewport(true)
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var w_trans: Unit = units[0]
+	var w_builder: Unit = units[1]
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
+	assert_true(bool(res["ok"]))
+	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	assert_not_null(spy)
+
+	# Withdraw 3 attributed wood into w_builder and claim transit ownership, then add 2 external wood + 2 food.
+	var wood_entries: Array[Dictionary] = inventory.get_reserved_pile_entries(spy.reservation_id, &"wood")
+	assert_false(wood_entries.is_empty())
+	var withdrawn: int = inventory.withdraw_reserved_from_pile_to_carry_load(
+		int(wood_entries[0]["pile_id"]),
+		spy.reservation_id,
+		WOOD_DEF.duplicate() as ResourceDefinition,
+		3,
+		w_builder.get_carry_load()
+	)
+	assert_eq(withdrawn, 3)
+	spy.record_withdrawn_for_site(w_builder, &"wood", 3)
+	assert_true(w_builder.get_carry_load().add_units(WOOD_DEF.duplicate() as ResourceDefinition, 2))
+	assert_true(w_builder.get_carry_load().add_units(FOOD_DEF.duplicate() as ResourceDefinition, 2))
+	assert_eq(w_builder.get_carry_load().get_amount(&"wood"), 5)
+	assert_eq(w_builder.get_carry_load().get_amount(&"food"), 2)
+
+	w_trans.global_position = camp.global_position + Vector3(-2.0, 0.0, 2.5)
+	w_builder.global_position = Vector3(-9.0, 0.0, 4.5)
+	await wait_physics_frames(2)
+
+	var o_trans := ConstructOrder.new(spy, camp)
+	var o_builder := ConstructOrder.new(spy, camp)
+	w_trans.issue_order(o_trans)
+	w_builder.issue_order(o_builder)
+
+	assert_eq(spy.get_worker_role(w_trans), ConstructionSite.WorkerRole.TRANSPORTER)
+	assert_eq(spy.get_worker_role(w_builder), ConstructionSite.WorkerRole.BUILDER)
+	assert_eq(o_builder.get_phase(), ConstructOrder.Phase.MOVING_TO_SITE_DROPOFF, "BUILDER must deliver usable claimed site cargo before returning unneeded items")
+	assert_eq(spy.get_work_progress_sec(), 0.0)
+	assert_eq(spy.get_in_transit_amount(&"wood"), 3)
+
+	var saw_usable_delivered_only: bool = false
+	var saw_returning_unneeded: bool = false
+	var saw_builder_assembling_empty_pack: bool = false
+	var sim_f: int = 0
+	while not spy.is_completed_or_completing() and sim_f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		sim_f += 1
+		if not saw_usable_delivered_only and spy.get_in_transit_amount(&"wood") == 0 and spy.get_total_received_amount(&"wood") >= 3:
+			if w_builder.get_carry_load().get_amount(&"wood") >= 2 and w_builder.get_carry_load().get_amount(&"food") == 2:
+				saw_usable_delivered_only = true
+		if o_builder.is_active() and o_builder.get_phase() == ConstructOrder.Phase.RETURNING_UNNEEDED_CARGO:
+			saw_returning_unneeded = true
+		if o_builder.is_active() and o_builder.get_phase() == ConstructOrder.Phase.BUILDER_ASSEMBLING:
+			if w_builder.get_carry_load().is_empty():
+				saw_builder_assembling_empty_pack = true
+
+	await wait_physics_frames(4)
+	assert_true(saw_usable_delivered_only, "Site drop-off must take only the 3 attributed wood and leave excess pack intact")
+	assert_true(saw_returning_unneeded, "Remaining excess cargo must transition BUILDER to RETURNING_UNNEEDED_CARGO")
+	assert_true(saw_builder_assembling_empty_pack, "After returning excess cargo, BUILDER must occupy slot and assemble")
+	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
+	assert_eq(spy.get_work_progress_sec(), 30.0)
+	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
+	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
+	assert_eq(inventory.get_available_amount(&"wood"), 2, "Excess unattributed 2 wood must be conserved in camp")
+	assert_eq(inventory.get_available_amount(&"food"), 2, "Excess 2 food must be conserved in camp")
+	assert_eq(w_builder.get_state(), Unit.State.IDLE)
+	assert_true(spy.verify_accounting_invariant())
+
+	vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_07_t34_reactive_wait_zero_polling_after_cargo_return_and_duplicate_guard() -> void:
+	# Caso C: After a BUILDER clears unneeded cargo and pauses in WAITING_FOR_MATERIALS at 4_999_999 usec,
+	# verify ZERO calls to contribute_work(), preservation of duplicate-frame guard, exact in-transit
+	# accounting conservation, and clean signal wakeup when stone arrives.
+	var ctx: Dictionary = await _spawn_main_in_viewport(true)
+	var vp: SubViewport = ctx["vp"] as SubViewport
+	var inventory: SettlementInventory = ctx["inventory"] as SettlementInventory
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var cm: ConstructionManager = ctx["cm"] as ConstructionManager
+	var units: Array[Unit] = ctx["units"] as Array[Unit]
+	var w0: Unit = units[0]
+	var u1: Unit = units[1]
+
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
+	assert_true(bool(res["ok"]))
+	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	assert_not_null(spy)
+
+	# Pre-deliver {wood: 2, stone: 0} via w0 and hold w0 paused during u1's return + assembly starvation test.
+	_deliver_from_reserved(spy, inventory, w0, &"wood", 2)
+	assert_true(u1.get_carry_load().add_units(FOOD_DEF.duplicate() as ResourceDefinition, 2))
+	w0.global_position = camp.global_position + Vector3(-2.0, 0.0, 2.0)
+	u1.global_position = camp.global_position + Vector3(0.0, 0.0, 1.5)
+	await wait_physics_frames(2)
+
+	w0.set_physics_process(false)
+	var o0 := ConstructOrder.new(spy, camp)
+	var o1 := ConstructOrder.new(spy, camp)
+	spy.watched_order = o1
+	w0.issue_order(o0)
+	u1.issue_order(o1)
+
+	assert_eq(spy.get_worker_role(u1), ConstructionSite.WorkerRole.BUILDER)
+	assert_eq(o1.get_phase(), ConstructOrder.Phase.RETURNING_UNNEEDED_CARGO)
+
+	var starv_f: int = 0
+	while spy.get_assembly_substate() != ConstructionSite.AssemblySubstate.PAUSED_STARVED and starv_f < MAX_SIM_FRAMES:
+		await wait_physics_frames(1)
+		starv_f += 1
+
+	assert_true(u1.get_carry_load().is_empty())
+	assert_eq(inventory.get_available_amount(&"food"), 2)
+	assert_eq(spy.get_assembly_substate(), ConstructionSite.AssemblySubstate.PAUSED_STARVED)
+	assert_eq(o1.get_phase(), ConstructOrder.Phase.WAITING_FOR_MATERIALS)
+	assert_eq(spy.get_work_progress_sec(), 4.999999)
+	assert_eq(spy.get_consumed_amounts(), {&"wood": 1, &"stone": 0})
+	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 1, &"stone": 0})
+
+	var buf_signals: Array[int] = [0]
+	var state_signals: Array[int] = [0]
+	spy.buffer_changed.connect(func(_s: ConstructionSite) -> void: buf_signals[0] += 1)
+	spy.state_changed.connect(func(_s: ConstructionSite) -> void: state_signals[0] += 1)
+	var calls_at_starve: int = spy.contribute_calls
+	var waiting_calls_before: int = spy.contribute_calls_in_waiting
+
+	await wait_physics_frames(20)
+	assert_eq(spy.contribute_calls, calls_at_starve, "0 calls to contribute_work() across 20 frames in WAITING_FOR_MATERIALS")
+	assert_eq(spy.contribute_calls_in_waiting, waiting_calls_before)
+	assert_eq(buf_signals[0], 0, "0 buffer_changed signals emitted while waiting in starvation")
+	assert_eq(state_signals[0], 0, "0 redundant state_changed signals emitted while waiting in starvation")
+
+	# Verify per-frame duplicate guard stays intact alongside conservation.
+	await wait_physics_frames(1)
+	var first_direct: Dictionary = spy.contribute_work(u1, 0.25)
+	var dup_direct: Dictionary = spy.contribute_work(u1, 0.25)
+	assert_true(bool(first_direct["ok"]))
+	assert_eq(first_direct["advanced_sec"], 0.0)
+	assert_false(bool(dup_direct["ok"]))
+	assert_eq(dup_direct["reason"], "duplicate_cycle_contribution")
+	assert_eq(spy.get_work_progress_sec(), 4.999999)
+	assert_eq(spy.get_consumed_amounts(), {&"wood": 1, &"stone": 0})
+
+	# Withdraw 2 stone into w0 transit claim and verify exact conservation across reserved/in_transit/buffer/consumed.
+	var stone_entries: Array[Dictionary] = inventory.get_reserved_pile_entries(spy.reservation_id, &"stone")
+	assert_false(stone_entries.is_empty())
+	var withdrawn_stone: int = inventory.withdraw_reserved_from_pile_to_carry_load(
+		int(stone_entries[0]["pile_id"]),
+		spy.reservation_id,
+		STONE_DEF.duplicate() as ResourceDefinition,
+		2,
+		w0.get_carry_load()
+	)
+	assert_eq(withdrawn_stone, 2)
+	spy.record_withdrawn_for_site(w0, &"stone", 2)
+	assert_eq(spy.get_in_transit_amount(&"stone"), 2)
+	assert_eq(spy.get_reserved_in_piles_amount(&"stone"), 4)
+	assert_eq(spy.get_missing_amount(&"stone"), 0)
+	assert_true(spy.verify_accounting_invariant())
+
+	# Delivering stone via w0 wakes u1 via signal and advances cleanly past 5_000_000 usec.
+	var delivered: Dictionary = spy.accept_delivery_from_carry_load(w0, w0.get_carry_load())
+	assert_eq(int(delivered.get(&"stone", 0)), 2)
+	assert_eq(o1.get_phase(), ConstructOrder.Phase.BUILDER_ASSEMBLING)
+
+	var wake_f: int = 0
+	while spy.get_work_progress_sec() < 5.0 and wake_f < 60:
+		await wait_physics_frames(1)
+		wake_f += 1
+	assert_true(spy.get_work_progress_sec() >= 5.0)
+	assert_eq(spy.get_consumed_amount(&"wood"), 2)
+	assert_eq(spy.get_consumed_amount(&"stone"), 1)
+	assert_eq(inventory.get_available_amount(&"food"), 2)
+	assert_true(spy.verify_accounting_invariant())
+
+	w0.set_physics_process(true)
 	vp.queue_free()
 	await wait_process_frames(2)
