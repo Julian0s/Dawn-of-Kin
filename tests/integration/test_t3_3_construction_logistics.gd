@@ -162,7 +162,9 @@ func test_01_full_e2e_shelter_placement_reserve_transport_and_no_t34_progress() 
 	assert_eq(cm.get_sites().size(), 1, "ConstructionManager must spawn exactly 1 ConstructionSite")
 	var site: ConstructionSite = cm.get_sites()[0]
 	assert_true(site.is_valid())
-	assert_true(overlay.is_site_panel_visible(), "Temporary UI must show newly created site status")
+	var inspector: BuildingInspectorPanel = (ctx["main"] as MainScene).get_node("UiLayer/BuildingInspectorPanel") as BuildingInspectorPanel
+	assert_false((inspector.get_node("Inspector") as Control).visible, "Inspector opens on selection, not when a site is created")
+	assert_false(overlay.is_site_panel_visible(), "Temporary inspector must not duplicate the contextual inspector")
 	assert_eq(inventory.get_reserved_amount(&"wood"), 12)
 	assert_eq(inventory.get_reserved_amount(&"stone"), 6)
 	assert_eq(inventory.get_available_amount(&"wood"), 2)
