@@ -609,3 +609,153 @@ func test_06_site_states_and_eight_getters_contract_verification() -> void:
 	assert_eq(int(snap["assembly_substate"]), ConstructionSite.AssemblySubstate.WAITING_ASSEMBLY)
 	assert_eq(int((snap["consumed"] as Dictionary).get(&"wood", -1)), 0)
 	assert_eq(int((snap["total_received"] as Dictionary).get(&"wood", -1)), 12)
+
+
+func test_07_zeroed_wood_reservation_in_ground_pile_manager_and_manual_recreation() -> void:
+	# Real GroundPileManager test verifying full ledger removal when reservation decays to 0
+	# and clean recreation under the exact same reservation_id via ManualComplementIntent.
+	var fx: Dictionary = _make_fixture()
+	var host: Node3D = fx["host"] as Node3D
+	var zone: CampStorageZone = fx["zone"] as CampStorageZone
+	var manager: GroundPileManager = fx["manager"] as GroundPileManager
+	var inventory: SettlementInventory = fx["inventory"] as SettlementInventory
+	var time_p: SimulatedWorldTimeProvider = fx["time"] as SimulatedWorldTimeProvider
+
+	var slots: Array[Vector3] = zone.get_candidate_slots()
+	assert_true(slots.size() >= 2)
+	var pile_1: GroundResourcePile = manager.try_create_pile_at(&"wood", 12, slots[0])
+	assert_not_null(pile_1)
+	pile_1.apply_state(12, 420.0, 0.0)
+
+	var wood_only_def: BuildingDefinition = _make_test_building_def(&"test_zeroed_wood_site", {&"wood": 12})
+	var res_id := &"res_zeroed_wood_site"
+	assert_true(inventory.reserve_batch(res_id, {&"wood": 12}))
+	var site := ConstructionSite.new()
+	host.add_child(site)
+	assert_true(site.configure(&"site_zeroed_wood", res_id, wood_only_def, inventory, fx["defs"] as Dictionary))
+	assert_true(manager.has_reservation(res_id))
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 12)
+	assert_true(site.verify_accounting_invariant())
+
+	# Advance +1440.0s (12 * 120s): decays all 12 wood in Pile 1 -> reservation drops completely from ledger.
+	time_p.advance(1440.0)
+	var losses: Dictionary = manager.step_decay()
+	assert_eq(int(losses.get(&"wood", 0)), 12)
+	assert_false(manager.has_reservation(res_id), "Zeroed reservation must disappear completely from PileReservationLedger")
+	assert_false(manager.get_all_reservation_ids().has(res_id))
+	assert_eq(manager.get_reserved_amount(&"wood"), 0)
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 0)
+	assert_eq(site.get_missing_amount(&"wood"), 12)
+	assert_true(site.verify_accounting_invariant())
+
+	# Create new physical pile with 15 free wood: zero automatic reallocation.
+	var pile_2: GroundResourcePile = manager.try_create_pile_at(&"wood", 15, slots[1])
+	assert_not_null(pile_2)
+	assert_false(manager.has_reservation(res_id))
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 0)
+	assert_eq(site.get_missing_amount(&"wood"), 12)
+	assert_eq(manager.get_available_amount(&"wood"), 15)
+
+	# Authorize manual complement with valid ManualComplementIntent: recreates reservation under same reservation_id.
+	var intent := ManualComplementIntent.create_for_test(self, site)
+	assert_not_null(intent)
+	var out: Dictionary = site.authorize_manual_complement(intent, {}, false)
+	assert_true(bool(out["ok"]))
+	assert_true(intent.consumed)
+	assert_eq(int((out["complemented"] as Dictionary).get(&"wood", 0)), 12)
+	assert_true((out["remaining_missing"] as Dictionary).is_empty())
+
+	assert_true(manager.has_reservation(res_id), "Complement must recreate reservation under same reservation_id")
+	assert_true(manager.get_all_reservation_ids().has(res_id))
+	assert_eq(manager.get_reservation_amount(res_id, &"wood"), 12)
+	assert_eq(manager.get_pile_reserved_amount(pile_2.pile_id), 12)
+	assert_eq(manager.get_pile_available_amount(pile_2.pile_id), 3)
+	assert_eq(manager.get_available_amount(&"wood"), 3)
+	assert_eq(manager.get_physical_amount(&"wood"), 15)
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 12)
+	assert_eq(site.get_missing_amount(&"wood"), 0)
+	assert_eq(site.get_delivered_buffer_amount(&"wood"), 0)
+	assert_eq(site.get_consumed_amount(&"wood"), 0)
+	assert_true(site.verify_accounting_invariant())
+
+
+func test_08_multi_resource_atomicity_wood_ok_stone_short_and_retry() -> void:
+	var fx: Dictionary = _make_fixture()
+	var host: Node3D = fx["host"] as Node3D
+	var manager: GroundPileManager = fx["manager"] as GroundPileManager
+	var inventory: SettlementInventory = fx["inventory"] as SettlementInventory
+	var cm: ConstructionManager = fx["cm"] as ConstructionManager
+
+	# Other active site holding independent reservations that must never be touched.
+	assert_true(inventory.deposit(&"wood", 3))
+	assert_true(inventory.deposit(&"stone", 2))
+	var other_def: BuildingDefinition = _make_test_building_def(&"test_other_site", {&"wood": 3, &"stone": 2})
+	assert_true(inventory.reserve_batch(&"res_other_site", {&"wood": 3, &"stone": 2}))
+	var site_other := ConstructionSite.new()
+	host.add_child(site_other)
+	assert_true(site_other.configure(&"site_other", &"res_other_site", other_def, inventory, fx["defs"] as Dictionary))
+
+	# Target Shelter site (12 wood, 6 stone) with deficits on BOTH wood (4) and stone (3).
+	assert_true(inventory.deposit(&"wood", 12))
+	assert_true(inventory.deposit(&"stone", 6))
+	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(8.0, 0.0, 8.0))
+	assert_true(bool(res["ok"]))
+	var site: ConstructionSite = res["site"] as ConstructionSite
+
+	assert_true(inventory.release_batch(site.reservation_id, {&"wood": 4, &"stone": 3}))
+	assert_true(inventory.withdraw(&"wood", 4))
+	assert_true(inventory.withdraw(&"stone", 3))
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 8)
+	assert_eq(site.get_reserved_in_piles_amount(&"stone"), 3)
+	assert_eq(site.get_missing_amount(&"wood"), 4)
+	assert_eq(site.get_missing_amount(&"stone"), 3)
+
+	# Provide sufficient free wood (5 >= 4) but insufficient free stone (2 < 3).
+	assert_true(inventory.deposit(&"wood", 5))
+	assert_true(inventory.deposit(&"stone", 2))
+
+	var intent_fail := ManualComplementIntent.create_for_test(self, site)
+	assert_not_null(intent_fail)
+	var fail_res: Dictionary = site.authorize_manual_complement(intent_fail, {}, false)
+	assert_false(bool(fail_res["ok"]))
+	assert_eq(fail_res["reason"], "insufficient_free_stock")
+
+	# Strict atomicity checks: zero partial allocation, balances intact, other site intact, ticket consumed.
+	assert_true(intent_fail.consumed, "Ticket must be consumed even when multi-resource transaction fails")
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 8)
+	assert_eq(site.get_reserved_in_piles_amount(&"stone"), 3)
+	assert_eq(site.get_missing_amount(&"wood"), 4)
+	assert_eq(site.get_missing_amount(&"stone"), 3)
+	assert_eq(manager.get_physical_amount(&"wood"), 16)
+	assert_eq(manager.get_physical_amount(&"stone"), 7)
+	assert_eq(manager.get_available_amount(&"wood"), 5)
+	assert_eq(manager.get_available_amount(&"stone"), 2)
+	assert_eq(site_other.get_reserved_in_piles_amount(&"wood"), 3)
+	assert_eq(site_other.get_reserved_in_piles_amount(&"stone"), 2)
+	assert_true(site.verify_accounting_invariant())
+	assert_true(site_other.verify_accounting_invariant())
+
+	# Add the missing 1 stone (free stone becomes 3 == needed 3) and retry with a NEW ticket.
+	assert_true(inventory.deposit(&"stone", 1))
+	var reuse_res: Dictionary = site.authorize_manual_complement(intent_fail, {}, false)
+	assert_false(bool(reuse_res["ok"]))
+	assert_eq(reuse_res["reason"], "unauthorized_or_missing_intent")
+
+	var intent_ok := ManualComplementIntent.create_for_test(self, site)
+	assert_not_null(intent_ok)
+	var ok_res: Dictionary = site.authorize_manual_complement(intent_ok, {}, false)
+	assert_true(bool(ok_res["ok"]))
+	assert_true(intent_ok.consumed)
+	assert_eq(int((ok_res["complemented"] as Dictionary).get(&"wood", 0)), 4)
+	assert_eq(int((ok_res["complemented"] as Dictionary).get(&"stone", 0)), 3)
+	assert_true((ok_res["remaining_missing"] as Dictionary).is_empty())
+	assert_eq(site.get_reserved_in_piles_amount(&"wood"), 12)
+	assert_eq(site.get_reserved_in_piles_amount(&"stone"), 6)
+	assert_eq(site.get_missing_amount(&"wood"), 0)
+	assert_eq(site.get_missing_amount(&"stone"), 0)
+	assert_eq(manager.get_available_amount(&"wood"), 1)
+	assert_eq(manager.get_available_amount(&"stone"), 0)
+	assert_eq(site_other.get_reserved_in_piles_amount(&"wood"), 3)
+	assert_eq(site_other.get_reserved_in_piles_amount(&"stone"), 2)
+	assert_true(site.verify_accounting_invariant())
+	assert_true(site_other.verify_accounting_invariant())

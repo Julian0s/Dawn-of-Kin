@@ -85,7 +85,11 @@ Todos os comandos abaixo foram executados no worktree isolado `C:\Projetos\Dawn_
    - `--headless --import`, `--check-only` em **`111` scripts** e `--quit-after 3` na cena principal.
    - Resultado: **`Validation PASSED (0 errors, 0 warnings, 111 scripts checked)`** (`exit code 0`).
 2. **Novos testes da T3.4.1 (`res://tests/unit/test_t3_4_1_accounting_and_complement.gd`):**
-   - **`6/6` aprovados**, **`212` asserções**, `0` falhas, `0` erros/avisos (`T34-AUT-01`, `T34-AUT-01B`, `T34-AUT-02`, `T34-AUT-03`, `T34-AUT-04`, contratos `SiteState`/`AssemblySubstate` e `8` getters).
+   - **`8/8` aprovados**, **`299` asserções**, `0` falhas, `0` erros/avisos:
+     - Cobertura inicial (`6` testes, `212` asserções): `T34-AUT-01`, `T34-AUT-01B`, `T34-AUT-02`, `T34-AUT-03`, `T34-AUT-04`, contratos `SiteState`/`AssemblySubstate` e `8` getters.
+     - **Auditoria complementar (`2` testes adicionais, zero alterações em código de produção):**
+       - `test_07_zeroed_wood_reservation_in_ground_pile_manager_and_manual_recreation` (**`36` asserções**): valida com `GroundPileManager` real o decaimento total (`12 -> 0 w`), desaparecimento completo da reserva no `PileReservationLedger` (`has_reservation == false`), ausência de realocação automática ao criar nova pilha (`15 w` livres) e recriação integral da reserva sob o mesmo `reservation_id` via `ManualComplementIntent`.
+       - `test_08_multi_resource_atomicity_wood_ok_stone_short_and_retry` (**`51` asserções**): valida atomicidade multirrecurso (`allow_partial = false`) com madeira suficiente (`5 >= 4`) e pedra insuficiente (`2 < 3`), confirmando `ok = false` (`insufficient_free_stock`), zero reserva adicional, saldos físicos e reserva de outra obra intactos, invariante preservada, consumo do ticket na falha (`intent_fail.consumed == true`) e sucesso integral após disponibilizar pedra e enviar novo ticket (`{&"wood": 4, &"stone": 3}`).
 3. **Regressões T3.1–T3.3 e Suíte Segmentada Completa (`.\tools\run_tests.ps1 -Segmented`):**
    - `test_t3_1_reservations.gd`: **`17/17`** (`432` asserções).
    - `test_t3_2_placement_validation.gd`: **`7/7`** (`134` asserções).
@@ -94,7 +98,7 @@ Todos os comandos abaixo foram executados no worktree isolado `C:\Projetos\Dawn_
    - `test_t3_3_ux_display_and_workers.gd`: **`2/2`** (`9` asserções).
    - `test_t3_3_construction_logistics.gd`: **`11/11`** (`205` asserções).
    - `test_t3_3_ux_flow.gd`: **`3/3`** (`55` asserções).
-   - **Totais da suíte segmentada completa (`7` lotes isolados):** **`35/35` suítes**, **`240/240` testes aprovados**, **`0` falhas**, **`0` erros de suíte**, **`7.798` asserções**, `Discovered=35 | ExecutedUnique=35 | Duplicates=0 | Missing=0` (`exit code 0`).
+   - **Totais da suíte segmentada completa (`7` lotes isolados):** **`35/35` suítes**, **`242/242` testes aprovados**, **`0` falhas**, **`0` erros de suíte**, **`7.882` asserções**, `Discovered=35 | ExecutedUnique=35 | Duplicates=0 | Missing=0` (`exit code 0`).
 4. **Não verificado / fora do escopo:** testes visuais/UI interativos do botão manual (não aplicável nesta etapa porque `BuildingInspectorPanel` pertence à `T3.5`).
 
 ---
