@@ -124,7 +124,7 @@ func test_03_t34_aut_08_ordered_guards_and_delta_values() -> void:
 	order.site = site
 	for state: ConstructionSite.SiteState in [ConstructionSite.SiteState.UNCONFIGURED, ConstructionSite.SiteState.COMPLETING, ConstructionSite.SiteState.COMPLETED, ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE, ConstructionSite.SiteState.COMPLETION_BLOCKED_ERROR]:
 		site._site_state = state
-		_reject(site, units[1], 0.1, "site_completing_or_completed" if state in [ConstructionSite.SiteState.COMPLETING, ConstructionSite.SiteState.COMPLETED] else "invalid_site_state")
+		_reject(site, units[1], 0.1, "completion_pending_retry" if state == ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE else ("site_completing_or_completed" if state in [ConstructionSite.SiteState.COMPLETING, ConstructionSite.SiteState.COMPLETED] else "invalid_site_state"))
 	site._site_state = ConstructionSite.SiteState.ACTIVE
 
 func test_04_t34_aut_08b_opposite_slot_and_physical_obstruction() -> void:

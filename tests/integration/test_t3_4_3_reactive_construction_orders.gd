@@ -67,6 +67,16 @@ func _spawn_main_in_viewport(use_spy_site: bool = false) -> Dictionary:
 		rig.edge_pan_enabled = false
 
 	var cm: ConstructionManager = main_root.get_construction_manager()
+	var completed_records: Dictionary = {}
+	cm.site_created.connect(func(s: ConstructionSite) -> void:
+		s.site_completed.connect(func(done: ConstructionSite, _building: BuildingInstance) -> void:
+			var record: Dictionary = done.get_status_snapshot()
+			record["work_sec"] = done.get_work_progress_sec()
+			record["ratio"] = done.get_progress_ratio()
+			record["invariant"] = done.verify_accounting_invariant()
+			completed_records[done.site_id] = record
+		)
+	)
 	if use_spy_site and cm != null:
 		cm.site_creator_override = func(_sid: StringName, _rid: StringName, _def: BuildingDefinition, _pos: Vector3) -> ConstructionSite:
 			return SpyConstructionSite.new()
@@ -81,6 +91,7 @@ func _spawn_main_in_viewport(use_spy_site: bool = false) -> Dictionary:
 		"pile_manager": main_root.get_ground_pile_manager(),
 		"camp": main_root.get_camp_storage_zone(),
 		"cm": cm,
+		"completed_records": completed_records,
 		"time": main_root.get_time_provider(),
 		"units": main_root.get_units(),
 	}
@@ -281,6 +292,7 @@ func test_02_t34_aut_10_parallel_logistics_starvation_wakeup_and_full_completion
 	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
 	assert_true(bool(res["ok"]))
 	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	var completed_id_spy: StringName = spy.site_id
 	assert_not_null(spy)
 
 	# Initially deliver only {wood: 2, stone: 0}; keep remaining {wood: 10, stone: 6} reserved in camp piles.
@@ -318,8 +330,10 @@ func test_02_t34_aut_10_parallel_logistics_starvation_wakeup_and_full_completion
 	var saw_wakeup_crossing: bool = false
 	var saw_post_supply_dual_builder: bool = false
 	var sim_frames: int = 0
-	while not spy.is_completed_or_completing() and sim_frames < MAX_SIM_FRAMES:
+	while is_instance_valid(spy) and not spy.is_completed_or_completing() and sim_frames < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(spy):
+			break
 		sim_frames += 1
 		if not saw_wakeup_crossing and spy.get_work_progress_sec() >= 5.0 and spy.get_consumed_amount(&"stone") >= 1:
 			saw_wakeup_crossing = true
@@ -329,23 +343,24 @@ func test_02_t34_aut_10_parallel_logistics_starvation_wakeup_and_full_completion
 	await wait_physics_frames(4)
 	assert_true(saw_wakeup_crossing, "Delivering stone must wake builder via buffer_changed and cross 5_000_000 usec")
 	assert_true(saw_post_supply_dual_builder, "Transporter must promote to 2nd BUILDER slot on supply completion")
-	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(spy.get_work_progress_sec(), 30.0)
-	assert_eq(spy.get_progress_ratio(), 1.0)
-	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
-	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
-	assert_eq(spy.get_total_received_amount(&"wood"), 12)
-	assert_eq(spy.get_total_received_amount(&"stone"), 6)
-	assert_eq(spy.get_reserved_in_piles_amount(&"wood"), 0)
-	assert_eq(spy.get_reserved_in_piles_amount(&"stone"), 0)
-	assert_eq(spy.get_missing_amount(&"wood"), 0)
-	assert_eq(spy.get_missing_amount(&"stone"), 0)
-	assert_true(spy.verify_accounting_invariant())
+	var final_spy: Dictionary = await _assert_completed(ctx, completed_id_spy)
+	assert_eq(final_spy["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_spy["work_sec"], 30.0)
+	assert_eq(final_spy["ratio"], 1.0)
+	assert_eq(final_spy["consumed"], {&"wood": 12, &"stone": 6})
+	assert_eq(final_spy["delivered_buffer"], {&"wood": 0, &"stone": 0})
+	assert_eq(final_spy["total_received"][&"wood"], 12)
+	assert_eq(final_spy["total_received"][&"stone"], 6)
+	assert_eq(final_spy["reserved_in_piles"][&"wood"], 0)
+	assert_eq(final_spy["reserved_in_piles"][&"stone"], 0)
+	assert_eq(final_spy["missing"][&"wood"], 0)
+	assert_eq(final_spy["missing"][&"stone"], 0)
+	assert_true(final_spy["invariant"])
 	assert_eq(o1.status, UnitOrder.Status.SUCCEEDED)
 	assert_eq(o2.status, UnitOrder.Status.SUCCEEDED)
 	assert_eq(w1.get_state(), Unit.State.IDLE)
 	assert_eq(w2.get_state(), Unit.State.IDLE)
-	assert_true(spy.is_inside_tree(), "T3.4.3 keeps ConstructionSite in tree until T3.4.4 BuildingInstance")
+	assert_false(is_instance_valid(spy), "Site removed after permanent building registration")
 
 	vp.queue_free()
 	await wait_process_frames(2)
@@ -377,6 +392,7 @@ func test_03_t34_aut_10b_wood_decay_starvation_no_auto_realloc_and_manual_comple
 	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
 	assert_true(bool(res["ok"]))
 	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	var completed_id_spy: StringName = spy.site_id
 	assert_not_null(spy)
 
 	# Initial buffer {wood: 2, stone: 6} (stone can_decay=false per DEC-11A); Pile 1 holds 10 reserved wood at 420s grace end.
@@ -443,19 +459,22 @@ func test_03_t34_aut_10b_wood_decay_starvation_no_auto_realloc_and_manual_comple
 	assert_eq(spy.get_consumed_amounts(), {&"wood": 2, &"stone": 1})
 
 	var comp_f: int = 0
-	while not spy.is_completed_or_completing() and comp_f < MAX_SIM_FRAMES:
+	while is_instance_valid(spy) and not spy.is_completed_or_completing() and comp_f < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(spy):
+			break
 		comp_f += 1
 	await wait_physics_frames(4)
 
-	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(spy.get_work_progress_sec(), 30.0)
-	assert_eq(spy.get_progress_ratio(), 1.0)
-	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
-	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
-	assert_eq(spy.get_reserved_in_piles_amount(&"wood"), 0)
-	assert_eq(spy.get_missing_amount(&"wood"), 0)
-	assert_true(spy.verify_accounting_invariant())
+	var final_spy: Dictionary = await _assert_completed(ctx, completed_id_spy)
+	assert_eq(final_spy["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_spy["work_sec"], 30.0)
+	assert_eq(final_spy["ratio"], 1.0)
+	assert_eq(final_spy["consumed"], {&"wood": 12, &"stone": 6})
+	assert_eq(final_spy["delivered_buffer"], {&"wood": 0, &"stone": 0})
+	assert_eq(final_spy["reserved_in_piles"][&"wood"], 0)
+	assert_eq(final_spy["missing"][&"wood"], 0)
+	assert_true(final_spy["invariant"])
 	assert_eq(order.status, UnitOrder.Status.SUCCEEDED)
 	assert_eq(worker.get_state(), Unit.State.IDLE)
 
@@ -482,6 +501,7 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	assert_true(inventory.deposit(&"wood", 12))
 	assert_true(inventory.deposit(&"stone", 6))
 	var site1: SpyConstructionSite = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)["site"] as SpyConstructionSite
+	var completed_id_site1: StringName = site1.site_id
 	assert_not_null(site1)
 
 	w1.global_position = camp.global_position + Vector3(-1.0, 0.0, 2.0)
@@ -499,18 +519,22 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	assert_true(site1.is_fully_supplied())
 	assert_true(zero_progress_while_supplying, "DEC-18 solo supplier must transport all materials before starting assembly")
 
-	while not site1.is_completed_or_completing() and f1 < MAX_SIM_FRAMES * 2:
+	while is_instance_valid(site1) and not site1.is_completed_or_completing() and f1 < MAX_SIM_FRAMES * 2:
 		await wait_physics_frames(1)
+		if not is_instance_valid(site1):
+			break
 		f1 += 1
 	await wait_physics_frames(4)
-	assert_eq(site1.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(site1.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
+	var final_site1: Dictionary = await _assert_completed(ctx, completed_id_site1)
+	assert_eq(final_site1["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_site1["consumed"], {&"wood": 12, &"stone": 6})
 	assert_eq(w1.get_state(), Unit.State.IDLE)
 
 	# Subcase 2 (2 workers D9): 1 TRANSPORTER + 1 BUILDER assemble in parallel, then dual BUILDERs at 2.0 s/s.
 	assert_true(inventory.deposit(&"wood", 12))
 	assert_true(inventory.deposit(&"stone", 6))
 	var site2: SpyConstructionSite = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(-6.0, 0.0, -5.0))["site"] as SpyConstructionSite
+	var completed_id_site2: StringName = site2.site_id
 	assert_not_null(site2)
 	w1.global_position = camp.global_position + Vector3(-1.0, 0.0, 2.0)
 	w2.global_position = Vector3(-6.0, 0.0, -5.0 + 2.85)
@@ -523,8 +547,10 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	var saw_parallel_progress_before_full_supply: bool = false
 	var saw_dual_builders_after_supply: bool = false
 	var f2: int = 0
-	while not site2.is_completed_or_completing() and f2 < MAX_SIM_FRAMES:
+	while is_instance_valid(site2) and not site2.is_completed_or_completing() and f2 < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(site2):
+			break
 		f2 += 1
 		if not site2.is_fully_supplied() and site2.get_work_progress_sec() > 0.0:
 			saw_parallel_progress_before_full_supply = true
@@ -533,8 +559,9 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	await wait_physics_frames(4)
 	assert_true(saw_parallel_progress_before_full_supply, "2-worker team must assemble in parallel before full supply")
 	assert_true(saw_dual_builders_after_supply, "2-worker transporter must promote to 2nd BUILDER slot on supply completion")
-	assert_eq(site2.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(site2.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
+	var final_site2: Dictionary = await _assert_completed(ctx, completed_id_site2)
+	assert_eq(final_site2["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_site2["consumed"], {&"wood": 12, &"stone": 6})
 	assert_eq(w1.get_state(), Unit.State.IDLE)
 	assert_eq(w2.get_state(), Unit.State.IDLE)
 
@@ -542,6 +569,7 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 	assert_true(inventory.deposit(&"wood", 12))
 	assert_true(inventory.deposit(&"stone", 6))
 	var site3: SpyConstructionSite = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(0.0, 0.0, -5.0))["site"] as SpyConstructionSite
+	var completed_id_site3: StringName = site3.site_id
 	assert_not_null(site3)
 	w1.global_position = camp.global_position + Vector3(-1.0, 0.0, 2.0)
 	w2.global_position = Vector3(0.0, 0.0, -5.0 + 2.85)
@@ -582,17 +610,20 @@ func test_04_t34_aut_11_d9_one_two_three_fourth_worker_and_interruption_resume()
 
 	# Resume with both workers -> reaches exact COMPLETING without duplicate material consumption.
 	assert_true(command.command_units_to_site(site3, [w2, w3]))
-	while not site3.is_completed_or_completing() and f3 < MAX_SIM_FRAMES:
+	while is_instance_valid(site3) and not site3.is_completed_or_completing() and f3 < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(site3):
+			break
 		f3 += 1
 	await wait_physics_frames(4)
 	assert_true(saved_progress >= 12.0)
 	assert_eq(int(saved_consumed.get(&"wood", 0)) + int(saved_buffer.get(&"wood", 0)), 12)
 	assert_eq(int(saved_consumed.get(&"stone", 0)) + int(saved_buffer.get(&"stone", 0)), 6)
-	assert_eq(site3.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(site3.get_work_progress_sec(), 30.0)
-	assert_eq(site3.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
-	assert_eq(site3.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
+	var final_site3: Dictionary = await _assert_completed(ctx, completed_id_site3)
+	assert_eq(final_site3["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_site3["work_sec"], 30.0)
+	assert_eq(final_site3["consumed"], {&"wood": 12, &"stone": 6})
+	assert_eq(final_site3["delivered_buffer"], {&"wood": 0, &"stone": 0})
 	assert_eq(w2.get_state(), Unit.State.IDLE)
 	assert_eq(w3.get_state(), Unit.State.IDLE)
 
@@ -618,6 +649,7 @@ func test_05_t34_builder_with_unneeded_cargo_returns_to_camp_then_assembles() ->
 	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
 	assert_true(bool(res["ok"]))
 	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	var completed_id_spy: StringName = spy.site_id
 	assert_not_null(spy)
 
 	# Seed initial partial materials {wood: 4, stone: 2} so BUILDER has valid work once pack is cleared.
@@ -645,8 +677,10 @@ func test_05_t34_builder_with_unneeded_cargo_returns_to_camp_then_assembles() ->
 	var saw_camp_returned: bool = false
 	var saw_builder_assembling: bool = false
 	var f: int = 0
-	while not spy.is_completed_or_completing() and f < MAX_SIM_FRAMES:
+	while is_instance_valid(spy) and not spy.is_completed_or_completing() and f < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(spy):
+			break
 		f += 1
 		if not saw_camp_returned and w_builder.get_carry_load().is_empty():
 			if inventory.get_available_amount(&"food") == 3 and inventory.get_available_amount(&"wood") == 2:
@@ -657,15 +691,16 @@ func test_05_t34_builder_with_unneeded_cargo_returns_to_camp_then_assembles() ->
 	await wait_physics_frames(4)
 	assert_true(saw_camp_returned, "BUILDER must physically return unneeded food and wood to camp stock")
 	assert_true(saw_builder_assembling, "BUILDER must move to slot and assemble after returning excess cargo")
-	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
-	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
+	var final_spy: Dictionary = await _assert_completed(ctx, completed_id_spy)
+	assert_eq(final_spy["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_spy["consumed"], {&"wood": 12, &"stone": 6})
+	assert_eq(final_spy["delivered_buffer"], {&"wood": 0, &"stone": 0})
 	assert_eq(inventory.get_available_amount(&"food"), 3, "Returned excess food must remain conserved at camp")
 	assert_eq(inventory.get_available_amount(&"wood"), 2, "Returned excess wood must never leak into site buffer or disappear")
 	assert_true(w_builder.get_carry_load().is_empty())
 	assert_eq(o_builder.status, UnitOrder.Status.SUCCEEDED)
 	assert_eq(w_builder.get_state(), Unit.State.IDLE)
-	assert_true(spy.verify_accounting_invariant())
+	assert_true(final_spy["invariant"])
 
 	# Subcheck (Contract #5 & #6): impossible camp return fails explicitly without deleting pack cargo or stalling silently.
 	assert_true(inventory.deposit(&"wood", 12))
@@ -705,6 +740,7 @@ func test_06_t34_builder_with_usable_and_unneeded_cargo_delivers_then_returns_th
 	var res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, SITE_POS_A)
 	assert_true(bool(res["ok"]))
 	var spy: SpyConstructionSite = res["site"] as SpyConstructionSite
+	var completed_id_spy: StringName = spy.site_id
 	assert_not_null(spy)
 
 	# Withdraw 3 attributed wood into w_builder and claim transit ownership, then add 2 external wood + 2 food.
@@ -743,8 +779,10 @@ func test_06_t34_builder_with_usable_and_unneeded_cargo_delivers_then_returns_th
 	var saw_returning_unneeded: bool = false
 	var saw_builder_assembling_empty_pack: bool = false
 	var sim_f: int = 0
-	while not spy.is_completed_or_completing() and sim_f < MAX_SIM_FRAMES:
+	while is_instance_valid(spy) and not spy.is_completed_or_completing() and sim_f < MAX_SIM_FRAMES:
 		await wait_physics_frames(1)
+		if not is_instance_valid(spy):
+			break
 		sim_f += 1
 		if not saw_usable_delivered_only and spy.get_in_transit_amount(&"wood") == 0 and spy.get_total_received_amount(&"wood") >= 3:
 			if w_builder.get_carry_load().get_amount(&"wood") >= 2 and w_builder.get_carry_load().get_amount(&"food") == 2:
@@ -759,14 +797,15 @@ func test_06_t34_builder_with_usable_and_unneeded_cargo_delivers_then_returns_th
 	assert_true(saw_usable_delivered_only, "Site drop-off must take only the 3 attributed wood and leave excess pack intact")
 	assert_true(saw_returning_unneeded, "Remaining excess cargo must transition BUILDER to RETURNING_UNNEEDED_CARGO")
 	assert_true(saw_builder_assembling_empty_pack, "After returning excess cargo, BUILDER must occupy slot and assemble")
-	assert_eq(spy.get_site_state(), ConstructionSite.SiteState.COMPLETING)
-	assert_eq(spy.get_work_progress_sec(), 30.0)
-	assert_eq(spy.get_consumed_amounts(), {&"wood": 12, &"stone": 6})
-	assert_eq(spy.get_delivered_buffer_amounts(), {&"wood": 0, &"stone": 0})
+	var final_spy: Dictionary = await _assert_completed(ctx, completed_id_spy)
+	assert_eq(final_spy["site_state"], ConstructionSite.SiteState.COMPLETED)
+	assert_eq(final_spy["work_sec"], 30.0)
+	assert_eq(final_spy["consumed"], {&"wood": 12, &"stone": 6})
+	assert_eq(final_spy["delivered_buffer"], {&"wood": 0, &"stone": 0})
 	assert_eq(inventory.get_available_amount(&"wood"), 2, "Excess unattributed 2 wood must be conserved in camp")
 	assert_eq(inventory.get_available_amount(&"food"), 2, "Excess 2 food must be conserved in camp")
 	assert_eq(w_builder.get_state(), Unit.State.IDLE)
-	assert_true(spy.verify_accounting_invariant())
+	assert_true(final_spy["invariant"])
 
 	vp.queue_free()
 	await wait_process_frames(2)
@@ -881,3 +920,24 @@ func test_07_t34_reactive_wait_zero_polling_after_cargo_return_and_duplicate_gua
 	w0.set_physics_process(true)
 	vp.queue_free()
 	await wait_process_frames(2)
+
+
+func _assert_completed(ctx: Dictionary, id: StringName) -> Dictionary:
+	var cm: ConstructionManager = ctx["cm"]
+	var records: Dictionary = ctx["completed_records"]
+	var frames: int = 0
+	while not records.has(id) and frames < 120:
+		await wait_process_frames(1)
+		frames += 1
+	assert_true(records.has(id), "Completion signal must preserve accounting evidence before node removal")
+	var found: BuildingInstance = null
+	for b: BuildingInstance in cm.get_completed_buildings():
+		if b.building_id == id:
+			found = b
+	assert_not_null(found)
+	if found != null:
+		assert_true(found.is_valid())
+		assert_eq(found.incorporated_materials, {&"wood": 12, &"stone": 6})
+		assert_true(cm.has_building_overlapping_rect(found.get_footprint_rect()))
+	assert_null(cm.get_site_by_id(id))
+	return records.get(id, {})
