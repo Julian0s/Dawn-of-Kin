@@ -47,6 +47,8 @@ class ValidationContext extends RefCounted:
 	var ground_pile_manager: GroundPileManager = null
 	var extra_piles: Array[GroundResourcePile] = []
 	var construction_sites: Array[ConstructionSite] = []
+	var completed_buildings: Array[BuildingInstance] = []
+	var region_id: StringName = &"default"
 	var units: Array[Unit] = []
 	var resource_sources: Array[ResourceSource] = []
 	var connectivity_checkpoints: Array[Vector3] = []
@@ -72,6 +74,8 @@ class ValidationContext extends RefCounted:
 	) -> ValidationContext:
 		var ctx := ValidationContext.new()
 		ctx.world_navigation = p_world_navigation
+		if is_instance_valid(p_region_root):
+			ctx.region_id = StringName(p_region_root.get_meta(&"region_id", &"default"))
 		ctx.camp_storage_zone = p_camp_zone
 		ctx.ground_pile_manager = p_pile_manager
 		ctx.connectivity_checkpoints = p_checkpoints.duplicate()
@@ -160,6 +164,13 @@ class ValidationContext extends RefCounted:
 		if ctx.has_region_scope:
 			_collect_scoped_sites_recursive(p_region_root, ctx.construction_sites, seen_sites, ctx.world_3d)
 
+		if tree != null:
+			for node: Node in tree.get_nodes_in_group(BuildingInstance.GROUP_COMPLETED_BUILDINGS):
+				if node is BuildingInstance and _matches_world(node, ctx.world_3d):
+					var building: BuildingInstance = node as BuildingInstance
+					if building.is_inside_tree() and building.region_id == ctx.region_id:
+						ctx.completed_buildings.append(building)
+		ctx.construction_sites = ctx.construction_sites.filter(func(site: ConstructionSite) -> bool: return site.region_id == ctx.region_id)
 		return ctx
 
 	func refresh_dynamic_state() -> ValidationContext:
@@ -187,6 +198,11 @@ class ValidationContext extends RefCounted:
 			)
 		if world_3d != null:
 			space_state = world_3d.direct_space_state
+		if is_instance_valid(world_navigation) and world_navigation.is_inside_tree():
+			completed_buildings.clear()
+			for node: Node in world_navigation.get_tree().get_nodes_in_group(BuildingInstance.GROUP_COMPLETED_BUILDINGS):
+				if node is BuildingInstance and _matches_world(node, world_3d) and (node as BuildingInstance).region_id == region_id:
+					completed_buildings.append(node as BuildingInstance)
 		return self
 
 	static func _matches_world(node: Node, expected_world: World3D) -> bool:
@@ -389,6 +405,8 @@ func _prepare_confirm_job(
 	context: ValidationContext,
 	started_usec: int
 ) -> Dictionary:
+	if context != null:
+		context = context.refresh_dynamic_state()
 	var result: ValidationResult = _validate_spatial_base(definition, raw_position, context)
 	if not result.valid:
 		result.evaluation_usec = Time.get_ticks_usec() - started_usec
@@ -485,6 +503,10 @@ func _prepare_confirm_job(
 				existing_site.definition.footprint_size.y
 			),
 		})
+
+	for building: BuildingInstance in context.completed_buildings:
+		if is_instance_valid(building) and building.is_inside_tree():
+			candidate_boxes.append({"position": building.global_position, "size": building.get_footprint_aabb().size})
 
 	return {
 		"proceed": true,
@@ -677,6 +699,10 @@ func _validate_spatial_base(
 		_fail_result(result, REASON_INVALID_INPUT, "Posição inválida: contexto da região ausente.")
 		return result
 
+	context = context.refresh_dynamic_state()
+	if context == null:
+		_fail_result(result, REASON_INVALID_INPUT, "Region context expired.")
+		return result
 	var space_state: PhysicsDirectSpaceState3D = _resolve_space_state(context)
 	if space_state == null:
 		_fail_result(result, REASON_INVALID_INPUT, "Posição inválida: espaço físico da região indisponível.")
@@ -733,8 +759,13 @@ func _validate_spatial_base(
 		false,
 		true
 	)
-	if not obstacle_hits.is_empty():
-		for hit: Dictionary in obstacle_hits:
+	var scoped_obstacles: Array[Dictionary] = []
+	for hit: Dictionary in obstacle_hits:
+		var building: BuildingInstance = BuildingInstance.resolve_from_collider(hit.get("collider"))
+		if building == null or building.region_id == context.region_id:
+			scoped_obstacles.append(hit)
+	if not scoped_obstacles.is_empty():
+		for hit: Dictionary in scoped_obstacles:
 			if _resolve_resource_source_from_collider(hit.get("collider")) != null:
 				_fail_result(result, REASON_RESOURCE_OVERLAP, "Posição inválida: área intercepta recurso natural.")
 				return result
@@ -747,6 +778,10 @@ func _validate_spatial_base(
 		candidate_rect.position + Vector2(tol, tol),
 		Vector2(maxf(0.0, candidate_rect.size.x - tol * 2.0), maxf(0.0, candidate_rect.size.y - tol * 2.0))
 	)
+	for building: BuildingInstance in context.completed_buildings:
+		if is_instance_valid(building) and building.is_inside_tree() and building.region_id == context.region_id and ValidationContext._matches_world(building, context.world_3d) and building.get_footprint_rect().intersects(shrunk_candidate, true):
+			_fail_result(result, REASON_OBSTACLE_OVERLAP, "Completed building occupies this area.")
+			return result
 	for existing_site: ConstructionSite in context.construction_sites:
 		if existing_site == null or not is_instance_valid(existing_site) or not existing_site.is_valid():
 			continue

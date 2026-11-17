@@ -194,6 +194,15 @@ func invalidate_static_geometry_cache() -> void:
 		_navigation_revision += 1
 
 
+# Occupancy changed: invalidate in-flight candidates even when no cache existed.
+# T3.4.4 does not bake, register source roots or alter the active navigation map.
+func notify_building_geometry_changed() -> void:
+	var previous_revision: int = _navigation_revision
+	invalidate_static_geometry_cache()
+	if _navigation_revision == previous_revision:
+		_navigation_revision += 1
+
+
 func has_static_geometry_cache() -> bool:
 	return _has_static_geometry_cache
 

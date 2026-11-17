@@ -38,6 +38,10 @@ const DEFAULT_PILE_PICKUP_REACH: float = 1.45
 const MAX_WORK_DELTA_SEC: float = 0.25
 const USEC_PER_SEC: int = 1_000_000
 
+const MAX_COMPLETION_RETRIES: int = 3
+const RETRY_COOLDOWN_SEC: float = 1.0
+signal site_completed(site: ConstructionSite, building: BuildingInstance)
+signal site_completion_failed(site: ConstructionSite, reason: String)
 signal state_changed(site: ConstructionSite)
 signal buffer_changed(site: ConstructionSite)
 signal workers_changed(site: ConstructionSite)
@@ -74,11 +78,19 @@ var _builder_slot_positions: Dictionary = {}
 var _last_work_physics_frame_by_unit: Dictionary = {}
 var _work_cycle_serial: int = 0
 var _work_transaction_in_progress: bool = false
+var _completion_retry_count: int = 0
+var _retry_cooldown_remaining_sec: float = 0.0
+var _last_completion_error: String = ""
+var _completion_retry_timer: Timer = null
 var _starved_resources: Array[StringName] = []
 var _supply_rebalance_completed: bool = false
 
 
 func _exit_tree() -> void:
+	if _site_state == SiteState.COMPLETED:
+		# Existing observers (including the temporary inspector) must drop the old site.
+		_is_configured = false
+		state_changed.emit(self)
 	_unbind_inventory()
 	_clear_all_transit_listeners()
 	_pending_pickups.clear()
@@ -165,6 +177,50 @@ func get_assembly_substate() -> AssemblySubstate:
 
 func is_active() -> bool:
 	return _site_state == SiteState.ACTIVE
+
+
+func is_completion_ready() -> bool:
+	if not is_valid() or _work_progress_usec != _total_work_usec:
+		return false
+	for key: StringName in _get_sorted_required_keys():
+		if get_consumed_amount(key) != get_required_amount(key) or get_delivered_buffer_amount(key) != 0:
+			return false
+	return verify_accounting_invariant()
+
+
+func get_completion_diagnostic() -> Dictionary:
+	return {"attempts_failed": _completion_retry_count, "cooldown_sec": _completion_retry_timer.time_left if is_instance_valid(_completion_retry_timer) else _retry_cooldown_remaining_sec, "reason": _last_completion_error}
+
+
+func record_completion_failure(reason: String) -> void:
+	_completion_retry_count += 1
+	_last_completion_error = reason
+	_retry_cooldown_remaining_sec = RETRY_COOLDOWN_SEC if _completion_retry_count < MAX_COMPLETION_RETRIES else 0.0
+	_site_state = SiteState.COMPLETION_FAILED_RETRYABLE if _completion_retry_count < MAX_COMPLETION_RETRIES else SiteState.COMPLETION_BLOCKED_ERROR
+	state_changed.emit(self)
+	if _site_state == SiteState.COMPLETION_BLOCKED_ERROR:
+		site_completion_failed.emit(self, reason)
+
+
+func commit_completed_building(building: BuildingInstance) -> void:
+	_site_state = SiteState.COMPLETED
+	_assembly_substate = AssemblySubstate.NONE
+	# Snapshot before callbacks: finishing an order unregisters it and rebalances roles.
+	var orders: Array[UnitOrder] = []
+	for entry: Dictionary in _assigned_workers.values():
+		var order: UnitOrder = entry.get("order") as UnitOrder
+		if order != null and not orders.has(order):
+			orders.append(order)
+	site_completed.emit(self, building)
+	for order: UnitOrder in orders:
+		if order is ConstructOrder and order.is_active() and (order as ConstructOrder).site == self:
+			(order as ConstructOrder)._finish_succeeded()
+	_unbind_inventory()
+	_clear_all_transit_listeners()
+	_pending_pickups.clear()
+	_assigned_workers.clear()
+	_worker_order_ids.clear()
+	_builder_slot_positions.clear()
 
 
 func is_completed_or_completing() -> bool:
@@ -279,6 +335,8 @@ func get_assigned_builder_slot_position(unit: Unit) -> Dictionary:
 
 func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 	# Nine ordered guards; no progress, economic state or signals change on rejection.
+	if _site_state == SiteState.COMPLETION_FAILED_RETRYABLE:
+		return _work_rejection("completion_pending_retry")
 	if not is_valid() or not is_inside_tree() or _site_state != SiteState.ACTIVE:
 		return _work_rejection("site_completing_or_completed" if _site_state in [SiteState.COMPLETING, SiteState.COMPLETED] else "invalid_site_state")
 	if not is_finite(delta_sec) or delta_sec <= 0.0 or delta_sec > MAX_WORK_DELTA_SEC:

@@ -20,6 +20,12 @@ var _region_id: StringName = &"default"
 var _next_site_seq: int = 1
 var _sites: Array[ConstructionSite] = []
 var site_creator_override: Callable = Callable()
+var building_creator_override: Callable = Callable()
+var _buildings_root: Node3D = null
+var _completed_buildings: Array[BuildingInstance] = []
+var _queued_completions: Dictionary = {}
+var _completion_in_progress: bool = false
+var _retry_timers: Dictionary = {}
 
 
 func configure(
@@ -36,6 +42,11 @@ func configure(
 	_camp_zone = p_camp_zone
 	_world_navigation = p_world_navigation
 	_region_id = p_region_id if not p_region_id.is_empty() else &"default"
+	if is_instance_valid(_sites_root) and _sites_root.is_inside_tree():
+		_buildings_root = Node3D.new()
+		_buildings_root.name = "CompletedBuildings"
+		_buildings_root.set_meta(&"region_id", _region_id)
+		_sites_root.get_parent().add_child(_buildings_root)
 
 
 func get_region_id() -> StringName:
@@ -79,6 +90,134 @@ func has_site_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool:
 	return false
 
 
+func get_completed_buildings() -> Array[BuildingInstance]:
+	for i: int in range(_completed_buildings.size() - 1, -1, -1):
+		if not is_instance_valid(_completed_buildings[i]) or not _completed_buildings[i].is_inside_tree():
+			_completed_buildings.remove_at(i)
+	return _completed_buildings.duplicate()
+
+
+func has_building_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool:
+	var shrunk := Rect2(rect.position + Vector2.ONE * tolerance, (rect.size - Vector2.ONE * tolerance * 2.0).max(Vector2.ZERO))
+	for building: BuildingInstance in get_completed_buildings():
+		if building.get_footprint_rect().intersects(shrunk, true):
+			return true
+	return false
+
+
+func has_footprint_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool:
+	return has_site_overlapping_rect(rect, tolerance) or has_building_overlapping_rect(rect, tolerance)
+
+
+func _on_site_state_changed(site: ConstructionSite) -> void:
+	if not is_instance_valid(site) or not _sites.has(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETING:
+		return
+	var uid: int = site.get_instance_id()
+	if _queued_completions.has(uid):
+		return
+	_queued_completions[uid] = true
+	_complete_queued_site.call_deferred(uid)
+
+
+func _complete_queued_site(uid: int) -> void:
+	_queued_completions.erase(uid)
+	var site: ConstructionSite = instance_from_id(uid) as ConstructionSite
+	if is_instance_valid(site):
+		complete_site_transaction(site)
+
+
+func _valid_completion_site(site: ConstructionSite) -> bool:
+	return is_instance_valid(site) and _sites.has(site) and site.is_inside_tree() and site.get_parent() == _sites_root and site.region_id == _region_id and site.is_completion_ready()
+
+
+func complete_site_transaction(site: ConstructionSite, building_instance: BuildingInstance = null) -> bool:
+	if _completion_in_progress or not _valid_completion_site(site) or site._work_transaction_in_progress:
+		return false
+	if site.get_site_state() != ConstructionSite.SiteState.COMPLETING:
+		return false
+	_completion_in_progress = true
+	if not is_instance_valid(_buildings_root) or not _buildings_root.is_inside_tree() or _buildings_root.get_world_3d() != site.get_world_3d() or StringName(_buildings_root.get_meta(&"region_id", &"")) != site.region_id:
+		site.record_completion_failure("invalid_buildings_root")
+		_schedule_retry(site)
+		_completion_in_progress = false
+		return false
+	var building: BuildingInstance = null
+	var created: Variant = building_instance
+	if created == null:
+		created = building_creator_override.call(site) if building_creator_override.is_valid() else BuildingInstance.new()
+	if created is BuildingInstance:
+		building = created as BuildingInstance
+	var owns_created: bool = is_instance_valid(created) and created is Node and (created as Node).get_parent() == null
+	var valid: bool = is_instance_valid(building) and owns_created
+	if valid and building_instance == null:
+		valid = building.configure(site.site_id, site.definition, site.region_id, site.get_consumed_amounts())
+	if valid:
+		_buildings_root.add_child(building)
+		building.global_transform = site.global_transform
+		valid = building.is_valid() and building.building_id == site.site_id and building.definition == site.definition and building.region_id == site.region_id and building.get_world_3d() == site.get_world_3d() and building.get_footprint_rect() == site.get_footprint_rect() and building.incorporated_materials == site.get_consumed_amounts()
+	if not valid:
+		if owns_created and is_instance_valid(created) and created is Node:
+			var partial: Node = created as Node
+			# Overrides must return a newly owned node; never free a registered structure.
+			if not _completed_buildings.has(partial):
+				if partial.get_parent() != null:
+					partial.get_parent().remove_child(partial)
+				partial.free()
+		site.record_completion_failure("building_instantiation_or_validation_failed")
+		_schedule_retry(site)
+		_completion_in_progress = false
+		return false
+	_completed_buildings.append(building)
+	# Both footprints are registered before any completion callback can run.
+	site.commit_completed_building(building)
+	_sites.erase(site)
+	_sites_root.remove_child(site)
+	site.queue_free()
+	if is_instance_valid(_world_navigation):
+		_world_navigation.notify_building_geometry_changed()
+	_completion_in_progress = false
+	return true
+
+
+func _schedule_retry(site: ConstructionSite) -> void:
+	if site.get_site_state() != ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE:
+		return
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = ConstructionSite.RETRY_COOLDOWN_SEC
+	add_child(timer)
+	var uid: int = site.get_instance_id()
+	_retry_timers[uid] = timer
+	site._completion_retry_timer = timer
+	timer.timeout.connect(_on_completion_retry_timeout.bind(uid))
+	timer.start()
+
+
+func _on_completion_retry_timeout(uid: int) -> void:
+	var timer: Timer = _retry_timers.get(uid) as Timer
+	_retry_timers.erase(uid)
+	if is_instance_valid(timer):
+		timer.queue_free()
+	var site: ConstructionSite = instance_from_id(uid) as ConstructionSite
+	if not _valid_completion_site(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE:
+		return
+	site._retry_cooldown_remaining_sec = 0.0
+	site._completion_retry_timer = null
+	site._site_state = ConstructionSite.SiteState.COMPLETING
+	site.state_changed.emit(site)
+
+
+func retry_failed_site_completion(site: ConstructionSite) -> bool:
+	if _completion_in_progress or not _valid_completion_site(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETION_BLOCKED_ERROR:
+		return false
+	site._completion_retry_count = 0
+	site._retry_cooldown_remaining_sec = 0.0
+	site._completion_retry_timer = null
+	site._site_state = ConstructionSite.SiteState.COMPLETING
+	site.state_changed.emit(site)
+	return true
+
+
 func try_create_site_from_placement(
 	definition: BuildingDefinition,
 	world_position: Vector3
@@ -97,7 +236,9 @@ func try_create_site_from_placement(
 		return _reject("invalid_costs", "Custo da edificação inválido ou vazio.", definition, world_position)
 
 	var target_rect: Rect2 = definition.get_footprint_rect_at(Vector2(world_position.x, world_position.z))
-	if has_site_overlapping_rect(target_rect):
+	if has_footprint_overlapping_rect(target_rect):
+		if has_building_overlapping_rect(target_rect):
+			return _reject("building_overlap", "Completed building occupies this area.", definition, world_position)
 		return _reject(
 			"site_overlap",
 			"Posição inválida: já existe um canteiro de obra nessa área.",
@@ -164,6 +305,7 @@ func try_create_site_from_placement(
 		)
 
 	_sites.append(site)
+	site.state_changed.connect(_on_site_state_changed)
 	site_created.emit(site)
 	var display_name: String = definition.display_name if not definition.display_name.is_empty() else String(definition.definition_id)
 	return {
@@ -182,7 +324,7 @@ func _allocate_unique_ids() -> Dictionary:
 		var candidate_res_id := StringName("res_site_" + suffix)
 		if _inventory != null and _inventory.has_reservation(candidate_res_id):
 			continue
-		if get_site_by_id(candidate_site_id) != null:
+		if get_site_by_id(candidate_site_id) != null or _has_building_id(candidate_site_id):
 			continue
 		return {
 			"site_id": candidate_site_id,
@@ -255,3 +397,10 @@ static func _extract_positive_costs(costs: Dictionary) -> Dictionary:
 			return {}
 		result[res_id] = amt
 	return result
+
+
+func _has_building_id(id: StringName) -> bool:
+	for building: BuildingInstance in get_completed_buildings():
+		if building.building_id == id:
+			return true
+	return false
