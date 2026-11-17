@@ -1,14 +1,34 @@
-# Dawn of Kin — T3.4.4 — Candidata de conclusão de edifícios
+# Dawn of Kin — T3.4.4 — Relatório técnico e registro de homologação
 
-**Status:** IMPLEMENTADA COMO CANDIDATA, aguardando auditoria independente e homologação expressa. Sem merge ou tag. T3.4.5 não autorizada.
+**Status:** **T3.4.4 FORMALMENTE HOMOLOGADA PELO PROPRIETÁRIO EM 17/11/2026** no commit `7e3f961359558839c2cb5ef107a62ab691eb8557`. Autorizado exclusivamente o registro documental na mesma branch candidata. **SEM MERGE NA MAIN, SEM TAG, SEM INÍCIO DA T3.4.5.**
 
 **Data:** 17/11/2026. **Branch:** `feat/t3-4-4-building-completion`.
 
 **Worktree:** `C:/Projetos/Dawn_of_Kin_wt_t3_4_4`.
 
-**Commit funcional:** `5d0207201dfc530b698bc736ad017542613623c9`.
+**Commits da branch candidata:**
+- Implementação inicial T3.4.4: `5d0207201dfc530b698bc736ad017542613623c9` (`feat(t3.4.4)`).
+- Testes e regressões iniciais: `35c45e5334d7264aff5a059764750a67d0f0526c` (`test(t3.4.4)`).
+- Relatório inicial da candidata e evidência gráfica: `3d3c25838421c60d80c7fc051bb0cf15c26dafd9` (`docs(t3.4.4)`).
+- Teste complementar R2-03 (contexto antigo de hover): `a612026723b7e7a5c8df71f25b3fc019ec81643c` (`test(t3.4.4)`).
+- **Commit técnico homologado pelo proprietário:** `7e3f961359558839c2cb5ef107a62ab691eb8557` (`docs(t3.4.4)`). *(O commit subsequente nesta branch é estritamente documental e não altera nem substitui o objeto técnico homologado).*
 
-**Commit de testes e regressões:** `35c45e5334d7264aff5a059764750a67d0f0526c`. O commit documental seguinte contém este relatório e a evidência gráfica.
+## Registro formal de homologação — 17/11/2026
+
+**Decisão expressa do proprietário (sem observações):**
+
+> Homologo formalmente a T3.4.4 do Dawn of Kin no commit 7e3f961359558839c2cb5ef107a62ab691eb8557. Autorizo exclusivamente o registro documental da homologação pelo Antigravity ou Codex na mesma branch candidata. Não autorizo merge na main, criação de tag ou início da T3.4.5. Observações: Nenhuma.
+
+- **Objeto técnico homologado:** implementação técnica e testes da T3.4.4 no SHA exato `7e3f961359558839c2cb5ef107a62ab691eb8557`, compreendendo a conclusão transacional de edifícios (`BuildingInstance`, `ConstructionManager.complete_site_transaction`), substituição atômica canteiro/edifício, rollback defensivo com cooldown de retentativa (`MAX_COMPLETION_RETRIES = 3`, `RETRY_COOLDOWN_SEC = 1.0`), proteção contra sobreposição em `PlacementValidator` via `ValidationContext.completed_buildings`, e invalidação de revisão em `WorldNavigation.notify_building_geometry_changed`.
+- **Fundamento técnico e auditoria independente:** homologação formal concedida pelo proprietário após conclusão favorável da auditoria estática independente do ChatGPT, que verificou o diff, código de produção, testes automatizados e relatório técnico em confronto com a arquitetura normativa `T3.4-R2.3`, sem apontar defeitos bloqueantes no escopo da T3.4.4.
+- **Comprovação do contrato R2-03 (contexto antigo no hover):** plenamente comprovada pelo novo teste `test_09_t34_aut_07_stale_hover_context_after_site_removal_before_physics_sync` (incorporado no commit `a612026`), que demonstra que mesmo com um `ValidationContext` capturado antes da conclusão da obra (contendo o canteiro e nenhum edifício) e antes da sincronização física, a chamada a `validate_hover()` rejeita a sobreposição com `REASON_OBSTACLE_OVERLAP` por força da verificação unificada do footprint lógico dos edifícios concluídos da região.
+- **Resultados finais de execução (Codex):**
+  - Suíte específica T3.4.4 (`test_t3_4_4_building_completion.gd`): **9/9 testes aprovados** (1.355 asserções).
+  - Suíte completa segmentada (`.\tools\run_tests.ps1 -Segmented`): **38/38 suítes, 269/269 testes aprovados, 10.506 asserções**, zero falhas, zero erros de suíte e zero avisos/erros no log em 8 lotes disjuntos.
+  - Validação de integridade (`.\tools\validate.ps1`): importação headless, `--check-only` em **116 scripts** e boot headless da cena principal aprovados com **zero erros e zero avisos** (exit code 0).
+- **Distinção metodológica estrita:** os testes foram **executados pelo Codex no ambiente Godot local** e a conformidade do diff/código foi **auditada estaticamente pelo ChatGPT** (sem execução independente de Godot pelo ChatGPT). Testes manuais/visuais de interação com o mouse pelo jogador não foram realizados nesta etapa.
+- **Limitação deliberada e fronteira T3.4.5:** a malha de navegação ativa (NavMesh) ainda não incorpora o edifício concluído; embora o colisor físico permanente impeça a passagem de unidades, o roteamento global pode continuar calculando caminhos sobre a malha anterior. A incorporação do edifício à navegação via rebake assíncrono N1, barreiras de colisão transitórias (`_pending_building_blockers`) e benchmark de desempenho (`T34-PERF-01`) pertencem estritamente à etapa subsequente `T3.4.5`.
+- **Preservação estrita do SHA técnico homologado:** o registro documental adicionado não altera, substitui nem invalida o commit técnico homologado `7e3f961359558839c2cb5ef107a62ab691eb8557`. Nenhum merge para a `main`, criação de tag ou avanço para a `T3.4.5` está autorizado.
 
 ## Base e governança
 
@@ -122,6 +142,4 @@ Captura real inspecionada: [abrigo concluído](evidence/t3_4_4/completed_shelter
 
 Conferência remota anterior à publicação: `origin/main` permanece em `9e5a782f047b9756776d8ccd281145b2dd4d879f`; tags anotadas preservadas: `t1-complete` (`3dcbba9…` → `2808799…`), `t2-complete` (`049ba9c…` → `f7c2459…`) e `t3-3-complete` (`c7947c9…` → `3c6fc0b…`). Os worktrees de `main` e T3.4.3 seguem limpos. Nenhum merge ou tag foi criado.
 
-**T3.4.4 IMPLEMENTADA COMO CANDIDATA — AGUARDANDO AUDITORIA INDEPENDENTE DO CHATGPT E HOMOLOGAÇÃO EXPRESSA DO PROPRIETÁRIO.**
-
-**SEM MERGE, SEM TAG. T3.4.5 NÃO AUTORIZADA.**
+**T3.4.4 FORMALMENTE HOMOLOGADA NO COMMIT `7e3f9613`. SEM MERGE NA MAIN, SEM TAG. T3.4.5 NÃO AUTORIZADA.**
