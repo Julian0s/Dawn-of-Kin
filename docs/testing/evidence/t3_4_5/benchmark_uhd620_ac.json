@@ -1,0 +1,99 @@
+{
+  "active_bakes": [
+    {
+      "active_bake_ms": 50.962,
+      "active_prepare_ms": 0.548,
+      "active_sync_ms": 54.718,
+      "bake_ms": 30.687,
+      "polygon_count": 238,
+      "sync_ms": 54.718,
+      "total_ms": 85.405,
+      "vertex_count": 209
+    },
+    {
+      "active_bake_ms": 45.355,
+      "active_prepare_ms": 0.518,
+      "active_sync_ms": 53.635,
+      "bake_ms": 30.687,
+      "polygon_count": 256,
+      "sync_ms": 53.635,
+      "total_ms": 84.322,
+      "vertex_count": 229
+    }
+  ],
+  "adapter": "Intel(R) UHD Graphics 620",
+  "all_frames": {
+    "frames_gt_100ms": 0,
+    "max_ms": 44.561,
+    "mean_ms": 8.12982321899736,
+    "p50_ms": 7.853,
+    "p95_ms": 13.505,
+    "samples": 4169
+  },
+  "assembly_frames": {
+    "frames_gt_100ms": 0,
+    "max_ms": 34.44,
+    "mean_ms": 8.13941344706473,
+    "p50_ms": 7.878,
+    "p95_ms": 13.568,
+    "samples": 3986
+  },
+  "completed_buildings": 2,
+  "display": "Windows",
+  "duration_sec": 33.894674,
+  "materials_incorporated": [
+    {
+      "stone": 6,
+      "wood": 12
+    },
+    {
+      "stone": 10,
+      "wood": 18
+    }
+  ],
+  "parallel_assembly_frames": 1491,
+  "performance_ok": true,
+  "power_condition_external_observation": "AC",
+  "rebake_frames": {
+    "frames_gt_100ms": 0,
+    "max_ms": 13.841,
+    "mean_ms": 8.00186206896552,
+    "p50_ms": 7.853,
+    "p95_ms": 11.933,
+    "samples": 29
+  },
+  "renderer": "gl_compatibility",
+  "scenario_ok": true,
+  "target_environment": true,
+  "viewport": "(1920.0, 1080.0)",
+  "window": "(1920, 1080)",
+  "workers": 4,
+  "engine": "Godot 4.7.2.stable.official.ed1daf0bf",
+  "base_sha": "85bbe3ff2edc74d45f2083956fd0932e4ec35919",
+  "command": "Godot --path <worktree> --rendering-driver opengl3 --resolution 1920x1080 --script res://tests/perf/t3_4_assembly_benchmark.gd",
+  "power_evidence": {
+    "provider": "Win32 WMI root/wmi BatteryStatus",
+    "before": {
+      "PowerOnline": true,
+      "Discharging": false
+    },
+    "after": {
+      "PowerOnline": true,
+      "Discharging": false
+    },
+    "note": "Both returned battery entries had these values. External observations before and after the rendered run."
+  },
+  "unexpected_godot_diagnostics": [],
+  "parallel_assembly_frames_definition": "Frames with at least two distinct ConstructionSites actively in BUILDER_ASSEMBLING.",
+  "previous_instrumentation_run": {
+    "all_frames": {
+      "frames_gt_100ms": 0,
+      "max_ms": 54.614,
+      "mean_ms": 7.90495684627944,
+      "p50_ms": 7.847,
+      "p95_ms": 12.651,
+      "samples": 4287
+    },
+    "note": "Previous run counted overlapping progressed sites. The final run additionally verifies distinct active assembly phases per frame."
+  }
+}
