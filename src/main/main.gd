@@ -99,6 +99,12 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			_construction_sites_root
 		)
 		_placement_test_overlay.configure_test_workers(_test_workers_controller)
+		_placement_test_overlay.use_game_catalog()
+	if _placement_controller != null:
+		var construction_hud := ConstructionHud.new()
+		construction_hud.name = "ConstructionHud"
+		$UiLayer.add_child(construction_hud)
+		construction_hud.configure(_placement_controller, [SHELTER_BASIC_DEFINITION, STORAGE_DEPOT_DEFINITION])
 
 
 func _setup_construction(world_nav: WorldNavigation) -> void:

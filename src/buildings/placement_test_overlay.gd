@@ -86,12 +86,27 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var key_ev: InputEventKey = event as InputEventKey
 		if key_ev.pressed and not key_ev.echo:
-			if key_ev.physical_keycode == KEY_F6 and _shelter_def != null:
+			if key_ev.physical_keycode == KEY_F8:
+				_bar_panel.visible = not _bar_panel.visible
+				_consume_viewport_input()
+			elif key_ev.physical_keycode == KEY_F6 and _shelter_def != null:
 				_toggle_definition(_shelter_def)
 				_consume_viewport_input()
 			elif key_ev.physical_keycode == KEY_F7 and _depot_def != null:
 				_toggle_definition(_depot_def)
 				_consume_viewport_input()
+
+
+func set_development_controls_visible(enabled: bool) -> void:
+	_build_ui()
+	_bar_panel.visible = enabled
+
+
+func use_game_catalog() -> void:
+	_build_ui()
+	_shelter_btn.visible = false
+	_depot_btn.visible = false
+	_bar_panel.visible = false
 
 
 func configure(
