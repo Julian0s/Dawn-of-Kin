@@ -15,15 +15,29 @@ enum TreeVisualState {
 signal amount_changed(source: ResourceSource, remaining_amount: int, delta: int)
 signal depleted(source: ResourceSource)
 
-@export var source_id: StringName = &""
-@export var definition: ResourceDefinition = null
+@export var source_id: StringName = &"":
+	set(value):
+		if source_id != value:
+			_transaction_revision += 1
+		source_id = value
+@export var definition: ResourceDefinition = null:
+	set(value):
+		if definition != value:
+			_transaction_revision += 1
+		definition = value
 @export var initial_amount: int = 20:
 	set(value):
+		if initial_amount != maxi(0, value):
+			_transaction_revision += 1
 		initial_amount = maxi(0, value)
 		if not _has_extracted:
 			_remaining_amount = initial_amount
 			_sync_visuals()
-@export var max_extract_per_operation: int = 1
+@export var max_extract_per_operation: int = 1:
+	set(value):
+		if max_extract_per_operation != value:
+			_transaction_revision += 1
+		max_extract_per_operation = value
 @export var max_simultaneous_workers: int = 2
 @export var interaction_radius: float = 1.6
 @export var gather_operation_duration_sec: float = 2.5
@@ -38,6 +52,8 @@ signal depleted(source: ResourceSource)
 		discoverability_label_text = value
 		_sync_visuals()
 
+var _transaction_revision: int = 0
+var _provenance_receipts: Dictionary = {}
 var _remaining_amount: int = 20
 var _has_extracted: bool = false
 var _is_transferring: bool = false
@@ -94,6 +110,9 @@ func configure(
 	p_max_extract_per_operation: int = 1,
 	p_max_simultaneous_workers: int = 2
 ) -> void:
+	if _is_transferring:
+		return
+	_transaction_revision += 1
 	source_id = p_source_id
 	definition = p_definition
 	max_extract_per_operation = p_max_extract_per_operation
@@ -178,6 +197,7 @@ func extract(requested_amount: int) -> int:
 
 	_has_extracted = true
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
+	_transaction_revision += 1
 	var became_depleted: bool = (_remaining_amount == 0)
 	_trigger_tree_felling_if_needed(became_depleted)
 	_sync_visuals()
@@ -221,6 +241,7 @@ func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -
 
 	_has_extracted = true
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
+	_transaction_revision += 1
 	var became_depleted: bool = (_remaining_amount == 0)
 	_trigger_tree_felling_if_needed(became_depleted)
 	_sync_visuals()
@@ -599,3 +620,69 @@ func _resolve_discoverability_text() -> String:
 			return "Alimento"
 		_:
 			return ""
+
+## Testable pre-commit boundary; default has no effects. Guards are held.
+func _before_provenance_transfer_commit() -> bool:
+	return true
+
+## Opt-in only. `extracted` is zero on replay; `committed_amount` is historical.
+func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation_id: Variant, lot_id: Variant, requested_amount: int) -> Dictionary:
+	if _is_transferring or carry_load == null or carry_load._provenance_busy:
+		return {"ok": false, "reason": "busy", "extracted": 0}
+	if not CarryProvenanceLedger._id(operation_id) or not CarryProvenanceLedger._id(lot_id) or requested_amount <= 0:
+		return {"ok": false, "reason": "invalid_input", "extracted": 0}
+	var op := StringName(operation_id)
+	if _provenance_receipts.has(op):
+		var old: Dictionary = _provenance_receipts[op]
+		if old.load.get_ref() != carry_load or old.lot != StringName(lot_id) or old.requested != requested_amount or old.source != source_id or definition == null or old.resource != definition.resource_id or old.weight != definition.unit_weight:
+			return {"ok": false, "reason": "operation_conflict", "extracted": 0}
+		return {"ok": true, "reason": "", "replayed": true, "extracted": 0, "committed_amount": old.amount}
+	_is_transferring = true
+	carry_load._provenance_busy = true
+	if not is_available() or carry_load._provenance == null or not carry_load.validate_provenance():
+		carry_load._provenance_busy = false
+		_is_transferring = false
+		return {"ok": false, "reason": "unavailable", "extracted": 0}
+	var amount: int = mini(_remaining_amount, mini(requested_amount, mini(max_extract_per_operation, carry_load.get_max_additional_units(definition))))
+	if amount <= 0:
+		carry_load._provenance_busy = false
+		_is_transferring = false
+		return {"ok": false, "reason": "capacity", "extracted": 0}
+	var source_revision: int = _transaction_revision
+	var source_definition: ResourceDefinition = definition
+	var source_resource: StringName = definition.resource_id
+	var source_weight: int = definition.unit_weight
+	var remaining_before: int = _remaining_amount
+	var plan: Dictionary = carry_load._prepare_provenance_add(op, lot_id, definition.resource_id, definition.unit_weight, amount, CarryProvenanceLedger.FREE_GATHERED)
+	if not plan.get("ok", false) or plan.get("replayed", false):
+		carry_load._provenance_busy = false
+		_is_transferring = false
+		return {"ok": false, "reason": "invalid_plan", "extracted": 0}
+	if not _before_provenance_transfer_commit() or _transaction_revision != source_revision or _remaining_amount != remaining_before or definition != source_definition or definition.resource_id != source_resource or definition.unit_weight != source_weight or not is_available():
+		carry_load._provenance_busy = false
+		_is_transferring = false
+		return {"ok": false, "reason": "stale_or_aborted", "extracted": 0}
+	carry_load._provenance_applying = true
+	var applied: bool = carry_load._apply_prepared_provenance_add(plan)
+	carry_load._provenance_applying = false
+	if not applied:
+		carry_load._provenance_busy = false
+		_is_transferring = false
+		return {"ok": false, "reason": "stale_plan", "extracted": 0}
+	# The remaining operations are non-failing integer assignments, with no callbacks.
+	_remaining_amount = remaining_before - amount
+	_has_extracted = true
+	_transaction_revision += 1
+	_provenance_receipts[op] = {"load": weakref(carry_load), "source": source_id, "resource": definition.resource_id, "weight": definition.unit_weight, "lot": StringName(lot_id), "requested": requested_amount, "amount": amount}
+	var became_depleted: bool = _remaining_amount == 0
+	_trigger_tree_felling_if_needed(became_depleted)
+	_sync_visuals()
+	if not became_depleted:
+		_trigger_gather_feedback()
+	carry_load._emit_load_changed()
+	amount_changed.emit(self, _remaining_amount, -amount)
+	if became_depleted:
+		depleted.emit(self)
+	carry_load._provenance_busy = false
+	_is_transferring = false
+	return {"ok": true, "reason": "", "replayed": false, "extracted": amount, "committed_amount": amount}

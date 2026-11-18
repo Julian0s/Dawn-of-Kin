@@ -8,6 +8,7 @@ signal capacity_changed()
 
 var _provenance: CarryProvenanceLedger = null
 var _provenance_unit: StringName = &""
+var _transaction_revision: int = 0
 var _provenance_busy: bool = false
 var _provenance_applying: bool = false
 
@@ -44,6 +45,7 @@ func end_batch(discard_load_dirty: bool = false) -> void:
 
 
 func _emit_load_changed() -> void:
+	_transaction_revision += 1
 	if _batch_depth > 0:
 		_dirty_load = true
 		return
@@ -51,6 +53,7 @@ func _emit_load_changed() -> void:
 
 
 func _emit_capacity_changed() -> void:
+	_transaction_revision += 1
 	if _batch_depth > 0:
 		_dirty_capacity = true
 		return
@@ -155,6 +158,7 @@ func restore_load_snapshot(amounts: Dictionary, unit_weights: Dictionary) -> voi
 		return
 	_amounts = amounts.duplicate()
 	_unit_weights = unit_weights.duplicate()
+	_transaction_revision += 1
 
 
 func get_registered_unit_weight(resource_id: StringName) -> int:
@@ -261,6 +265,7 @@ func enable_provenance(unit_id: StringName) -> bool:
 		return false
 	_provenance_unit = unit_id
 	_provenance = CarryProvenanceLedger.new()
+	_transaction_revision += 1
 	return true
 
 func provenance_snapshot() -> Dictionary:
@@ -296,7 +301,7 @@ func _prepare_provenance_add(operation_id: Variant, lot_id: Variant, resource_id
 	next_amounts[resource_id] = existing + amount
 	if not candidate.validate_aggregate(_provenance_unit, next_amounts).ok:
 		return {"ok": false, "reason": "unreconciled"}
-	return {"ok": true, "replayed": false, "base": provenance_snapshot(), "capacity": get_effective_capacity(),
+	return {"ok": true, "replayed": false, "base": provenance_snapshot(), "capacity": get_effective_capacity(), "revision": _transaction_revision,
 		"operation": operation_id, "lot_id": lot_id, "resource": resource_id, "weight": unit_weight,
 		"amount": amount, "origin": origin, "site": site_id, "generation": generation,
 		"amounts": next_amounts, "ledger": candidate.snapshot_transaction_state()}
@@ -305,10 +310,10 @@ func _apply_prepared_provenance_add(plan: Dictionary) -> bool:
 	# This is an internal operation; public callers use add_with_provenance().
 	if not _provenance_applying or not _provenance_busy or _provenance == null or not plan.get("ok", false) or plan.get("replayed", true):
 		return false
-	for key: String in ["base", "capacity", "operation", "lot_id", "resource", "weight", "amount", "origin", "site", "generation", "amounts", "ledger"]:
+	for key: String in ["base", "capacity", "revision", "operation", "lot_id", "resource", "weight", "amount", "origin", "site", "generation", "amounts", "ledger"]:
 		if not plan.has(key):
 			return false
-	if plan.base != provenance_snapshot() or plan.capacity != get_effective_capacity():
+	if plan.base != provenance_snapshot() or plan.capacity != get_effective_capacity() or plan.revision != _transaction_revision:
 		return false
 	# Recompute rather than trust mutable caller-supplied amounts or ledger state.
 	var checked := _prepare_provenance_add(plan.operation, plan.lot_id, plan.resource, plan.weight, plan.amount, plan.origin, plan.site, plan.generation)
@@ -320,6 +325,7 @@ func _apply_prepared_provenance_add(plan: Dictionary) -> bool:
 	_amounts = plan.amounts.duplicate(true)
 	_unit_weights[plan.resource] = plan.weight
 	_provenance = candidate
+	_transaction_revision += 1
 	return true
 
 func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
