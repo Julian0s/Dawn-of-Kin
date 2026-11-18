@@ -122,3 +122,48 @@ func validate_aggregate(unit: Variant, aggregate: Variant) -> Dictionary:
 		if totals[key] != aggregate.get(key, 0):
 			return {"ok": false, "reason": "unreconciled_cargo"}
 	return {"ok": true}
+
+## Full internal checkpoint for an uncommitted operation only.
+## Never use to undo effects already published to other systems.
+func snapshot_transaction_state() -> Dictionary:
+	return {"lots": _lots.duplicate(true), "operations": _operations.duplicate(true), "used_lots": _used_lots.duplicate(true)}
+
+func restore_transaction_state(state: Variant) -> bool:
+	if typeof(state) != TYPE_DICTIONARY or state.size() != 3:
+		return false
+	for field: String in ["lots", "operations", "used_lots"]:
+		if not state.has(field) or typeof(state[field]) != TYPE_DICTIONARY:
+			return false
+	# Reconstruct via the public validators: operation history is insertion ordered.
+	# This proves quantities, IDs, history, and used IDs are mutually consistent.
+	var candidate := CarryProvenanceLedger.new()
+	for op: Variant in state.operations:
+		if not _id(op):
+			return false
+		var item: Variant = state.operations[op]
+		if typeof(item) != TYPE_DICTIONARY or not item.has("kind"):
+			return false
+		var outcome: Dictionary
+		match item.kind:
+			"register":
+				if item.size() != 2 or not item.has("lot"):
+					return false
+				outcome = candidate.register_lot(op, item.lot)
+			"split":
+				if item.size() != 4 or not item.has("lot_id") or not item.has("child_id") or not item.has("amount"):
+					return false
+				outcome = candidate.split_lot(op, item.lot_id, item.child_id, item.amount)
+			"withdraw":
+				if item.size() != 3 or not item.has("lot_id") or not item.has("amount"):
+					return false
+				outcome = candidate.withdraw(op, item.lot_id, item.amount)
+			_:
+				return false
+		if not outcome.ok or outcome.replayed:
+			return false
+	if candidate._lots != state.lots or candidate._operations != state.operations or candidate._used_lots != state.used_lots:
+		return false
+	_lots = candidate._lots.duplicate(true)
+	_operations = candidate._operations.duplicate(true)
+	_used_lots = candidate._used_lots.duplicate(true)
+	return true
