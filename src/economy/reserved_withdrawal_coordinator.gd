@@ -28,6 +28,7 @@ class RegionalAuthority extends RefCounted:
 	var receipts: Dictionary = {}
 	var committed_lots: Dictionary = {}
 	var active_delivery: DeliveryScope
+	var construction_transfer_serial: int = 0
 
 
 var _owner_thread_id: int = OS.get_thread_caller_id()
@@ -128,6 +129,42 @@ func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundP
 	_last_world = weakref(world)
 	_last_region = region
 	return authority
+
+
+## Allocate an intent in the same domain as the two economic coordinators.
+## The counter belongs to the world/region, not to the lifetime of an order.
+func _allocate_construction_transfer_ids(
+	site: ConstructionSite, unit: Unit, order_identity: int, kind: String, pile_id: int, resource_id: StringName
+) -> Dictionary:
+	if OS.get_thread_caller_id() != _owner_thread_id or _owner_thread_id != OS.get_main_thread_id():
+		return _failure("wrong_thread", "thread")
+	if not is_instance_valid(site) or not site.is_inside_tree() or not site.is_active() \
+		or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return _failure("invalid_participant", "coordinator")
+	var world := site.get_world_3d()
+	var inventory := site.get_inventory()
+	var storage := (inventory.get_storage_source() as GroundPileManager) if inventory != null else null
+	var load := unit.get_carry_load()
+	if world == null or unit.get_world_3d() != world or storage == null or load == null \
+		or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(site.region_id):
+		return _failure("invalid_domain", "coordinator")
+	var authority := _resolve_authority(site, world, storage)
+	if authority == null:
+		return _failure("ambiguous_domain", "coordinator")
+	if authority.is_executing:
+		return _failure("busy", "coordinator")
+	if authority.construction_transfer_serial == CarryProvenanceLedger.MAX_INT:
+		return _failure("operation_serial_exhausted", "coordinator")
+	authority.construction_transfer_serial += 1
+	var op := StringName("construct:%d:%d:%s:%d:%d:%d:%d:%s:%d:%s" % [
+		world.get_instance_id(), authority.construction_transfer_serial, site.region_id, site.get_instance_id(),
+		site.get_generation(), unit.get_instance_id(), order_identity, kind, pile_id, resource_id])
+	var lot := StringName("lot:" + String(op)) if kind == "withdrawal" else &""
+	var ledger := load._provenance
+	if authority.receipts.has(op) or ledger._operations.has(op) \
+		or (not lot.is_empty() and (authority.committed_lots.has(lot) or ledger._used_lots.has(lot))):
+		return _failure("operation_conflict", "receipt")
+	return {"ok": true, "operation_id": op, "lot_id": lot}
 
 
 ## Preconditions: a live site with a world and a physical storage source.

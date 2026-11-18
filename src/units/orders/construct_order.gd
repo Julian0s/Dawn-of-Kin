@@ -25,6 +25,10 @@ const REASON_PILE_UNREACHABLE: String = "pile_unreachable"
 const REASON_MISSING_ECONOMY: String = "missing_economy"
 const REASON_RESERVATION_UNAVAILABLE: String = "reservation_unavailable"
 const REASON_UNNEEDED_CARGO_REJECTED: String = "unneeded_cargo_rejected"
+const REASON_PROVENANCE_OPT_IN_REQUIRED := "provenance_opt_in_required"
+const REASON_PROVENANCE_REQUIRED := "provenance_required"
+const REASON_PROVENANCE_BUILDER_CARGO := "provenance_builder_cargo_blocked"
+const REASON_SELECTIVE_CAMP_DELIVERY_REQUIRED := "selective_camp_delivery_required"
 const MAX_APPROACH_RETRIES: int = 2
 
 var site: ConstructionSite = null
@@ -53,16 +57,21 @@ var _planned_pickup_amount: int = 0
 var _waiting_for_navigation: bool = false
 var _slot_navigation_pending: bool = false
 var _deliver_suborder: DeliverToCampOrder = null
+var _provenance_transfer: ConstructionTransferSession
+var _deferred_navigation_failure: bool = false
 
 
 func _init(
 	p_site: ConstructionSite = null,
 	p_camp_zone: CampStorageZone = null,
-	p_force_transporter: bool = false
+	p_force_transporter: bool = false,
+	p_use_provenance_transactions: bool = false
 ) -> void:
 	site = p_site
 	camp_zone = p_camp_zone
 	force_transporter = p_force_transporter
+	if p_use_provenance_transactions:
+		_provenance_transfer = ConstructionTransferSession.new()
 
 
 func get_order_name() -> String:
@@ -99,7 +108,7 @@ func get_target_pile_id() -> int:
 
 
 func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldNavigation) -> void:
-	if is_finished():
+	if status != Status.PENDING:
 		return
 	if not (unit_body is Unit) or not unit_body.is_inside_tree():
 		mark_failed(REASON_UNIT_NOT_IN_TREE)
@@ -126,8 +135,9 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	if site.get_inventory() == null:
 		mark_failed(REASON_MISSING_ECONOMY)
 		return
-	if _unit.get_carry_load() == null:
-		mark_failed(REASON_MISSING_ECONOMY)
+	var admission := _carry_admission_failure()
+	if not admission.is_empty():
+		mark_failed(admission)
 		return
 
 	mark_running()
@@ -142,7 +152,7 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 
 
 func physics_update(movement: UnitMovement, delta: float) -> void:
-	if status != Status.RUNNING:
+	if status != Status.RUNNING or _defer_transfer_replan():
 		return
 	if _unit == null or not is_instance_valid(_unit) or not _unit.is_inside_tree():
 		_finish_failed(REASON_UNIT_NOT_IN_TREE)
@@ -151,6 +161,11 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 		_finish_failed(REASON_MISSING_MOVEMENT)
 		return
 	_movement = movement
+	var admission := _carry_admission_failure()
+	if not admission.is_empty():
+		_cancel_deliver_suborder(movement)
+		_finish_failed(admission)
+		return
 
 	if site != null and is_instance_valid(site) and site.is_completed_or_completing():
 		movement.stop_movement()
@@ -163,11 +178,21 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 		_finish_failed(REASON_MISSING_NAVIGATION)
 		return
 
+	if _deferred_navigation_failure:
+		_finish_failed(REASON_UNREACHABLE)
+		return
 	if not _world_nav.is_navigation_ready():
 		# Wait briefly if a dynamic rebake is syncing rather than failing immediately.
 		return
 
 	if _waiting_for_navigation:
+		return
+
+	if _provenance_transfer != null and _provenance_transfer.retry_kind != ConstructionTransferSession.Kind.NONE:
+		if _provenance_transfer.retry_is_due(delta):
+			var kind := _provenance_transfer.retry_kind
+			var result := _provenance_transfer.retry(site, _unit, get_instance_id())
+			_handle_provenance_transfer_result(kind, result)
 		return
 
 	var current_rev: int = _world_nav.get_navigation_revision()
@@ -198,6 +223,8 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 
 
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
+	if _defer_transfer_replan():
+		return
 	if _deliver_suborder != null and _deliver_suborder.is_active():
 		_deliver_suborder.cancel(movement, reason)
 	_deliver_suborder = null
@@ -210,6 +237,46 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if movement != null:
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	super.cancel(movement, reason)
+
+
+func _carry_admission_failure() -> String:
+	var load := _unit.get_carry_load()
+	if load == null:
+		return REASON_MISSING_ECONOMY
+	if load.is_provenance_enabled() and _provenance_transfer == null:
+		return REASON_PROVENANCE_OPT_IN_REQUIRED
+	if not load.is_provenance_enabled() and _provenance_transfer != null:
+		return REASON_PROVENANCE_REQUIRED
+	return ""
+
+
+func _defer_transfer_replan() -> bool:
+	if _provenance_transfer == null:
+		return false
+	if not _provenance_transfer.is_executing and (not is_instance_valid(site) or not site._is_preparing_or_transacting):
+		return false
+	_replan_requested = true
+	return true
+
+
+func _handle_provenance_transfer_result(kind: ConstructionTransferSession.Kind, result: Dictionary) -> void:
+	if not result.get("ok", false):
+		var reason := String(result.get("reason", "unknown_transaction_outcome"))
+		if reason != "busy":
+			var action := "withdrawal" if kind == ConstructionTransferSession.Kind.WITHDRAWAL else "delivery"
+			_finish_failed("provenance_%s:%s" % [action, reason])
+		return
+	if kind == ConstructionTransferSession.Kind.WITHDRAWAL:
+		_clear_pickup_target()
+	elif not result.get("replayed", false):
+		var deposited: int = result.delivered_now
+		if deposited > 0:
+			trips_completed += 1
+			units_delivered_total += deposited
+	resolved_target = Vector3(INF, INF, INF)
+	# Re-evaluate role and cargo after the coordinator has released all guards.
+	# A successful transfer cannot recursively start another transfer this tick.
+	_replan_requested = true
 
 
 func _cancel_deliver_suborder(movement: UnitMovement) -> void:
@@ -258,6 +325,9 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
 		if has_usable_site_cargo:
+			if _provenance_transfer != null:
+				_finish_failed(REASON_PROVENANCE_BUILDER_CARGO)
+				return
 			_cancel_deliver_suborder(movement)
 			_start_moving_to_site_dropoff(movement)
 			return
@@ -310,6 +380,9 @@ func _has_any_deliverable_claim(site_claim: Dictionary, carry_load: UnitCarryLoa
 
 
 func _start_returning_unneeded_cargo(movement: UnitMovement) -> void:
+	if _provenance_transfer != null:
+		_finish_failed(REASON_SELECTIVE_CAMP_DELIVERY_REQUIRED)
+		return
 	if _phase == Phase.RETURNING_UNNEEDED_CARGO and _deliver_suborder != null and _deliver_suborder.is_active():
 		resolved_target = _deliver_suborder.get_reserved_target()
 		return
@@ -418,7 +491,8 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 		_get_world_3d()
 	):
 		movement.stop_movement()
-		_execute_pile_withdrawal(movement)
+		if _provenance_transfer == null:
+			_execute_pile_withdrawal(movement)
 		return
 
 	resolved_target = slot_pos
@@ -429,7 +503,7 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 		return
 	_unit.set_order_state(self, Unit.State.MOVING)
 
-	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
+	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED and _provenance_transfer == null:
 		movement.stop_movement()
 		_handle_pile_arrival(movement)
 
@@ -547,6 +621,12 @@ func _execute_pile_withdrawal(movement: UnitMovement) -> void:
 		_advance_by_role(movement)
 		return
 
+	if _provenance_transfer != null:
+		var result := _provenance_transfer.withdraw(
+			site, _unit, get_instance_id(), _target_pile_id, _target_resource_id, take_amt)
+		_handle_provenance_transfer_result(ConstructionTransferSession.Kind.WITHDRAWAL, result)
+		return
+
 	var withdrawn: int = inventory.withdraw_reserved_from_pile_to_carry_load(
 		_target_pile_id,
 		site.reservation_id,
@@ -575,7 +655,8 @@ func _start_moving_to_site_dropoff(movement: UnitMovement) -> void:
 		_get_world_3d()
 	):
 		movement.stop_movement()
-		_execute_site_dropoff(movement)
+		if _provenance_transfer == null:
+			_execute_site_dropoff(movement)
 		return
 
 	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
@@ -598,7 +679,7 @@ func _start_moving_to_site_dropoff(movement: UnitMovement) -> void:
 		return
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
 
-	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
+	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED and _provenance_transfer == null:
 		movement.stop_movement()
 		_handle_site_dropoff_arrival(movement)
 
@@ -670,6 +751,11 @@ func _execute_site_dropoff(movement: UnitMovement) -> void:
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
+	if _provenance_transfer != null:
+		var result := _provenance_transfer.deliver(site, _unit, get_instance_id())
+		_handle_provenance_transfer_result(ConstructionTransferSession.Kind.DELIVERY, result)
+		return
+
 	var dropped: Dictionary = site.accept_delivery_from_carry_load(_unit, carry_load)
 	if not dropped.is_empty():
 		trips_completed += 1
@@ -1063,7 +1149,7 @@ func _has_claimable_reserved_piles() -> bool:
 
 
 func _on_site_workers_changed(_changed_site: ConstructionSite) -> void:
-	if status != Status.RUNNING or site == null or not is_instance_valid(site):
+	if status != Status.RUNNING or site == null or not is_instance_valid(site) or _defer_transfer_replan():
 		return
 	var cur_role: ConstructionSite.WorkerRole = site.get_worker_role(_unit)
 	var role_changed: bool = cur_role != _last_known_role
@@ -1084,7 +1170,7 @@ func _on_site_workers_changed(_changed_site: ConstructionSite) -> void:
 
 
 func _on_site_buffer_changed(_changed_site: ConstructionSite) -> void:
-	if status != Status.RUNNING or site == null or not is_instance_valid(site):
+	if status != Status.RUNNING or site == null or not is_instance_valid(site) or _defer_transfer_replan():
 		return
 	if site.is_completed_or_completing():
 		_replan_requested = true
@@ -1096,7 +1182,7 @@ func _on_site_buffer_changed(_changed_site: ConstructionSite) -> void:
 
 
 func _on_site_state_changed(_changed_site: ConstructionSite) -> void:
-	if status != Status.RUNNING or site == null or not is_instance_valid(site):
+	if status != Status.RUNNING or site == null or not is_instance_valid(site) or _defer_transfer_replan():
 		return
 	if site.is_completed_or_completing():
 		_replan_requested = true
@@ -1127,6 +1213,9 @@ func _bind_site_signals() -> void:
 
 func _unbind_site_signals() -> void:
 	_waiting_for_navigation = false
+	_deferred_navigation_failure = false
+	if _provenance_transfer != null:
+		_provenance_transfer.clear()
 	if is_instance_valid(_world_nav) and _world_nav.navigation_ready.is_connected(_on_pending_navigation_ready):
 		_world_nav.navigation_ready.disconnect(_on_pending_navigation_ready)
 		_world_nav.navigation_rebake_degraded.disconnect(_on_pending_navigation_degraded)
@@ -1194,6 +1283,9 @@ func _on_pending_navigation_ready() -> void:
 func _on_pending_navigation_degraded(_count: int, _reason: String) -> void:
 	if _waiting_for_navigation:
 		_waiting_for_navigation = false
+		if _defer_transfer_replan():
+			_deferred_navigation_failure = true
+			return
 		_finish_failed(REASON_UNREACHABLE)
 
 
