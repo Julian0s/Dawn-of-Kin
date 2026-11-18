@@ -8,6 +8,18 @@ extends RefCounted
 var fault_injection_hook: Callable = Callable()
 
 const DOMAIN_META := &"_reserved_withdrawal_domains"
+const RECEIPT_WITHDRAWAL := &"reserved_withdrawal"
+const RECEIPT_DELIVERY := &"selective_site_delivery"
+
+
+## Capability for the one active selective delivery in this domain.
+class DeliveryScope extends RefCounted:
+	var site: ConstructionSite
+	var unit: Unit
+	var load: UnitCarryLoad
+	var inventory: SettlementInventory
+	var storage: GroundPileManager
+	var sites: Array[ConstructionSite] = []
 
 
 class RegionalAuthority extends RefCounted:
@@ -15,6 +27,7 @@ class RegionalAuthority extends RefCounted:
 	var is_executing: bool = false
 	var receipts: Dictionary = {}
 	var committed_lots: Dictionary = {}
+	var active_delivery: DeliveryScope
 
 
 var _owner_thread_id: int = OS.get_thread_caller_id()
@@ -41,16 +54,61 @@ func is_busy() -> bool:
 ## Queries refer to the last domain resolved by this handle.
 func has_receipt(operation_id: Variant) -> bool:
 	var authority := _last_authority()
-	return authority != null and CarryProvenanceLedger._id(operation_id) and authority.receipts.has(StringName(operation_id))
+	return not get_receipt(operation_id).is_empty()
 
 
 func get_receipt(operation_id: Variant) -> Dictionary:
 	var authority := _last_authority()
 	if authority == null or not CarryProvenanceLedger._id(operation_id):
 		return {}
-	var record: Dictionary = authority.receipts.get(StringName(operation_id), {})
-	var receipt: Dictionary = record.get("receipt", {})
-	return receipt.duplicate(true)
+	var op := StringName(operation_id)
+	return _read_receipt(authority.receipts.get(op), op, RECEIPT_WITHDRAWAL).duplicate(true)
+
+
+## A C2 receipt without kind is admitted only with the original C2 format.
+static func _read_receipt(record: Variant, operation: StringName, kind: StringName) -> Dictionary:
+	if not record is Dictionary or not record.get("receipt") is Dictionary:
+		return {}
+	for field: String in ["site", "unit", "load"]:
+		if not record.get(field) is WeakRef:
+			return {}
+	var receipt: Dictionary = record.receipt
+	if typeof(receipt.get("operation_id")) != TYPE_STRING_NAME or receipt.operation_id != operation:
+		return {}
+	if receipt.has("kind") and (typeof(receipt.kind) != TYPE_STRING_NAME or receipt.kind != kind):
+		return {}
+	if kind == RECEIPT_DELIVERY:
+		return receipt if receipt.has("kind") else {}
+	if kind != RECEIPT_WITHDRAWAL or receipt.size() != (18 if receipt.has("kind") else 17):
+		return {}
+	for field: String in ["site_id", "reservation_id", "region_id", "unit_id", "resource_id", "lot_id"]:
+		if typeof(receipt.get(field)) != TYPE_STRING_NAME or not CarryProvenanceLedger._id(receipt[field]):
+			return {}
+	for field: String in ["generation", "pile_id", "unit_weight", "requested_amount", "committed_amount"]:
+		if typeof(receipt.get(field)) != TYPE_INT or receipt[field] <= 0:
+			return {}
+	# RefCounted object IDs may be negative in Godot's signed GDScript int.
+	for field: String in ["site_instance_id", "world_instance_id", "pile_instance_id", "unit_instance_id", "carry_load_instance_id"]:
+		if typeof(receipt.get(field)) != TYPE_INT or receipt[field] == 0:
+			return {}
+	if receipt.requested_amount != receipt.committed_amount:
+		return {}
+	return receipt
+
+
+static func _owns_delivery_scope(scope: DeliveryScope) -> bool:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or scope == null or not is_instance_valid(scope.site) or not scope.site.is_inside_tree():
+		return false
+	var world := scope.site.get_world_3d()
+	if world == null or scope.load == null or scope.inventory == null or scope.storage == null:
+		return false
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	var authority := domains.get(scope.site.region_id) as RegionalAuthority
+	return authority != null and authority.is_executing and authority.active_delivery == scope \
+		and authority.storage.get_ref() == scope.storage and scope.site.get_inventory() == scope.inventory \
+		and scope.inventory.get_storage_source() == scope.storage and scope.inventory._is_delivering \
+		and scope.storage._is_preparing_withdrawal and scope.load._coordinator_transaction_locked \
+		and scope.load._provenance_busy and scope.site._is_preparing_or_transacting
 
 
 func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundPileManager) -> RegionalAuthority:
@@ -226,11 +284,12 @@ func _execute_core(
 
 	# 1. Idempotent replay & conflict detection by committed operation_id / lot_id.
 	if authority.receipts.has(op_id_sn):
-		var record: Dictionary = authority.receipts[op_id_sn]
-		if record.site.get_ref() != typed_site or record.unit.get_ref() != typed_unit or record.load.get_ref() != typed_unit.get_carry_load():
+		var record: Variant = authority.receipts[op_id_sn]
+		var receipt := _read_receipt(record, op_id_sn, RECEIPT_WITHDRAWAL)
+		if receipt.is_empty() or record.site.get_ref() != typed_site or record.unit.get_ref() != typed_unit or record.load.get_ref() != typed_unit.get_carry_load():
 			return _failure("operation_conflict", "receipt")
 		return _evaluate_receipt_replay(
-			record.receipt,
+			receipt,
 			typed_site,
 			typed_unit,
 			pile_id_int,
@@ -488,6 +547,7 @@ func _execute_core(
 	# 7. Record the receipt before any visual or scene-tree callbacks.
 	inventory._transaction_revision += 1
 	var receipt: Dictionary = {
+		"kind": RECEIPT_WITHDRAWAL,
 		"operation_id": op_id_sn,
 		"lot_id": lot_id_sn,
 		"site_instance_id": typed_site.get_instance_id(),

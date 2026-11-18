@@ -7,6 +7,21 @@ extends RefCounted
 static func prepare_selective_site_delivery(
 	site: ConstructionSite, unit: Unit, operation_id: Variant, requested_amounts: Variant = {}
 ) -> Dictionary:
+	return _prepare(site, unit, operation_id, requested_amounts, null)
+
+
+static func _prepare_under_delivery_scope(
+	scope: ReservedWithdrawalCoordinator.DeliveryScope, operation_id: StringName, requested_amounts: Dictionary
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_delivery_scope(scope):
+		return _reject("busy", "coordinator")
+	return _prepare(scope.site, scope.unit, operation_id, requested_amounts, scope)
+
+
+static func _prepare(
+	site: ConstructionSite, unit: Unit, operation_id: Variant, requested_amounts: Variant,
+	scope: ReservedWithdrawalCoordinator.DeliveryScope
+) -> Dictionary:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		return _reject("wrong_thread", "thread")
 	if not is_instance_valid(site) or not site.is_inside_tree() or site.is_queued_for_deletion() or not site.is_valid() or not site.is_active() or site.get_generation() <= 0:
@@ -26,21 +41,26 @@ static func prepare_selective_site_delivery(
 	if unit.get_world_3d() != world:
 		return _reject("unit_world_mismatch", "unit")
 	var inventory := site.get_inventory()
-	var storage := inventory.get_storage_source() as GroundPileManager
+	var storage := (inventory.get_storage_source() as GroundPileManager) if inventory != null else null
 	if storage == null:
 		return _reject("unsupported_storage_source", "storage")
 	var load := unit.get_carry_load()
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _reject("provenance_disabled", "carry_load")
-	if site.is_transaction_busy() or inventory.is_transaction_busy() or load.is_transaction_busy():
-		return _reject("busy", "participants")
-	var domain := ReservedWithdrawalCoordinator.inspect_domain_for_preparation(site, storage, op)
-	if not domain.ok:
-		return domain
+	if scope == null:
+		if site.is_transaction_busy() or inventory.is_transaction_busy() or load.is_transaction_busy() or storage.is_locked() or storage.is_batch_active():
+			return _reject("busy", "participants")
+		var domain := ReservedWithdrawalCoordinator.inspect_domain_for_preparation(site, storage, op)
+		if not domain.ok:
+			return domain
+	elif not ReservedWithdrawalCoordinator._owns_delivery_scope(scope) or scope.site != site or scope.unit != unit or scope.load != load:
+		return _reject("busy", "coordinator")
 	if site._has_conflicting_unit_identity_pure(unit, load):
 		return _reject("ambiguous_unit_identity", "unit")
 	for peer: ConstructionSite in site._collect_known_other_sites_pure():
-		if peer.is_transaction_busy():
+		if scope == null and peer.is_transaction_busy():
+			return _reject("busy", "peer_site")
+		if scope != null and (not scope.sites.has(peer) or not peer._is_preparing_or_transacting):
 			return _reject("busy", "peer_site")
 
 	var cargo := load.provenance_snapshot()
@@ -115,6 +135,14 @@ static func validate_selective_site_delivery_plan(site: ConstructionSite, unit: 
 		if not plan.get(key) is Dictionary:
 			return _reject("invalid_plan", "plan")
 	var fresh := prepare_selective_site_delivery(site, unit, plan.operation_id, plan.requested_amounts)
+	var comparison := _compare_plan(fresh, plan)
+	if not comparison.ok:
+		return comparison
+	return {"ok": true, "dry_run_only": true, "commit_supported": false,
+		"physical_delivery_authorized": false, "validation_scope": "accounting_only"}
+
+
+static func _compare_plan(fresh: Dictionary, plan: Dictionary) -> Dictionary:
 	if not fresh.ok:
 		return fresh
 	if fresh.identity != plan.identity:
@@ -123,8 +151,7 @@ static func validate_selective_site_delivery_plan(site: ConstructionSite, unit: 
 		return _reject("stale_revision", "plan")
 	if fresh != plan:
 		return _reject("tampered_or_stale_plan", "plan")
-	return {"ok": true, "dry_run_only": true, "commit_supported": false,
-		"physical_delivery_authorized": false, "validation_scope": "accounting_only"}
+	return {"ok": true}
 
 
 static func _parse_request(input: Variant) -> Dictionary:
@@ -162,14 +189,19 @@ static func _measure_cargo(amounts: Dictionary, weights: Dictionary, storage: Gr
 static func _read_accounting(site: ConstructionSite) -> Dictionary:
 	var required := site.get_required_amounts()
 	var by_resource: Dictionary = {}
+	var buffers := site.get_delivered_buffer_amounts()
+	var incorporated := site.get_consumed_amounts()
+	if buffers.size() != required.size() or incorporated.size() != required.size():
+		return _reject("accounting_invariant_violated", "accounting")
 	for resource: StringName in required:
 		var need: int = required[resource]
-		var buffer := site.get_delivered_buffer_amount(resource)
-		var consumed := site.get_consumed_amount(resource)
+		var buffer: Variant = buffers.get(resource)
+		var consumed: Variant = incorporated.get(resource)
 		var reserved := site.get_inventory().get_reservation_amount(site.reservation_id, resource)
-		if need <= 0 or buffer < 0 or buffer > need or consumed < 0 or consumed > need - buffer:
+		if typeof(buffer) != TYPE_INT or typeof(consumed) != TYPE_INT \
+			or need <= 0 or buffer < 0 or buffer > need or consumed < 0 or consumed > need - buffer:
 			return _reject("accounting_invariant_violated", "accounting")
-		var room := need - buffer - consumed
+		var room := need - int(buffer) - int(consumed)
 		if reserved < 0 or reserved > room:
 			return _reject("accounting_invariant_violated", "accounting")
 		by_resource[resource] = {"required": need, "reserved": reserved, "transit": 0,
@@ -231,7 +263,12 @@ static func _project(
 		for lot: Dictionary in lots:
 			var take := mini(remaining, int(lot.quantity))
 			# These IDs only identify steps in the detached ledger simulation.
-			var debit_op := StringName("c3.1:%d:%s:%d" % [String(operation).length(), operation, debits.size()])
+			var base_id := "c3.1:%d:%s:%d" % [String(operation).length(), operation, debits.size()]
+			var debit_op := StringName(base_id)
+			var suffix := 0
+			while ledger._operations.has(debit_op):
+				suffix += 1
+				debit_op = StringName("%s:%d" % [base_id, suffix])
 			var result := ledger.withdraw(debit_op, lot.lot_id, take)
 			if not result.ok or result.replayed:
 				return _reject("lot_debit_conflict", "provenance_ledger")
