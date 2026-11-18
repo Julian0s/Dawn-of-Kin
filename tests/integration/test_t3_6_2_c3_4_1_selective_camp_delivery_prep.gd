@@ -602,14 +602,15 @@ func test_group_c_no_valid_slot_nav_not_ready_invalid_camp_and_unsupported_stora
 	var unit := _unit(fx, &"worker_c25")
 	_gather_res(fx, unit, FOOD, 4, &"op_g25", &"free_food_25")
 
-	# Scenario 25a: no valid slot available
-	zone.set_custom_position_validator(func(_pos: Vector3) -> bool: return false)
+	# Scenario 25a: genuine no valid slot available (zone shrunk to anchor already occupied by wood pile)
+	var saved_extents := zone.zone_bounds_half_extents
+	zone.zone_bounds_half_extents = Vector2(0.5, 0.5)
 	var r_noslot := CampPlanner.prepare_selective_camp_delivery(
 		fx.inventory, zone, unit, DEFAULT_REGION, &"op_c25_slot", []
 	)
 	_assert_safe_dry_run_flags(r_noslot, false)
 	assert_eq(r_noslot.reason, "no_valid_camp_slot")
-	zone.set_custom_position_validator(Callable())
+	zone.zone_bounds_half_extents = saved_extents
 
 	# Scenario 25b: WorldNavigation attached but not ready
 	var nav := WorldNavigation.new()
@@ -825,25 +826,30 @@ func test_group_d_reservation_pile_slot_and_site_generation_invalidation() -> vo
 	_assert_safe_dry_run_flags(v_pile, false)
 	assert_eq(v_pile.reason, "stale_revision")
 
-	# Scenario 36: planned virtual slot invalidated by custom validator after preparation
-	var blocked_slots: Dictionary = {}
-	zone.set_custom_position_validator(func(pos: Vector3) -> bool:
-		for key_pos: Vector3 in blocked_slots.keys():
-			if pos.distance_to(key_pos) < 0.1:
-				return false
-		return true
-	)
+	# Scenario 36a: planned virtual slot physically occupied by a new pile after preparation
 	var plan_slot := CampPlanner.prepare_selective_camp_delivery(
 		fx.inventory, zone, unit, DEFAULT_REGION, &"op_d36",
 		[{"lot_id": &"free_food_34", "amount": 4}]
 	)
 	_assert_safe_dry_run_flags(plan_slot, true)
 	var chosen_pos: Vector3 = plan_slot.deposit_projection.creates[0].world_pos
-	blocked_slots[chosen_pos] = true
+	assert_not_null(fx.manager.try_create_pile_at(&"stone", 2, chosen_pos))
 	var v_slot := CampPlanner.validate_selective_camp_delivery_plan(fx.inventory, zone, unit, DEFAULT_REGION, plan_slot)
 	_assert_safe_dry_run_flags(v_slot, false)
-	assert_eq(v_slot.reason, "tampered_or_stale_plan")
-	zone.set_custom_position_validator(Callable())
+	assert_eq(v_slot.reason, "stale_revision")
+
+	# Scenario 36b: planned virtual slot invalidated by shrinking camp bounds after preparation
+	var plan_slot_bounds := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_d36_bounds",
+		[{"lot_id": &"free_food_34", "amount": 4}]
+	)
+	_assert_safe_dry_run_flags(plan_slot_bounds, true)
+	var saved_extents := zone.zone_bounds_half_extents
+	zone.zone_bounds_half_extents = Vector2(0.5, 0.5)
+	var v_slot_bounds := CampPlanner.validate_selective_camp_delivery_plan(fx.inventory, zone, unit, DEFAULT_REGION, plan_slot_bounds)
+	_assert_safe_dry_run_flags(v_slot_bounds, false)
+	assert_eq(v_slot_bounds.reason, "no_valid_camp_slot")
+	zone.zone_bounds_half_extents = saved_extents
 
 	# Scenario 37: site generation changed after preparation
 	var plan_gen := CampPlanner.prepare_selective_camp_delivery(
@@ -1140,3 +1146,296 @@ func test_group_e_regional_world_isolation_busy_guards_and_operation_conflict() 
 	)
 	_assert_safe_dry_run_flags(r_ambig, false)
 	assert_eq(r_ambig.reason, "ambiguous_unit_identity")
+
+
+# ------------------------------------------------------------------------------
+# R1 POST-AUDIT FIXES — UNTRUSTED CALLBACK BOUNDARY (§4) & RAW _piles INTEGRITY (§5)
+# ------------------------------------------------------------------------------
+
+func test_r1_untrusted_callback_storage_mutation_refused_without_execution() -> void:
+	# §4.1: Custom validator attempting to mutate storage/pile amounts is refused before execution.
+	var fx := _fixture()
+	var zone: CampStorageZone = fx.manager.get_camp_zone()
+	var unit := _unit(fx, &"worker_r1_41")
+	_gather_res(fx, unit, FOOD, 4, &"op_r1_g41_f", &"free_r1_food_41")
+	_gather_res(fx, unit, WOOD, 3, &"op_r1_g41_w", &"free_r1_wood_41")
+
+	var empty_sites: Array[ConstructionSite] = []
+	var events := _observe(fx, empty_sites, unit)
+	var called := [0]
+	zone.set_custom_position_validator(func(_pos: Vector3) -> bool:
+		called[0] += 1
+		fx.wood.apply_state(999, 0.0, 0.0)
+		fx.manager.deposit(&"wood", 5)
+		return true
+	)
+	var snap_before := _camp_snapshot(fx, empty_sites, unit)
+
+	# Both new-pile path (food) and merge-only path (wood) refuse untrusted custom validator
+	var r_create := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_41_create",
+		[{"lot_id": &"free_r1_food_41", "amount": 4}]
+	)
+	_assert_safe_dry_run_flags(r_create, false)
+	assert_eq(r_create.reason, "unsafe_custom_position_validator")
+
+	var r_merge := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_41_merge",
+		[{"lot_id": &"free_r1_wood_41", "amount": 3}]
+	)
+	_assert_safe_dry_run_flags(r_merge, false)
+	assert_eq(r_merge.reason, "unsafe_custom_position_validator")
+
+	assert_eq(called[0], 0, "Untrusted custom validator must never execute during preparation")
+	assert_eq(fx.wood.amount, 20)
+	assert_eq(events.size(), 0)
+	assert_eq(_camp_snapshot(fx, empty_sites, unit), snap_before)
+	zone.set_custom_position_validator(Callable())
+
+
+func test_r1_untrusted_callback_pile_creation_refused_without_execution() -> void:
+	# §4.2: Custom validator attempting to create a physical pile is refused before execution.
+	var fx := _fixture()
+	var zone: CampStorageZone = fx.manager.get_camp_zone()
+	var unit := _unit(fx, &"worker_r1_42")
+	_gather_res(fx, unit, FOOD, 3, &"op_r1_g42", &"free_r1_food_42")
+	var extra_slot: Vector3 = zone.get_candidate_slots()[3]
+
+	var empty_sites: Array[ConstructionSite] = []
+	var events := _observe(fx, empty_sites, unit)
+	var called := [0]
+	var next_id_before: int = fx.manager._next_pile_id
+	zone.set_custom_position_validator(func(_pos: Vector3) -> bool:
+		called[0] += 1
+		fx.manager.try_create_pile_at(&"food", 1, extra_slot)
+		return true
+	)
+	var snap_before := _camp_snapshot(fx, empty_sites, unit)
+
+	var res := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_42", []
+	)
+	_assert_safe_dry_run_flags(res, false)
+	assert_eq(res.reason, "unsafe_custom_position_validator")
+	assert_eq(called[0], 0)
+	assert_eq(fx.manager._next_pile_id, next_id_before)
+	assert_eq(fx.manager._piles.size(), 2)
+	assert_eq(events.size(), 0)
+	assert_eq(_camp_snapshot(fx, empty_sites, unit), snap_before)
+	zone.set_custom_position_validator(Callable())
+
+
+func test_r1_untrusted_callback_reservation_mutation_refused_without_execution() -> void:
+	# §4.3: Custom validator attempting to alter construction reservations is refused before execution.
+	var fx := _fixture()
+	var zone: CampStorageZone = fx.manager.get_camp_zone()
+	var site_a := _create_site(fx, &"site_r1_43", {&"wood": 8})
+	var unit := _unit(fx, &"worker_r1_43")
+	_withdraw(fx, site_a, unit, fx.wood, 4, &"res_r1_43")
+
+	var sites: Array[ConstructionSite] = [site_a]
+	var events := _observe(fx, sites, unit)
+	var called := [0]
+	zone.set_custom_position_validator(func(_pos: Vector3) -> bool:
+		called[0] += 1
+		fx.inventory.release_batch(site_a.reservation_id)
+		fx.inventory.reserve_batch(&"rogue_res_43", {&"stone": 2})
+		return true
+	)
+	var snap_before := _camp_snapshot(fx, sites, unit)
+
+	var res := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_43",
+		[{"lot_id": &"res_r1_43", "amount": 4}]
+	)
+	_assert_safe_dry_run_flags(res, false)
+	assert_eq(res.reason, "unsafe_custom_position_validator")
+	assert_eq(called[0], 0)
+	assert_eq(fx.inventory.get_reservation_amount(site_a.reservation_id, &"wood"), 4)
+	assert_false(fx.inventory.has_reservation(&"rogue_res_43"))
+	assert_eq(events.size(), 0)
+	assert_eq(_camp_snapshot(fx, sites, unit), snap_before)
+	zone.set_custom_position_validator(Callable())
+
+
+func test_r1_untrusted_callback_self_state_and_post_prepare_validation() -> void:
+	# §4.4 (callback mutating external counter), §4.5 (callback added after valid plan), §4.6 (clean path).
+	var fx := _fixture()
+	var zone: CampStorageZone = fx.manager.get_camp_zone()
+	var unit := _unit(fx, &"worker_r1_44")
+	_gather_res(fx, unit, FOOD, 4, &"op_r1_g44_f", &"free_r1_food_44")
+	_gather_res(fx, unit, WOOD, 3, &"op_r1_g44_w", &"free_r1_wood_44")
+
+	var empty_sites: Array[ConstructionSite] = []
+	var events := _observe(fx, empty_sites, unit)
+
+	# §4.6: Prepare valid plans without custom validator (both virtual-create and merge-only)
+	var plan_create := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_45_create",
+		[{"lot_id": &"free_r1_food_44", "amount": 4}]
+	)
+	_assert_safe_dry_run_flags(plan_create, true)
+	assert_true(bool(CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_create
+	).get("ok", false)))
+
+	var plan_merge := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_45_merge",
+		[{"lot_id": &"free_r1_wood_44", "amount": 3}]
+	)
+	_assert_safe_dry_run_flags(plan_merge, true)
+	assert_true(bool(CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_merge
+	).get("ok", false)))
+
+	# §4.4 & §4.5: Attach a stateful external counter callback after valid preparation
+	var counter := [0]
+	zone.set_custom_position_validator(func(_pos: Vector3) -> bool:
+		counter[0] += 1
+		return true
+	)
+	var snap_before := _camp_snapshot(fx, empty_sites, unit)
+
+	var r_prep := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_44_self", []
+	)
+	_assert_safe_dry_run_flags(r_prep, false)
+	assert_eq(r_prep.reason, "unsafe_custom_position_validator")
+
+	var v_create := CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_create
+	)
+	_assert_safe_dry_run_flags(v_create, false)
+	assert_eq(v_create.reason, "unsafe_custom_position_validator")
+
+	var v_merge := CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_merge
+	)
+	_assert_safe_dry_run_flags(v_merge, false)
+	assert_eq(v_merge.reason, "unsafe_custom_position_validator")
+
+	assert_eq(counter[0], 0, "External counter must not be incremented")
+	assert_eq(events.size(), 0)
+	assert_eq(_camp_snapshot(fx, empty_sites, unit), snap_before)
+
+	# Confirm CampStorageZone.validate_pile_position() itself remains unchanged (§3.2) and
+	# would execute the callback if called directly, proving the planner boundary blocks it.
+	var direct_val: Dictionary = zone.validate_pile_position(zone.get_candidate_slots()[3], [])
+	assert_true(bool(direct_val.get("valid", false)))
+	assert_eq(counter[0], 1, "Direct CampStorageZone.validate_pile_position must remain intact")
+
+	# §4.6: Clearing the custom validator restores clean planning and validation
+	zone.set_custom_position_validator(Callable())
+	assert_true(bool(CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_create
+	).get("ok", false)))
+	assert_true(bool(CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, plan_merge
+	).get("ok", false)))
+
+
+func test_r1_physical_pile_collection_integrity_and_no_implicit_cleanup() -> void:
+	# §5.2: Raw internal `_piles` integrity checks without pruning/cleanup, plus ledger consistency.
+	var fx := _fixture()
+	var zone: CampStorageZone = fx.manager.get_camp_zone()
+	var unit := _unit(fx, &"worker_r1_52")
+	_gather_res(fx, unit, WOOD, 4, &"op_r1_g52", &"free_r1_w52")
+
+	var empty_sites: Array[ConstructionSite] = []
+	var events := _observe(fx, empty_sites, unit)
+
+	# Baseline intact collection succeeds
+	var baseline := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_ok", []
+	)
+	_assert_safe_dry_run_flags(baseline, true)
+	var orig_piles_len: int = fx.manager._piles.size()
+	var rev_before: int = fx.manager.get_transaction_revision()
+
+	# 5.2a: Freed / invalid reference inside `storage._piles` (invisible to `get_piles()`)
+	var freed_pile := GroundResourcePile.new()
+	fx.manager._piles.append(freed_pile)
+	freed_pile.free()
+	assert_eq(fx.manager.get_piles().size(), orig_piles_len, "get_piles() hides freed references")
+	assert_eq(fx.manager._piles.size(), orig_piles_len + 1)
+	var r_freed := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_freed", []
+	)
+	_assert_safe_dry_run_flags(r_freed, false)
+	assert_eq(r_freed.reason, "invalid_physical_pile_collection")
+	assert_eq(fx.manager._piles.size(), orig_piles_len + 1, "Planner must NOT prune `_piles`")
+	assert_eq(fx.manager.get_transaction_revision(), rev_before)
+	fx.manager._piles.pop_back()
+
+	# 5.2b: Unexpected null entry inside `storage._piles`
+	fx.manager._piles.append(null)
+	var r_null := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_null", []
+	)
+	_assert_safe_dry_run_flags(r_null, false)
+	assert_eq(r_null.reason, "invalid_physical_pile_collection")
+	assert_eq(fx.manager._piles.size(), orig_piles_len + 1, "Planner must NOT erase null entries")
+	fx.manager._piles.pop_back()
+
+	# 5.2c-1: Duplicate pile reference (same instance twice in `_piles`)
+	fx.manager._piles.append(fx.wood)
+	var r_dup_ref := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_dupref", []
+	)
+	_assert_safe_dry_run_flags(r_dup_ref, false)
+	assert_eq(r_dup_ref.reason, "invalid_physical_pile_collection")
+	assert_eq(fx.manager._piles.size(), orig_piles_len + 1)
+	fx.manager._piles.pop_back()
+
+	# 5.2c-2: Two distinct valid pile nodes sharing the same `pile_id`
+	var dup_id_pile := GroundResourcePile.new()
+	dup_id_pile._storage_owner = weakref(fx.manager)
+	fx.manager._piles_root.add_child(dup_id_pile)
+	dup_id_pile.configure_initial(fx.wood.pile_id, WOOD.duplicate() as ResourceDefinition, 5, Vector3(4, 0, 4))
+	fx.manager._piles.append(dup_id_pile)
+	var r_dup_id := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_dupid", []
+	)
+	_assert_safe_dry_run_flags(r_dup_id, false)
+	assert_eq(r_dup_id.reason, "invalid_physical_pile_collection")
+	assert_eq(fx.manager._piles.size(), orig_piles_len + 1)
+	fx.manager._piles.pop_back()
+	fx.manager._piles_root.remove_child(dup_id_pile)
+	dup_id_pile.free()
+
+	# 5.2d: Pile with incompatible `pile_id` (>= `_next_pile_id` and <= 0)
+	var orig_wood_id: int = fx.wood.pile_id
+	fx.wood.pile_id = fx.manager._next_pile_id
+	var r_hi_id := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_hiid", []
+	)
+	_assert_safe_dry_run_flags(r_hi_id, false)
+	assert_eq(r_hi_id.reason, "invalid_physical_pile_collection")
+
+	fx.wood.pile_id = 0
+	var r_zero_id := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_zeroid", []
+	)
+	_assert_safe_dry_run_flags(r_zero_id, false)
+	assert_eq(r_zero_id.reason, "invalid_physical_pile_collection")
+	fx.wood.pile_id = orig_wood_id
+
+	# 5.2e: Orphan entry in reservation ledger (nonexistent pile_id)
+	var saved_ledger: Dictionary = fx.manager._ledger.snapshot_state()
+	fx.manager._ledger.allocate_on_pile(77777, &"wood", &"orphan_r1_52", 3)
+	var r_orphan := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_orphan", []
+	)
+	_assert_safe_dry_run_flags(r_orphan, false)
+	assert_eq(r_orphan.reason, "reservation_restoration_unavailable")
+	fx.manager._ledger.restore_state(saved_ledger)
+
+	# 5.2f: Restored intact collection passes cleanly and emitted zero signals
+	assert_eq(events.size(), 0)
+	var restored := CampPlanner.prepare_selective_camp_delivery(
+		fx.inventory, zone, unit, DEFAULT_REGION, &"op_r1_52_restored", []
+	)
+	_assert_safe_dry_run_flags(restored, true)
+	assert_true(bool(CampPlanner.validate_selective_camp_delivery_plan(
+		fx.inventory, zone, unit, DEFAULT_REGION, restored
+	).get("ok", false)))
