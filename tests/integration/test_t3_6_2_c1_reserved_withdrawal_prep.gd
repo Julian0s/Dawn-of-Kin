@@ -20,9 +20,12 @@ func after_each() -> void:
 	_managers_to_cleanup.clear()
 
 
-func _make_fixture(max_pile_amount: int = 0) -> Dictionary:
+func _make_fixture(max_pile_amount: int = 0, parent: Node = null) -> Dictionary:
 	var host := Node3D.new()
-	add_test_child(host)
+	if parent == null:
+		add_test_child(host)
+	else:
+		parent.add_child(host)
 
 	var zone := CampStorageZone.new()
 	zone.zone_id = &"c1_test_camp"
@@ -792,4 +795,198 @@ func test_05_idempotent_repeated_preparation_stale_revisions_and_aba() -> void:
 	var val_silent_decay: Dictionary = site.validate_reserved_withdrawal_plan(p_fresh)
 	assert_false(bool(val_silent_decay["ok"]))
 	assert_eq(String(val_silent_decay["reason"]), "stale_revision")
+	spy.cleanup()
+
+func _make_r1_case(parent: Node = null) -> Dictionary:
+	var fx: Dictionary = _make_fixture(0, parent)
+	var manager: GroundPileManager = fx.manager
+	var zone: CampStorageZone = fx.zone
+	var cm: ConstructionManager = fx.cm
+	fx["pile"] = manager.try_create_pile_at(&"wood", 10, zone.get_candidate_slots()[0])
+	var def := _make_building_def(&"r1_wood", {&"wood": 4})
+	fx["site"] = cm.try_create_site_from_placement(def, Vector3(8, 0, 8)).get("site")
+	fx["unit"] = _spawn_unit(fx.host, "R1Worker", &"r1_worker")
+	return fx
+
+
+func test_06_unknown_reserved_origin_is_not_reconciled_by_physical_totals() -> void:
+	var fx := _make_r1_case()
+	var site: ConstructionSite = fx.site
+	var unit: Unit = fx.unit
+	var pile: GroundResourcePile = fx.pile
+	var load := unit.get_carry_load()
+	assert_true(load.add_with_provenance(&"old", &"old_lot", &"wood", WOOD_BASE.unit_weight, 1,
+		CarryProvenanceLedger.SITE_RESERVED, &"missing_site", 1).ok)
+	assert_true(load.validate_provenance())
+	var spy := SignalSpy.new()
+	spy.watch_all(fx.manager, fx.inventory, [site], [load])
+	var before := _snapshot_all(fx.manager, fx.inventory, [site], [load])
+	var result := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"new", &"new_lot")
+	assert_eq(result.get("reason"), "unknown_reserved_site")
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [load]), before)
+	assert_eq(spy.events, [])
+	spy.cleanup()
+
+
+func test_07_prior_and_revision_inputs_fail_closed_without_global_id_reservation() -> void:
+	var fx := _make_r1_case()
+	var site: ConstructionSite = fx.site
+	var unit: Unit = fx.unit
+	var pile: GroundResourcePile = fx.pile
+	var load := unit.get_carry_load()
+	var spy := SignalSpy.new()
+	spy.watch_all(fx.manager, fx.inventory, [site], [load])
+	var before := _snapshot_all(fx.manager, fx.inventory, [site], [load])
+	var plan := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot")
+	assert_true(plan.ok)
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot", {"prior_plan": plan}), plan)
+	var independent := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 2, &"op", &"lot")
+	assert_true(independent.ok)
+	assert_ne(independent, plan)
+	assert_false(independent.commit_supported)
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 2, &"op", &"lot",
+		{"prior_plan": plan}).get("reason"), "operation_conflict")
+	var edited := plan.duplicate(true)
+	edited.claim_plan.after_transit_claim[&"wood"] = 9
+	assert_false(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"prior_plan": edited}).ok)
+	assert_false(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"prior_plan": 4}).ok)
+	var malformed_revisions: Dictionary = plan.revisions.duplicate()
+	malformed_revisions["carry_load_revision"] = float(load.get_transaction_revision())
+	assert_false(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"expected_revisions": malformed_revisions}).ok)
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"expected_revisions": plan.revisions}), plan)
+	assert_false(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"expected_revisions": {"carry_load_revision": load.get_transaction_revision()}}).ok)
+	edited = plan.duplicate(true)
+	edited.unit_instance_id = float(plan.unit_instance_id)
+	assert_false(site.validate_reserved_withdrawal_plan(edited).ok)
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [load]), before)
+	var changed_amount_type := plan.duplicate(true)
+	changed_amount_type.claim_plan.after_transit_claim[&"wood"] = 1.0
+	assert_false(site.validate_reserved_withdrawal_plan(changed_amount_type).ok)
+	assert_eq(spy.events, [])
+	spy.cleanup()
+
+
+func test_08_accounting_plan_does_not_authorize_a_physical_pickup() -> void:
+	var fx := _make_r1_case()
+	var site: ConstructionSite = fx.site
+	var unit: Unit = fx.unit
+	var pile: GroundResourcePile = fx.pile
+	var load := unit.get_carry_load()
+	unit.position = Vector3(40, 0, 40)
+	assert_false(BuildSlotPlanner.is_unit_in_pile_reach(unit.global_position, pile.global_position,
+		ConstructionSite.DEFAULT_PILE_PICKUP_REACH, unit.get_world_3d()))
+	var spy := SignalSpy.new()
+	spy.watch_all(fx.manager, fx.inventory, [site], [load])
+	var before := _snapshot_all(fx.manager, fx.inventory, [site], [load])
+	var plan := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot")
+	assert_true(plan.ok)
+	assert_true(plan.dry_run_only)
+	assert_false(plan.commit_supported)
+	assert_eq(plan.get("validation_scope"), "accounting_only")
+	assert_eq(plan.get("physical_pickup_authorized"), false)
+	assert_eq(plan.get("worker_registered"), false)
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"require_assigned_worker": true}).get("reason"), "worker_not_registered")
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [load]), before)
+	assert_eq(spy.events, [])
+	spy.cleanup()
+
+
+func test_09_claim_proof_is_scoped_to_site_identity_region_and_world() -> void:
+	var fx := _make_r1_case()
+	var site: ConstructionSite = fx.site
+	var unit: Unit = fx.unit
+	var pile: GroundResourcePile = fx.pile
+	var cm: ConstructionManager = fx.cm
+	var manager: GroundPileManager = fx.manager
+	var load := unit.get_carry_load()
+	var other_def := _make_building_def(&"r1_peer", {&"wood": 2})
+	var peer: ConstructionSite = cm.try_create_site_from_placement(other_def, Vector3(14, 0, 8)).get("site")
+	# Another world has an independent site with the same ID as the target.
+	var viewport := SubViewport.new()
+	viewport.own_world_3d = true
+	add_test_child(viewport)
+	var remote := _make_r1_case(viewport)
+	var remote_site: ConstructionSite = remote.site
+	assert_eq(remote_site.site_id, site.site_id)
+	assert_ne(remote_site.get_world_3d(), site.get_world_3d())
+	assert_true(manager.withdraw_reserved_from_pile(pile.pile_id, peer.reservation_id, &"wood", 1))
+	assert_true(load.add_with_provenance(&"peer_op", &"peer_lot", &"wood", WOOD_BASE.unit_weight, 1,
+		CarryProvenanceLedger.SITE_RESERVED, peer.site_id, peer.get_generation()).ok)
+	peer.record_withdrawn_for_site(unit, &"wood", 1)
+	var spy := SignalSpy.new()
+	spy.watch_all(manager, fx.inventory, [site, peer], [load])
+	var before := _snapshot_all(manager, fx.inventory, [site, peer], [load])
+	var plan := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"other_sites": [remote_site]})
+	assert_true(plan.ok)
+	assert_true(site.validate_reserved_withdrawal_plan(plan).ok)
+	assert_eq(plan.peer_claim_revisions[peer.site_id].instance_id, peer.get_instance_id())
+	assert_eq(site.prepare_reserved_withdrawal(remote.unit, pile.pile_id, &"wood", 1, &"x", &"y").reason,
+		"unit_world_mismatch")
+	assert_eq(_snapshot_all(manager, fx.inventory, [site, peer], [load]), before)
+	assert_eq(spy.events, [])
+
+	# The foreign claim has the same unit, lot and quantities, but no local authority.
+	var home_region := peer.region_id
+	peer.region_id = &"foreign"
+	before = _snapshot_all(manager, fx.inventory, [site, peer], [load])
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"other_sites": [peer]}).reason, "unknown_reserved_site")
+	assert_eq(_snapshot_all(manager, fx.inventory, [site, peer], [load]), before)
+	peer.region_id = home_region
+	var generation := peer.get_generation()
+	peer._generation += 1
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot").reason,
+		"generation_mismatch")
+	peer._generation = generation
+	var peer_id := peer.site_id
+	peer.site_id = site.site_id
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot").reason,
+		"conflicting_site_claims")
+	peer.site_id = peer_id
+	assert_eq(_snapshot_all(manager, fx.inventory, [site, peer], [load]), before)
+	assert_eq(spy.events, [])
+	spy.cleanup()
+
+
+func test_10_registered_worker_requires_live_construction_order() -> void:
+	var fx := _make_r1_case()
+	var site: ConstructionSite = fx.site
+	var unit: Unit = fx.unit
+	var load := unit.get_carry_load()
+	var pile: GroundResourcePile = fx.pile
+	var order := UnitOrder.new()
+	order.mark_running()
+	# A running order of the wrong type cannot supply this site.
+	site._assigned_workers[unit.get_instance_id()] = {
+		"unit": unit, "order": order, "role": ConstructionSite.WorkerRole.TRANSPORTER,
+	}
+	var spy := SignalSpy.new()
+	spy.watch_all(fx.manager, fx.inventory, [site], [load])
+	var before := _snapshot_all(fx.manager, fx.inventory, [site], [load])
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"require_assigned_worker": true}).reason, "claim_not_eligible")
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [load]), before)
+	assert_eq(spy.events, [])
+	var construct := ConstructOrder.new(site)
+	construct.mark_running()
+	site._assigned_workers[unit.get_instance_id()].order = construct
+	assert_eq(site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot").reason,
+		"claim_not_eligible")
+	unit._current_order = construct
+	before = _snapshot_all(fx.manager, fx.inventory, [site], [load])
+	var plan := site.prepare_reserved_withdrawal(unit, pile.pile_id, &"wood", 1, &"op", &"lot",
+		{"require_assigned_worker": true})
+	assert_true(plan.ok)
+	assert_true(plan.get("worker_registered", false))
+	assert_false(plan.get("physical_pickup_authorized", true))
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [load]), before)
+	assert_eq(spy.events, [])
+	unit._current_order = null
 	spy.cleanup()
