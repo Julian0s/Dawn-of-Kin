@@ -122,4 +122,3 @@ func validate_aggregate(unit: Variant, aggregate: Variant) -> Dictionary:
 		if totals[key] != aggregate.get(key, 0):
 			return {"ok": false, "reason": "unreconciled_cargo"}
 	return {"ok": true}
-
