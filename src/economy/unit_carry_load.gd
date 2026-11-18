@@ -361,3 +361,29 @@ func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: St
 	_emit_load_changed()
 	_provenance_busy = false
 	return {"ok": true, "replayed": false}
+
+
+func _capture_provenance_checkpoint() -> Dictionary:
+	return {
+		"snapshot": provenance_snapshot(),
+		"revision": _transaction_revision,
+	}
+
+
+func _restore_provenance_checkpoint_silent(checkpoint: Dictionary) -> bool:
+	if not _provenance_busy or _provenance == null or checkpoint.is_empty():
+		return false
+	var snap: Variant = checkpoint.get("snapshot")
+	if not (snap is Dictionary):
+		return false
+	var snap_dict: Dictionary = snap as Dictionary
+	if snap_dict.is_empty():
+		return false
+	var candidate := CarryProvenanceLedger.new()
+	if not candidate.restore_transaction_state(snap_dict.get("ledger", {})):
+		return false
+	_amounts = (snap_dict.get("amounts", {}) as Dictionary).duplicate(true)
+	_unit_weights = (snap_dict.get("weights", {}) as Dictionary).duplicate(true)
+	_provenance = candidate
+	_transaction_revision += 1
+	return true

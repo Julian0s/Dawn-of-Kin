@@ -1202,3 +1202,99 @@ func _prepare_reserved_pile_withdrawal(
 			"ledger_state": candidate_ledger.snapshot_state(),
 		},
 	}
+
+
+## Captures an isolated pre-mutation checkpoint for a single pile withdrawal transaction.
+func _capture_pile_withdrawal_checkpoint(pile_id: int) -> Dictionary:
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	return {
+		"pile": pile,
+		"pile_id": pile_id,
+		"amount": pile.amount if pile != null and is_instance_valid(pile) else 0,
+		"elapsed": pile.elapsed_exposure_sec if pile != null and is_instance_valid(pile) else 0.0,
+		"accum": pile.decay_accumulator_sec if pile != null and is_instance_valid(pile) else 0.0,
+		"ledger_state": _ledger.snapshot_state(),
+		"storage_revision": _transaction_revision,
+		"ledger_revision": _ledger.get_transaction_revision(),
+		"mutated": false,
+	}
+
+
+## Applies a previously prepared pile withdrawal silently while coordinator holds _is_preparing_withdrawal.
+## Does not emit signals and defers exhausted pile node removal until commit boundary.
+func _apply_prepared_pile_withdrawal_silent(pile_plan: Dictionary, checkpoint: Dictionary) -> Dictionary:
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy"}
+	if not bool(pile_plan.get("ok", false)):
+		return {"ok": false, "reason": "invalid_plan"}
+	var pile_id: int = int(pile_plan.get("pile_id", 0))
+	var reservation_id: StringName = StringName(pile_plan.get("reservation_id", &""))
+	var resource_id: StringName = StringName(pile_plan.get("resource_id", &""))
+	var amount: int = int(pile_plan.get("amount", 0))
+	if pile_id <= 0 or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return {"ok": false, "reason": "invalid_plan"}
+
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	if pile == null or not is_instance_valid(pile) or pile.get_instance_id() != int(pile_plan.get("pile_instance_id", -1)):
+		return {"ok": false, "reason": "invalid_or_missing_pile"}
+
+	var plan_revs: Dictionary = pile_plan.get("revisions", {}) as Dictionary
+	if (
+		int(plan_revs.get("storage_revision", -1)) != _transaction_revision
+		or int(plan_revs.get("pile_ledger_revision", -1)) != _ledger.get_transaction_revision()
+		or int(plan_revs.get("pile_revision", -1)) != pile.get_transaction_revision()
+	):
+		return {"ok": false, "reason": "stale_revision"}
+
+	var recomputed: Dictionary = _prepare_reserved_pile_withdrawal(pile_id, reservation_id, resource_id, amount)
+	if not bool(recomputed.get("ok", false)) or recomputed != pile_plan:
+		return {"ok": false, "reason": String(recomputed.get("reason", "stale_plan"))}
+
+	_is_mutating = true
+	var deducted: int = _ledger.deduct_from_pile(pile_id, reservation_id, amount)
+	if deducted != amount:
+		_ledger.restore_state(checkpoint["ledger_state"] as Dictionary)
+		_transaction_revision += 1
+		_is_mutating = false
+		return {"ok": false, "reason": "ledger_deduction_mismatch"}
+
+	checkpoint["mutated"] = true
+	var next_amount: int = int((pile_plan["after"] as Dictionary)["pile_amount"])
+	pile.apply_state(
+		next_amount,
+		float((pile_plan["before"] as Dictionary)["pile_elapsed_exposure_sec"]),
+		float((pile_plan["before"] as Dictionary)["pile_decay_accumulator_sec"])
+	)
+	_transaction_revision += 1
+	_is_mutating = false
+	return {"ok": true, "pile": pile, "exhausted": next_amount <= 0}
+
+
+## Restores pile and reservation ledger state silently on transaction rollback, advancing revisions monotonically.
+func _restore_pile_withdrawal_checkpoint_silent(checkpoint: Dictionary) -> void:
+	if checkpoint.is_empty() or not bool(checkpoint.get("mutated", false)):
+		return
+	var ledger_state: Variant = checkpoint.get("ledger_state")
+	if ledger_state is Dictionary:
+		_ledger.restore_state(ledger_state as Dictionary)
+	var pile: GroundResourcePile = checkpoint.get("pile") as GroundResourcePile
+	if pile != null and is_instance_valid(pile):
+		pile.apply_state(
+			int(checkpoint.get("amount", 0)),
+			float(checkpoint.get("elapsed", 0.0)),
+			float(checkpoint.get("accum", 0.0))
+		)
+	checkpoint["mutated"] = false
+	_transaction_revision += 1
+
+
+## Removes and frees an exhausted pile node strictly at the irreversible commit boundary.
+func _finalize_exhausted_pile_after_commit_silent(pile: GroundResourcePile) -> bool:
+	if not _is_preparing_withdrawal or _is_mutating:
+		return false
+	if pile == null or not is_instance_valid(pile):
+		return false
+	if pile.amount > 0:
+		return false
+	_remove_and_free_pile(pile)
+	return true

@@ -165,13 +165,13 @@ func get_reserved_pile_entries(
 
 
 func deposit(resource_id: StringName, amount: int) -> bool:
-	if _storage_source == null or resource_id.is_empty() or amount <= 0:
+	if is_transaction_busy() or _storage_source == null or resource_id.is_empty() or amount <= 0:
 		return false
 	return _storage_source.deposit(resource_id, amount)
 
 
 func withdraw(resource_id: StringName, amount: int) -> bool:
-	if _storage_source == null or resource_id.is_empty() or amount <= 0:
+	if is_transaction_busy() or _storage_source == null or resource_id.is_empty() or amount <= 0:
 		return false
 	return _storage_source.withdraw(resource_id, amount)
 
@@ -183,7 +183,7 @@ func can_withdraw_batch(amounts: Dictionary) -> bool:
 
 
 func withdraw_batch(amounts: Dictionary) -> bool:
-	if _storage_source == null:
+	if is_transaction_busy() or _storage_source == null:
 		return false
 	return _storage_source.withdraw_batch(amounts)
 
@@ -195,7 +195,7 @@ func can_reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 
 
 func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
-	if _storage_source == null:
+	if is_transaction_busy() or _storage_source == null:
 		return false
 	return _storage_source.reserve_batch(reservation_id, amounts)
 
@@ -207,25 +207,25 @@ func can_complement_reservation(reservation_id: StringName, extra_amounts: Dicti
 
 
 func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
-	if _storage_source == null:
+	if is_transaction_busy() or _storage_source == null:
 		return false
 	return _storage_source.complement_reservation(reservation_id, extra_amounts)
 
 
 func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
-	if _storage_source == null:
+	if is_transaction_busy() or _storage_source == null:
 		return false
 	return _storage_source.release_batch(reservation_id, amounts)
 
 
 func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
-	if _storage_source == null or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+	if is_transaction_busy() or _storage_source == null or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
 		return false
 	return _storage_source.withdraw_reserved(reservation_id, resource_id, amount)
 
 
 func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
-	if _storage_source == null:
+	if is_transaction_busy() or _storage_source == null:
 		return false
 	return _storage_source.withdraw_reserved_batch(reservation_id, amounts)
 
@@ -237,7 +237,9 @@ func withdraw_reserved_from_pile_to_carry_load(
 	requested_amount: int,
 	carry_load: UnitCarryLoad
 ) -> int:
-	if _is_delivering or _storage_source == null or carry_load == null:
+	if is_transaction_busy() or _storage_source == null or carry_load == null:
+		return 0
+	if carry_load.is_provenance_enabled() or carry_load.is_transaction_busy():
 		return 0
 	if reservation_id.is_empty() or resource_def == null or not resource_def.is_valid() or requested_amount <= 0:
 		return 0
@@ -290,7 +292,9 @@ func withdraw_reserved_from_pile_to_carry_load(
 
 
 func deliver_from_carry_load(carry_load: UnitCarryLoad) -> Dictionary:
-	if _is_delivering or _storage_source == null or carry_load == null or carry_load.is_empty():
+	if is_transaction_busy() or _storage_source == null or carry_load == null or carry_load.is_empty():
+		return {}
+	if carry_load.is_provenance_enabled() or carry_load.is_transaction_busy():
 		return {}
 
 	var snapshot: Dictionary = carry_load.get_all_amounts()

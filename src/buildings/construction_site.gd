@@ -87,6 +87,7 @@ var _supply_rebalance_completed: bool = false
 var _generation: int = 0
 var _transaction_revision: int = 0
 var _is_preparing_or_transacting: bool = false
+var _suppress_coordinator_signal_echo: bool = false
 
 
 func _exit_tree() -> void:
@@ -328,7 +329,7 @@ static func _work_rejection(reason: String) -> Dictionary:
 
 
 func assign_builder_slot_position(unit: Unit, slot_idx: int, resolved_slot_pos: Vector3) -> bool:
-	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or not is_valid():
+	if is_transaction_busy() or unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or not is_valid():
 		return false
 	if get_worker_role(unit) != WorkerRole.BUILDER or slot_idx != get_builder_slot_index(unit):
 		return false
@@ -804,6 +805,8 @@ func get_remaining_supply_to_claim(resource_id: StringName, exclude_unit: Unit =
 
 
 func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amount: int, pile_reserved_total: int = -1) -> int:
+	if is_transaction_busy():
+		return 0
 	_prune_stale_state()
 	if unit == null or not is_instance_valid(unit) or desired_amount <= 0:
 		return 0
@@ -842,6 +845,8 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 
 
 func release_pickup_claim(unit: Unit) -> void:
+	if is_transaction_busy():
+		return
 	if unit == null or not is_instance_valid(unit):
 		_prune_stale_state()
 		return
@@ -852,11 +857,13 @@ func release_pickup_claim(unit: Unit) -> void:
 
 
 func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int) -> void:
+	if is_transaction_busy():
+		return
 	_prune_stale_state()
 	if not is_active() or unit == null or not is_instance_valid(unit) or resource_id.is_empty() or amount <= 0:
 		return
 	var carry_load: UnitCarryLoad = unit.get_carry_load()
-	if carry_load == null:
+	if carry_load == null or carry_load.is_provenance_enabled() or carry_load.is_transaction_busy():
 		return
 
 	var uid: int = unit.get_instance_id()
@@ -934,8 +941,10 @@ func has_active_peer_transport_for_site(exclude_unit: Unit = null) -> bool:
 
 
 func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> Dictionary:
+	if is_transaction_busy() or carry_load == null or carry_load.is_provenance_enabled() or carry_load.is_transaction_busy():
+		return {}
 	_prune_stale_state()
-	if not is_valid() or not is_active() or unit == null or not is_instance_valid(unit) or carry_load == null or carry_load.is_empty():
+	if not is_valid() or not is_active() or unit == null or not is_instance_valid(unit) or carry_load.is_empty():
 		return {}
 
 	var unit_claim: Dictionary = get_transit_claim_for_unit(unit)
@@ -1016,6 +1025,8 @@ func register_worker(
 	order: UnitOrder,
 	force_transporter: bool = false
 ) -> WorkerRole:
+	if is_transaction_busy():
+		return WorkerRole.UNASSIGNED
 	_prune_stale_state()
 	if unit == null or not is_instance_valid(unit) or order == null or definition == null:
 		return WorkerRole.UNASSIGNED
@@ -1069,6 +1080,8 @@ func has_deliverable_transit_claim_for_unit(unit: Unit) -> bool:
 
 
 func try_promote_solo_to_builder(unit: Unit) -> bool:
+	if is_transaction_busy():
+		return false
 	_prune_stale_state()
 	if not is_active() or unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or definition == null:
 		return false
@@ -1104,6 +1117,8 @@ func try_promote_solo_to_builder(unit: Unit) -> bool:
 
 
 func rebalance_for_assembly_on_supply_complete(unit: Unit) -> WorkerRole:
+	if is_transaction_busy():
+		return WorkerRole.UNASSIGNED
 	_prune_stale_state()
 	if unit == null or not is_instance_valid(unit):
 		return WorkerRole.UNASSIGNED
@@ -1145,6 +1160,8 @@ func rebalance_for_assembly_on_supply_complete(unit: Unit) -> WorkerRole:
 
 
 func unregister_worker(unit: Unit, order: UnitOrder = null) -> void:
+	if is_transaction_busy():
+		return
 	if unit == null or not is_instance_valid(unit):
 		_prune_stale_state()
 		return
@@ -1383,6 +1400,8 @@ func _unbind_inventory() -> void:
 
 
 func _on_inventory_reservations_changed() -> void:
+	if _suppress_coordinator_signal_echo:
+		return
 	_transaction_revision += 1
 	var demoted: bool = false
 	if is_active() and not is_fully_supplied() and _count_auto_workers() == 1:
@@ -1441,6 +1460,8 @@ func _clear_all_transit_listeners() -> void:
 
 
 func _on_unit_carry_load_changed(uid: int) -> void:
+	if _suppress_coordinator_signal_echo:
+		return
 	_clamp_unit_transit_claim(uid)
 	_transaction_revision += 1
 	state_changed.emit(self)
@@ -2030,6 +2051,89 @@ func prepare_reserved_withdrawal(
 		if (options["carry_load"] as UnitCarryLoad).is_transaction_busy():
 			return _prep_rejection("busy", "carry_load")
 
+	var parsed: Dictionary = _validate_prepare_preconditions_and_parse(
+		unit, pile_id, resource_id, requested_amount, operation_id, lot_id, options
+	)
+	if not bool(parsed.get("ok", false)):
+		return parsed
+
+	# Validate a supplied prior plan as a full current plan before taking guards.
+	# Revalidation reconstructs without prior_plan, so it never follows a chain.
+	if options.has("prior_plan"):
+		var prior_check: Dictionary = validate_reserved_withdrawal_plan(options["prior_plan"])
+		if not prior_check["ok"]:
+			return prior_check
+
+	var typed_unit: Unit = parsed["typed_unit"] as Unit
+	var carry_load: UnitCarryLoad = parsed["carry_load"] as UnitCarryLoad
+	var pile_manager: GroundPileManager = parsed["pile_manager"] as GroundPileManager
+
+	# Cooperative guard acquisition in fixed R2 order: (1) site -> (2) storage -> (3) carry_load.
+	_is_preparing_or_transacting = true
+	pile_manager._is_preparing_withdrawal = true
+	carry_load._provenance_busy = true
+
+	var outcome: Dictionary = _prepare_reserved_withdrawal_guarded(
+		typed_unit,
+		carry_load,
+		pile_manager,
+		int(parsed["pile_id_int"]),
+		parsed["res_id_sn"] as StringName,
+		int(parsed["req_amount"]),
+		parsed["op_id_sn"] as StringName,
+		parsed["lot_id_sn"] as StringName,
+		options
+	)
+
+	carry_load._provenance_busy = false
+	pile_manager._is_preparing_withdrawal = false
+	_is_preparing_or_transacting = false
+	return outcome
+
+
+func _prepare_reserved_withdrawal_under_coordinator_guards(
+	unit: Variant,
+	pile_id: Variant,
+	resource_id: Variant,
+	requested_amount: Variant,
+	operation_id: Variant,
+	lot_id: Variant,
+	options: Dictionary = {}
+) -> Dictionary:
+	if not _is_preparing_or_transacting:
+		return _prep_rejection("missing_coordinator_guard", "site")
+	var parsed: Dictionary = _validate_prepare_preconditions_and_parse(
+		unit, pile_id, resource_id, requested_amount, operation_id, lot_id, options
+	)
+	if not bool(parsed.get("ok", false)):
+		return parsed
+	var typed_unit: Unit = parsed["typed_unit"] as Unit
+	var carry_load: UnitCarryLoad = parsed["carry_load"] as UnitCarryLoad
+	var pile_manager: GroundPileManager = parsed["pile_manager"] as GroundPileManager
+	if not pile_manager._is_preparing_withdrawal or not carry_load._provenance_busy:
+		return _prep_rejection("missing_coordinator_guard", "coordinator")
+	return _prepare_reserved_withdrawal_guarded(
+		typed_unit,
+		carry_load,
+		pile_manager,
+		int(parsed["pile_id_int"]),
+		parsed["res_id_sn"] as StringName,
+		int(parsed["req_amount"]),
+		parsed["op_id_sn"] as StringName,
+		parsed["lot_id_sn"] as StringName,
+		options
+	)
+
+
+func _validate_prepare_preconditions_and_parse(
+	unit: Variant,
+	pile_id: Variant,
+	resource_id: Variant,
+	requested_amount: Variant,
+	operation_id: Variant,
+	lot_id: Variant,
+	options: Dictionary = {}
+) -> Dictionary:
 	if not is_valid() or not is_inside_tree() or _site_state != SiteState.ACTIVE or _generation <= 0:
 		return _prep_rejection("site_not_active", "site")
 	if _has_stale_participants_pure():
@@ -2045,6 +2149,7 @@ func prepare_reserved_withdrawal(
 		if not CarryProvenanceLedger._id(options["reservation_id"]) or StringName(options["reservation_id"]) != reservation_id:
 			return _prep_rejection("reservation_mismatch", "site")
 
+	var storage_source: SettlementStorageSource = _inventory.get_storage_source() if _inventory != null else null
 	if storage_source == null or not (storage_source is GroundPileManager):
 		return _prep_rejection("unsupported_storage_source", "storage")
 	var pile_manager: GroundPileManager = storage_source as GroundPileManager
@@ -2079,6 +2184,8 @@ func prepare_reserved_withdrawal(
 		return _prep_rejection("invalid_pile", "input")
 	if typeof(requested_amount) != TYPE_INT or int(requested_amount) <= 0:
 		return _prep_rejection("invalid_amount", "input")
+	if options.has("require_assigned_worker") and typeof(options["require_assigned_worker"]) != TYPE_BOOL:
+		return _prep_rejection("invalid_worker_requirement", "input")
 
 	var op_id_sn: StringName = StringName(operation_id)
 	var lot_id_sn: StringName = StringName(lot_id)
@@ -2088,36 +2195,17 @@ func prepare_reserved_withdrawal(
 	if not _required_amounts.has(res_id_sn) or get_required_amount(res_id_sn) <= 0:
 		return _prep_rejection("resource_not_required", "site")
 
-	# Validate a supplied prior plan as a full current plan before taking guards.
-	# Revalidation reconstructs without prior_plan, so it never follows a chain.
-	if options.has("prior_plan"):
-		var prior_check: Dictionary = validate_reserved_withdrawal_plan(options["prior_plan"])
-		if not prior_check["ok"]:
-			return prior_check
-	if options.has("require_assigned_worker") and typeof(options["require_assigned_worker"]) != TYPE_BOOL:
-		return _prep_rejection("invalid_worker_requirement", "input")
-
-	# Cooperative guard acquisition in fixed R2 order: (1) site -> (2) storage -> (3) carry_load.
-	_is_preparing_or_transacting = true
-	pile_manager._is_preparing_withdrawal = true
-	carry_load._provenance_busy = true
-
-	var outcome: Dictionary = _prepare_reserved_withdrawal_guarded(
-		typed_unit,
-		carry_load,
-		pile_manager,
-		pile_id_int,
-		res_id_sn,
-		req_amount,
-		op_id_sn,
-		lot_id_sn,
-		options
-	)
-
-	carry_load._provenance_busy = false
-	pile_manager._is_preparing_withdrawal = false
-	_is_preparing_or_transacting = false
-	return outcome
+	return {
+		"ok": true,
+		"typed_unit": typed_unit,
+		"carry_load": carry_load,
+		"pile_manager": pile_manager,
+		"pile_id_int": pile_id_int,
+		"res_id_sn": res_id_sn,
+		"req_amount": req_amount,
+		"op_id_sn": op_id_sn,
+		"lot_id_sn": lot_id_sn,
+	}
 
 
 func _prepare_reserved_withdrawal_guarded(
@@ -2448,3 +2536,212 @@ func validate_reserved_withdrawal_plan(plan: Variant, options: Dictionary = {}) 
 		return _prep_rejection("tampered_or_stale_plan", "plan")
 	return {"ok": true, "reason": "", "dependency": "", "dry_run_only": true,
 		"commit_supported": false, "validation_scope": "accounting_only", "physical_pickup_authorized": false}
+
+
+static func _validate_plan_shape_pure(plan: Variant, expected_site_instance_id: int) -> Dictionary:
+	if not (plan is Dictionary):
+		return _prep_rejection("invalid_plan", "plan")
+	var p: Dictionary = plan as Dictionary
+	if not p.get("ok") is bool or not p["ok"] or not p.get("dry_run_only") is bool or not p["dry_run_only"]:
+		return _prep_rejection("invalid_plan", "plan")
+	if not p.get("commit_supported") is bool or p["commit_supported"]:
+		return _prep_rejection("invalid_plan", "plan")
+	if not p.get("physical_pickup_authorized") is bool or p["physical_pickup_authorized"]:
+		return _prep_rejection("invalid_plan", "plan")
+	for key: String in ["operation_id", "lot_id", "site_id", "reservation_id", "resource_id", "unit_id"]:
+		if not CarryProvenanceLedger._id(p.get(key)):
+			return _prep_rejection("invalid_plan", "plan")
+	for key: String in ["site_instance_id", "generation", "pile_id", "pile_instance_id", "unit_weight", "requested_amount", "unit_instance_id"]:
+		if typeof(p.get(key)) != TYPE_INT or int(p[key]) <= 0:
+			return _prep_rejection("invalid_plan", "plan")
+	for key: String in ["revisions", "peer_claim_revisions", "pile_plan", "carry_plan", "claim_plan"]:
+		if not (p.get(key) is Dictionary):
+			return _prep_rejection("invalid_plan", "plan")
+	if int(p["site_instance_id"]) != expected_site_instance_id:
+		return _prep_rejection("site_mismatch", "site")
+	return {"ok": true}
+
+
+func _validate_plan_under_coordinator_guards(
+	typed_unit: Unit,
+	plan: Variant,
+	options: Dictionary = {}
+) -> Dictionary:
+	if not _is_preparing_or_transacting:
+		return _prep_rejection("missing_coordinator_guard", "site")
+	var shape_check: Dictionary = _validate_plan_shape_pure(plan, get_instance_id())
+	if not bool(shape_check.get("ok", false)):
+		return shape_check
+	var p: Dictionary = plan as Dictionary
+	if typed_unit == null or not is_instance_valid(typed_unit) or int(p["unit_instance_id"]) != typed_unit.get_instance_id():
+		return _prep_rejection("unit_mismatch", "unit")
+
+	var storage_source: SettlementStorageSource = _inventory.get_storage_source() if _inventory != null else null
+	if not (storage_source is GroundPileManager):
+		return _prep_rejection("unsupported_storage_source", "storage")
+	var pile_manager: GroundPileManager = storage_source as GroundPileManager
+	var carry_load: UnitCarryLoad = typed_unit.get_carry_load()
+	if carry_load == null:
+		return _prep_rejection("invalid_carry_load", "carry_load")
+	if not pile_manager._is_preparing_withdrawal or not carry_load._provenance_busy:
+		return _prep_rejection("missing_coordinator_guard", "coordinator")
+
+	var pile: GroundResourcePile = pile_manager.get_pile_by_id(int(p["pile_id"]))
+	if pile == null or not is_instance_valid(pile) or pile.get_instance_id() != int(p["pile_instance_id"]):
+		return _prep_rejection("stale_revision", "pile")
+
+	var peer_claim_revs: Dictionary = p["peer_claim_revisions"] as Dictionary
+	var live_peers_by_id: Dictionary = {}
+	for other_site: ConstructionSite in _collect_known_other_sites_pure():
+		if not other_site.site_id.is_empty():
+			live_peers_by_id[other_site.site_id] = other_site
+	for peer_key: Variant in peer_claim_revs.keys():
+		if not (peer_key is StringName or peer_key is String):
+			return _prep_rejection("invalid_plan", "plan")
+		var peer_id: StringName = StringName(peer_key)
+		var entry_var: Variant = peer_claim_revs[peer_key]
+		if not (entry_var is Dictionary):
+			return _prep_rejection("invalid_plan", "plan")
+		var entry: Dictionary = entry_var as Dictionary
+		if not live_peers_by_id.has(peer_id):
+			return _prep_rejection("stale_peer_site_revision", "claims")
+		var live_peer: ConstructionSite = live_peers_by_id[peer_id] as ConstructionSite
+		if (
+			live_peer.get_instance_id() != int(entry.get("instance_id", -1))
+			or live_peer.get_generation() != int(entry.get("generation", -1))
+			or live_peer.get_transaction_revision() != int(entry.get("revision", -1))
+		):
+			return _prep_rejection("stale_peer_site_revision", "claims")
+
+	var plan_revs: Dictionary = p["revisions"] as Dictionary
+	var live_revs := {
+		"site_revision": _transaction_revision,
+		"site_work_serial": _work_cycle_serial,
+		"inventory_revision": _inventory.get_transaction_revision(),
+		"storage_revision": pile_manager.get_transaction_revision(),
+		"pile_ledger_revision": pile_manager.get_pile_ledger_revision(),
+		"pile_revision": pile.get_transaction_revision(),
+		"carry_load_revision": carry_load.get_transaction_revision(),
+	}
+	if plan_revs != live_revs:
+		return _prep_rejection("stale_revision", "revisions")
+
+	var check_opts := {
+		"site_id": p["site_id"],
+		"generation": p["generation"],
+		"reservation_id": p["reservation_id"],
+		"unit_id": p["unit_id"],
+		"unit_weight": p["unit_weight"],
+		"expected_revisions": plan_revs,
+	}
+	if options.has("require_assigned_worker"):
+		check_opts["require_assigned_worker"] = options["require_assigned_worker"]
+
+	var recomputed: Dictionary = _prepare_reserved_withdrawal_under_coordinator_guards(
+		typed_unit,
+		p["pile_id"],
+		p["resource_id"],
+		p["requested_amount"],
+		p["operation_id"],
+		p["lot_id"],
+		check_opts
+	)
+	if not bool(recomputed.get("ok", false)):
+		return recomputed
+	if recomputed != p:
+		return _prep_rejection("tampered_or_stale_plan", "plan")
+	return {"ok": true, "plan": recomputed}
+
+
+func _capture_claim_checkpoint(uid: int) -> Dictionary:
+	var has_pending: bool = _pending_pickups.has(uid)
+	var pending_copy: Dictionary = (_pending_pickups[uid] as Dictionary).duplicate(true) if has_pending else {}
+	var has_claim: bool = _transit_claims.has(uid)
+	var claim_amounts_copy: Dictionary = {}
+	var claim_unit: Unit = null
+	var claim_load: UnitCarryLoad = null
+	if has_claim:
+		var claim_dict: Dictionary = _transit_claims[uid] as Dictionary
+		claim_amounts_copy = (claim_dict.get("amounts", {}) as Dictionary).duplicate(true)
+		claim_unit = claim_dict.get("unit") as Unit
+		claim_load = claim_dict.get("carry_load") as UnitCarryLoad
+	return {
+		"uid": uid,
+		"has_pending": has_pending,
+		"pending": pending_copy,
+		"has_claim": has_claim,
+		"claim_amounts": claim_amounts_copy,
+		"claim_unit": claim_unit,
+		"claim_load": claim_load,
+		"revision": _transaction_revision,
+		"mutated": false,
+	}
+
+
+func _apply_prepared_claim_silent(
+	unit: Unit,
+	carry_load: UnitCarryLoad,
+	resource_id: StringName,
+	amount: int,
+	claim_plan: Dictionary,
+	checkpoint: Dictionary
+) -> bool:
+	if not _is_preparing_or_transacting or not is_active():
+		return false
+	if unit == null or not is_instance_valid(unit) or carry_load == null or resource_id.is_empty() or amount <= 0:
+		return false
+	var uid: int = unit.get_instance_id()
+	if int(claim_plan.get("unit_instance_id", -1)) != uid:
+		return false
+	if _read_transit_claim_for_unit_pure(uid) != (claim_plan.get("before_transit_claim", {}) as Dictionary):
+		return false
+	var accounting_headroom: int = maxi(
+		0,
+		get_required_amount(resource_id)
+		- get_total_received_amount(resource_id)
+		- get_reserved_in_piles_amount(resource_id)
+		- _read_in_transit_amount_pure(resource_id)
+	)
+	if accounting_headroom < amount:
+		return false
+
+	checkpoint["mutated"] = true
+	_pending_pickups.erase(uid)
+	_ensure_transit_listener(unit, carry_load)
+	var claim: Dictionary = _transit_claims[uid] as Dictionary
+	var amounts: Dictionary = claim["amounts"] as Dictionary
+	amounts[resource_id] = int(amounts.get(resource_id, 0)) + amount
+	if _read_transit_claim_for_unit_pure(uid) != (claim_plan.get("after_transit_claim", {}) as Dictionary):
+		return false
+	_transaction_revision += 1
+	return true
+
+
+func _restore_claim_checkpoint_silent(checkpoint: Dictionary) -> void:
+	if checkpoint.is_empty() or not bool(checkpoint.get("mutated", false)):
+		return
+	var uid: int = int(checkpoint.get("uid", -1))
+	if uid <= 0:
+		return
+	if bool(checkpoint.get("has_pending", false)):
+		_pending_pickups[uid] = (checkpoint["pending"] as Dictionary).duplicate(true)
+	else:
+		_pending_pickups.erase(uid)
+
+	if bool(checkpoint.get("has_claim", false)):
+		var claim_unit: Unit = checkpoint.get("claim_unit") as Unit
+		var claim_load: UnitCarryLoad = checkpoint.get("claim_load") as UnitCarryLoad
+		if claim_unit != null and is_instance_valid(claim_unit) and claim_load != null:
+			_ensure_transit_listener(claim_unit, claim_load)
+			var claim_dict: Dictionary = _transit_claims[uid] as Dictionary
+			claim_dict["amounts"] = (checkpoint["claim_amounts"] as Dictionary).duplicate(true)
+	else:
+		if _transit_claims.has(uid):
+			var cur_claim: Dictionary = _transit_claims[uid] as Dictionary
+			var cl: UnitCarryLoad = cur_claim.get("carry_load") as UnitCarryLoad
+			var cb: Variant = cur_claim.get("callback")
+			if cl != null and cb is Callable and cl.load_changed.is_connected(cb as Callable):
+				cl.load_changed.disconnect(cb as Callable)
+			_transit_claims.erase(uid)
+	checkpoint["mutated"] = false
+	_transaction_revision += 1
