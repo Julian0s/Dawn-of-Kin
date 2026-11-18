@@ -37,3 +37,7 @@ Não houve teste visual nem alteração de gameplay. Este módulo não disponibi
 A T3.6.2 deverá abordar proveniência, fronteiras transacionais e rollback reais antes de qualquer cancelamento operacional. A correção editorial do exemplo histórico de 90% permanece para tarefa documental própria. Não há persistência, validação de existência física nem prova de atomicidade neste incremento. Homologação e integração dependem de auditoria e decisão posterior.
 
 Commits técnicos: `62cee100d5fa4793b1ad4a19794805dc184cf557` (implementação), `6ed91ec2699daef2b4795a7a66ff9ef42bf1edfd` (testes). O commit que contém este relatório é identificável pelo histórico Git.
+
+## Aceite técnico — 18/11/2026
+
+A candidata `629eca8fc8d803e1cd8ba4f8856366240f5b2e9d` recebeu auditoria estática independente favorável do ChatGPT e aceite técnico restrito à T3.6.1; ver [encerramento](T3_6_1_closeout_ACCEPTANCE.md). O resultado histórico de 12.922 asserções somado às 113 da suíte nova difere em quatro do total segmentado de 13.031. Testes como `tests/integration/test_t2_worker_cycle.gd:223` executam asserções por quadro, de modo que o total pode variar entre execuções. A origem exata da diferença não foi estabelecida. A cobertura registrada foi 42 suítes descobertas e executadas uma vez, sem omissões ou duplicatas. Nenhum teste foi repetido no encerramento. Não houve alteração operacional ou visível no gameplay; o proprietário não executou teste manual deste módulo puro.
