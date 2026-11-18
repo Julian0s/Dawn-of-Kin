@@ -216,3 +216,111 @@ Para implementar o commit atômico de descarga seletiva no acampamento, a C3.4.2
 - **`DEC-T3.6-SIGNALS-01` (Pendente):** definir se as transações econômicas da T3.6 mantêm guardas durante a publicação de sinais (como na C2-R1 e C3.2) ou liberam antes da publicação (conforme recomendação da proposta T3.6-R2). A C3.4.1 não alterou C2-R1/C3.2 e não emite sinais.
 - **Proposta T3.6-R2 (`69c13275a34a30564ac839ec920f83ef36590812`):** segue como proposta arquitetural com decisões pendentes, incluindo custódia D3 (`CANCEL_TRANSIT`, `CANCEL_BUFFER`, `CANCEL_INCORPORATED`) e governança de cancelamento.
 - **Revisão monotônica em `CampStorageZone` (Opcional futuro):** avaliar na C3.4.2 se `CampStorageZone` deve expor um contador de revisão próprio para eliminar até mesmo ABA puro em propriedades de configuração.
+
+
+---
+
+# Revisão R1 — Correções pós-auditoria independente
+
+**Status da revisão:** **T3.6.2-C3.4.1-R1 — Correção publicada para auditoria independente** (não homologada; C3.4 **não** concluída; C3.4.2 fora do escopo).
+
+## R1.1 SHA-base da correção
+
+- **SHA-base auditado (local e remoto verificados antes da edição):** `d6218c928337de5a86032127d1d2f223eaf9a942`
+- **Branch / Worktree:** `feat/t3-6-2-provenance-transactions` em `C:\Projetos\Dawn_of_Kin_wt_t3_4_5`
+- **Referência da `main`:** `25e0a20f1d6a2f10a9e059afe69759fbe263db4a` (inalterada)
+- **Engine:** Godot `4.7.2.stable.official.ed1daf0bf`
+
+## R1.2 Problemas identificados na auditoria independente
+
+1. **Callback externo não confiável durante preparação pura (falha principal):** `SelectiveCampDeliveryPlanner._project_camp_deposit_and_reservations_pure(...)` invocava `CampStorageZone.validate_pile_position(...)`, que executa `camp_zone._custom_position_validator.call(resolved_pos)` quando configurado. Um `Callable` arbitrário não oferece garantia de pureza observacional e poderia mutar pilhas, reservas, posições, revisões, nós da cena ou estado externo durante uma API declarada estritamente somente-leitura.
+2. **Lacuna na inspeção da coleção física interna `storage._piles` (falha secundária):** `SelectiveCampDeliveryPlanner._inspect_storage_state_pure(...)` consultava `storage.get_piles()`, que filtra silenciosamente referências inválidas (`if is_instance_valid(pile)`). Assim, entradas nulas ou liberadas presentes na coleção interna `_piles` não eram detectadas como inconsistência de integridade.
+3. **Divergência aparente de 2 asserções no relatório anterior:** `15.016 (C3.3) + 2.668 (C3.4.1) = 17.684`, enquanto a execução segmentada totalizou `17.682` (`-2`), exigindo investigação e comprovação objetiva.
+
+## R1.3 Análise de causa raiz
+
+- **Causa raiz #1 (Callback):** `CampStorageZone.validate_pile_position(...)` serve também ao fluxo normal de gameplay/depósito, onde validadores personalizados são permitidos. Ao chamar `validate_pile_position(...)` sem barreira prévia para `_custom_position_validator`, o planejador puro herdava a execução de um callback externo não verificável.
+- **Causa raiz #2 (`_piles`):** `GroundPileManager.get_piles()` foi projetado como leitor defensivo de conveniência para o jogo, ignorando elementos inválidos em `_piles`. Para um planejador fail-closed, essa filtragem mascarava corrupção estrutural na coleção interna de pilhas.
+- **Causa raiz #3 (Auditoria focada de pureza de leitura):** revisadas todas as chamadas efetuadas durante `prepare_selective_camp_delivery` e `validate_selective_camp_delivery_plan` em `CampStorageZone`, `WorldNavigation` (`is_navigation_ready`, `get_navigation_revision`, `snap_to_navmesh`, `is_position_reachable` → `find_path` → `get_pending_route_reason` / `query_path_on_map`), `GroundPileManager` (sem invocar `get_piles()` nem `pile_creator_override`), `SettlementInventory`, `ConstructionSite` (somente leitores `_pure` + `SelectiveSiteDeliveryPlanner._read_accounting`), `UnitCarryLoad` e `ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation`. Nenhuma outra chamada executa callbacks externos, poda automática, mutação de cache, incremento de revisão, emissão de sinal ou alocação persistente. Como polimento mínimo, `nav._navigation_revision` foi substituído pelo getter público puro `nav.get_navigation_revision()`.
+
+## R1.4 Caminhos de código afetados
+
+- `src/economy/selective_camp_delivery_planner.gd`:
+  - `prepare_selective_camp_delivery(...)`
+  - `_has_untrusted_custom_position_validator(camp_zone)` (novo auxiliar privado)
+  - `_inspect_storage_state_pure(...)`
+  - `_project_camp_deposit_and_reservations_pure(...)`
+- `tests/integration/test_t3_6_2_c3_4_1_selective_camp_delivery_prep.gd`
+- `CampStorageZone.validate_pile_position(...)` e `GroundPileManager` **não** foram modificados (preservando integralmente o comportamento existente do gameplay).
+
+## R1.5 Correção aplicada
+
+1. **Barreira contra callback externo não confiável (`"unsafe_custom_position_validator"`):**
+   - Adicionado `_has_untrusted_custom_position_validator(camp_zone)` verificando `validator.is_valid() or not validator.is_null()`.
+   - Rejeição conservadora antecipada em `prepare_selective_camp_delivery(...)` (antes de qualquer projeção, abrangendo tanto criação virtual quanto mesclagem e também revalidação em `validate_selective_camp_delivery_plan(...)` quando um callback é instalado posteriormente) e verificação defensiva adicional imediatamente antes de `camp_zone.validate_pile_position(...)` em `_project_camp_deposit_and_reservations_pure(...)`.
+   - O callback nunca é executado; nenhum parâmetro `trust_callback` ou contorno silencioso foi introduzido.
+2. **Inspeção bruta da coleção interna `storage._piles` (`"invalid_physical_pile_collection"`):**
+   - `_inspect_storage_state_pure(...)` percorre diretamente `storage._piles` sem podar, remover ou alterar qualquer elemento, validando: `storage._next_pile_id > 0`, elemento não nulo, `is_instance_valid`, tipo `GroundResourcePile`, `not is_queued_for_deletion()`, `is_valid()`, `is_inside_tree()`, `get_parent() == storage._piles_root`, `0 < pile_id < storage._next_pile_id`, `_storage_owner.get_ref() == storage`, ausência de instâncias duplicadas e ausência de `pile_id` duplicado.
+   - Entradas órfãs ou divergentes em `storage._ledger` continuam falhando fechadas com `"reservation_restoration_unavailable"`.
+
+## R1.6 Contratos preservados
+
+Mantidos integralmente todos os contratos da C3.4.1: `FREE_GATHERED`, `SITE_RESERVED`, seleção explícita e padrão conservador (`[]` apenas livre), isolamento entre obras distintas, descarga parcial, conservação física e contábil, mesclagem com política de exposição, criações virtuais (`&"virtual_pile:N"`), restauração projetada de reservas, proteção anti-ABA, validação de `operation_id`, isolamento regional e de `World3D`, verificação de pesos, rejeição de planos adulterados, ausência de commit e flags obrigatórias (`dry_run_only = true`, `commit_supported = false`, `physical_delivery_authorized = false`).
+
+## R1.7 Testes novos e adaptações
+
+Em `tests/integration/test_t3_6_2_c3_4_1_selective_camp_delivery_prep.gd` (+5 funções de teste; 21 → **26 testes**, 2.668 → **3.227 asserções**):
+
+- `test_r1_untrusted_callback_storage_mutation_refused_without_execution` (§4.1): callback que alteraria pilha e depositaria madeira é recusado antes da execução (caminhos de criação virtual e mesclagem), com contador `0`, snapshot completo idêntico e `0` sinais.
+- `test_r1_untrusted_callback_pile_creation_refused_without_execution` (§4.2): callback que criaria pilha via `try_create_pile_at` nunca executa; `_next_pile_id`, `_piles.size()` e contagem de nós permanecem intactos.
+- `test_r1_untrusted_callback_reservation_mutation_refused_without_execution` (§4.3): callback que liberaria/criaria reservas nunca executa; reservas de obra, claims e revisões permanecem intactos.
+- `test_r1_untrusted_callback_self_state_and_post_prepare_validation` (§4.4, §4.5, §4.6): callback com efeito em contador externo nunca executa; planos válidos preparados sem callback (mesclagem e criação virtual) passam a ser recusados em `validate_selective_camp_delivery_plan(...)` assim que um callback é anexado, sem executá-lo; confirmação direta de que `CampStorageZone.validate_pile_position(...)` permanece inalterado para o gameplay e executaria o callback se chamado diretamente; ao remover o callback (`Callable()`), preparação e validação voltam a operar normalmente.
+- `test_r1_physical_pile_collection_integrity_and_no_implicit_cleanup` (§5.2): verifica coleção íntegra, referência liberada (`free()`) em `_piles` (comprovadamente invisível a `get_piles()`), entrada `null`, referência duplicada, duas pilhas com mesmo `pile_id`, `pile_id >= _next_pile_id`, `pile_id == 0`, entrada órfã no ledger e confirmação explícita de que `_piles` não sofre poda/limpeza automática.
+- Adaptação dos cenários 25a e 36 (§4.7) para não dependerem mais de `_custom_position_validator`: falta genuína de slot via redução de `zone_bounds_half_extents` (25a) e invalidação real de slot via ocupação física por nova pilha (36a) e encolhimento de limites (36b), preservando cobertura integral de cada condição de forma independente.
+
+## R1.8 Resultados das regressões (pós-R1, Godot `4.7.2.stable.official.ed1daf0bf`)
+
+| Comando | Exit | Suítes | Testes | Asserções | Observações |
+| --- | --- | --- | --- | --- | --- |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2_c3_4_1` | 0 | 1 | 26/26 | 3.227 | 0 falhas, 0 erros (+5 testes, +559 asserções) |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2_c3_3` | 0 | 1 | 10/10 | 328 | 0 falhas, 0 erros |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2_c3_2` | 0 | 1 | 8/8 | 360 | 0 falhas, 0 erros |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2_c3_1` | 0 | 1 | 6/6 | 161 | 0 falhas, 0 erros |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2_c2` | 0 | 1 | 16/16 | 651 | 0 falhas, 0 erros |
+| `.\tools\run_tests.ps1 -Filter test_t3_6_2` | 0 | 9 | 88/88 | 5.211 | 0 falhas, 0 erros (`1.984 + 3.227 = 5.211` exato) |
+| `.\tools\validate.ps1` | 0 | — | — | — | **140 scripts validados**, 0 erros, 0 avisos |
+| `.\tools\run_tests.ps1 -Segmented` | 0 | 51 | 377/377 | 18.242 | 11/11 lotes PASS; `Discovered=51`, `ExecutedUnique=51`, `Duplicates=0`, `Missing=0`; 0 erros/avisos/vazamentos |
+| `git diff --check` | 0 | — | — | — | Limpo |
+
+## R1.9 Explicação da diferença entre contagens de asserções
+
+A investigação comparativa suíte-a-suíte entre as execuções segmentadas comprovou objetivamente que:
+
+1. A suíte `test_t3_6_2_c3_4_1_selective_camp_delivery_prep.gd` tem contagem **100% determinística** e idêntica entre execução isolada e segmentada (`2.668` na candidata inicial; `3.227` na R1).
+2. Todas as 9 suítes do filtro `test_t3_6_2` têm soma **exata** em relação à baseline C3.3 (`1.984 + 2.668 = 4.652` na candidata inicial; `1.984 + 3.227 = 5.211` na R1; variação zero).
+3. A diferença de `-2` observada na candidata inicial (`17.682` vs. `15.016 + 2.668 = 17.684`) e a diferença de `+1` observada entre C3.4.1 e C3.4.1-R1 (`18.242` vs. `17.682 + 559 = 18.241`) originam-se exclusivamente de **suítes de integração T2 preexistentes** que executam asserções dentro de laços `while ... await wait_physics_frames(1)` cujo número de iterações varia em `±1–2` frames conforme o escalonamento de frames do host:
+   - Diff real observado por suíte entre os dois logs segmentados (sem nenhuma alteração em código ou testes T2):
+     - `tests/integration/test_t2_natural_source_states.gd`: `102 → 101` (`-1`), onde a linha 134 executa `assert_true(solid.global_transform.is_equal_approx(solid_tf_before))` a cada physics frame enquanto a animação de queda (dirigida por `_process(delta)`) permanece em `is_felling()`.
+     - `tests/integration/test_t2_worker_cycle.gd`: `2.657 → 2.659` (`+2`), onde as linhas 644, 667 e 751 executam `assert_true(source.get_active_worker_count() <= ...)` a cada physics frame dentro de laços de espera de transição de estado.
+   - Resultado líquido entre C3.4.1 e C3.4.1-R1: `-1 + 2 = +1`, explicando integralmente `17.682 + 559 + 1 = 18.242` sem qualquer omissão, duplicata ou instabilidade nas suítes T3.6.2.
+
+## R1.10 Limitações restantes
+
+- Ausência intencional de commit econômico e de autorização de proximidade física (`commit_supported = false`, `physical_delivery_authorized = false` — escopo da futura C3.4.2).
+- Validadores personalizados em `CampStorageZone` são recusados de forma conservadora (`"unsafe_custom_position_validator"`) até que exista um contrato específico, verificável e aprovado de pureza para validadores de posição (fora do escopo desta revisão).
+- `CampStorageZone` continua sem contador de revisão monotônico próprio (ABA puro de propriedades exportadas revertidas ao valor exato anterior sem mudança em pilhas/storage/nav permanece documentado como limitação conhecida).
+- Lotes `SITE_RESERVED` de obras não ativas continuam bloqueados com `"d3_cancellation_not_implemented"` até implementação da custódia D3.
+- `DEC-T3.6-SIGNALS-01` permanece pendente (C2-R1 e C3.2 inalteradas; C3.4.1-R1 não emite sinais).
+
+## R1.11 Arquivos modificados na R1
+
+- `src/economy/selective_camp_delivery_planner.gd` (+40/-6 linhas)
+- `tests/integration/test_t3_6_2_c3_4_1_selective_camp_delivery_prep.gd` (+313/-14 linhas)
+- `docs/testing/T3_6_2_C3_4_1_candidate_report.md` (acréscimo desta seção R1, preservando integralmente o histórico original)
+
+## R1.12 SHAs publicados (branch `feat/t3-6-2-provenance-transactions`)
+
+- **Base auditada:** `d6218c928337de5a86032127d1d2f223eaf9a942`
+- **Commit R1 (`fix`):** `a39e1867ebd44cccb90db82d95f8b394082a02e5` — `fix(t3.6.2-c3.4.1-r1): reject untrusted custom position validator and inspect raw _piles`
+- **Commit R1 (`test`):** `71d7ea342e7e523285e048f4d3f2292dbeaeb811` — `test(t3.6.2-c3.4.1-r1): add adversarial callback purity and raw pile collection tests`
+- **Commit R1 (`docs`):** commit seguinte contendo esta seção do relatório.
