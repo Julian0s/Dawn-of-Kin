@@ -7,12 +7,18 @@ extends RefCounted
 var _by_pile: Dictionary = {}
 var _reservation_order: Dictionary = {}
 var _next_seq: int = 1
+var _transaction_revision: int = 0
+
+
+func get_transaction_revision() -> int:
+	return _transaction_revision
 
 
 func clear() -> void:
 	_by_pile.clear()
 	_reservation_order.clear()
 	_next_seq = 1
+	_transaction_revision += 1
 
 
 func has_reservation(reservation_id: StringName) -> bool:
@@ -143,6 +149,7 @@ func allocate_on_pile(
 	var entry: Dictionary = _by_pile[pile_id] as Dictionary
 	var allocs: Dictionary = entry["allocations"] as Dictionary
 	allocs[reservation_id] = int(allocs.get(reservation_id, 0)) + amount
+	_transaction_revision += 1
 
 
 func deduct_from_pile(
@@ -167,6 +174,8 @@ func deduct_from_pile(
 		_by_pile.erase(pile_id)
 	if left <= 0 and not has_reservation(reservation_id):
 		_reservation_order.erase(reservation_id)
+	if deducted > 0:
+		_transaction_revision += 1
 	return deducted
 
 
@@ -224,6 +233,7 @@ func erase_pile(pile_id: int) -> void:
 	for res_id: StringName in affected_ids:
 		if not has_reservation(res_id):
 			_reservation_order.erase(res_id)
+	_transaction_revision += 1
 
 
 func snapshot_state() -> Dictionary:
@@ -252,6 +262,7 @@ func restore_state(snap: Dictionary) -> void:
 		}
 	_reservation_order = (snap.get("reservation_order", {}) as Dictionary).duplicate()
 	_next_seq = int(snap.get("next_seq", 1))
+	_transaction_revision += 1
 
 
 func _sort_reservation_ids_asc(a: StringName, b: StringName) -> bool:

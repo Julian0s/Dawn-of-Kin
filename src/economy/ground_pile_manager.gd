@@ -22,6 +22,7 @@ var _next_pile_id: int = 1
 var _last_decay_time_sec: float = 0.0
 var _is_mutating: bool = false
 var _is_notifying: bool = false
+var _is_preparing_withdrawal: bool = false
 var _visual_cache: Dictionary = {"meshes": {}, "materials": {}}
 var _ledger: PileReservationLedger = PileReservationLedger.new()
 var _pending_decay_reservation_losses: Array[Dictionary] = []
@@ -46,6 +47,7 @@ func configure(
 	_camp_zone = p_camp_zone
 	_piles_root = p_piles_root
 	set_time_provider(p_time_provider)
+	_transaction_revision += 1
 
 
 func set_definitions(p_definitions: Dictionary) -> void:
@@ -56,10 +58,12 @@ func set_definitions(p_definitions: Dictionary) -> void:
 			var def: ResourceDefinition = def_var as ResourceDefinition
 			if def.is_valid():
 				_definitions[def.resource_id] = def
+	_transaction_revision += 1
 
 
 func set_camp_zone(p_camp_zone: CampStorageZone) -> void:
 	_camp_zone = p_camp_zone
+	_transaction_revision += 1
 
 
 func get_camp_zone() -> CampStorageZone:
@@ -68,6 +72,7 @@ func get_camp_zone() -> CampStorageZone:
 
 func set_piles_root(p_piles_root: Node3D) -> void:
 	_piles_root = p_piles_root
+	_transaction_revision += 1
 
 
 func set_time_provider(p_time_provider: WorldTimeProvider) -> void:
@@ -77,6 +82,7 @@ func set_time_provider(p_time_provider: WorldTimeProvider) -> void:
 		_last_decay_time_sec = now if is_finite(now) else 0.0
 	else:
 		_last_decay_time_sec = 0.0
+	_transaction_revision += 1
 
 
 func get_time_provider() -> WorldTimeProvider:
@@ -84,7 +90,20 @@ func get_time_provider() -> WorldTimeProvider:
 
 
 func is_locked() -> bool:
-	return _is_mutating or _is_notifying
+	return _is_mutating or _is_notifying or _is_preparing_withdrawal
+
+
+func get_pile_ledger_revision() -> int:
+	return _ledger.get_transaction_revision()
+
+
+func get_resource_definition_pure(resource_id: StringName) -> ResourceDefinition:
+	if resource_id.is_empty() or not _definitions.has(resource_id):
+		return null
+	var def_var: Variant = _definitions[resource_id]
+	if def_var is ResourceDefinition and (def_var as ResourceDefinition).is_valid():
+		return def_var as ResourceDefinition
+	return null
 
 
 func cleanup() -> void:
@@ -99,6 +118,7 @@ func cleanup() -> void:
 	_pending_decay_reservation_losses.clear()
 	_visual_cache = {"meshes": {}, "materials": {}}
 	pile_creator_override = Callable()
+	_transaction_revision += 1
 
 
 func _dispatch_storage_changed() -> void:
@@ -391,11 +411,13 @@ func _commit_reserve_entries(entries: Array[Dictionary], reservation_id: StringN
 		var allocate_amt: int = entry["amount"] as int
 		if pile == null or not is_instance_valid(pile) or allocate_amt <= 0:
 			_ledger.restore_state(snapshot)
+			_transaction_revision += 1
 			_is_mutating = false
 			return false
 		var pile_free: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
 		if pile_free < allocate_amt:
 			_ledger.restore_state(snapshot)
+			_transaction_revision += 1
 			_is_mutating = false
 			return false
 		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
@@ -496,6 +518,7 @@ func step_decay() -> Dictionary:
 
 	_is_mutating = true
 	var changed: bool = false
+	var pile_updated: bool = false
 	var res_losses: Array[Dictionary] = []
 	var snapshot: Array[GroundResourcePile] = _piles.duplicate()
 	for pile: GroundResourcePile in snapshot:
@@ -515,8 +538,10 @@ func step_decay() -> Dictionary:
 				res_losses.append_array(_ledger.reconcile_pile_after_decay(pile.pile_id, 0))
 				_remove_and_free_pile(pile)
 				changed = true
+				pile_updated = true
 			else:
 				pile.apply_state(pile.amount, new_elapsed, pile.decay_accumulator_sec)
+				pile_updated = true
 		else:
 			var interval: float = profile.gradual_unit_interval_sec
 			var grace: float = profile.exposure_duration_sec
@@ -541,7 +566,10 @@ func step_decay() -> Dictionary:
 				_remove_and_free_pile(pile)
 			else:
 				pile.apply_state(remaining_units, new_elapsed_grad, accum)
+			pile_updated = true
 
+	if pile_updated:
+		_transaction_revision += 1
 	_is_mutating = false
 	if not res_losses.is_empty():
 		_pending_decay_reservation_losses.append_array(res_losses)
@@ -710,6 +738,7 @@ func _commit_deposit_plan(plan: Dictionary) -> bool:
 				if cp.get_parent() != null:
 					cp.get_parent().remove_child(cp)
 				cp.free()
+		_transaction_revision += 1
 		_is_mutating = false
 		return false
 
@@ -781,6 +810,7 @@ func _remove_and_free_pile(pile: GroundResourcePile) -> void:
 		if pile.get_parent() != null:
 			pile.get_parent().remove_child(pile)
 		pile.free()
+	_transaction_revision += 1
 
 
 func _build_withdraw_plan(amounts: Dictionary) -> Dictionary:
@@ -965,6 +995,7 @@ func _commit_withdraw_plan(
 					snap["elapsed"] as float,
 					snap["accum"] as float
 				)
+		_transaction_revision += 1
 		_is_mutating = false
 		return false
 
@@ -1068,3 +1099,106 @@ func _sort_reserved_entries_by_exposure(a: Dictionary, b: Dictionary) -> bool:
 	if not is_equal_approx(exp_a, exp_b):
 		return exp_a > exp_b
 	return int(a.get("pile_id", 0)) < int(b.get("pile_id", 0))
+
+
+## Pure side-effect-free preparation for withdrawing a site-reserved quantity from a pile.
+## Does not modify piles, reservations, ledger, revisions, or emit any signals.
+func _prepare_reserved_pile_withdrawal(
+	pile_id: int,
+	reservation_id: StringName,
+	resource_id: StringName,
+	amount: int
+) -> Dictionary:
+	if _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy"}
+	if pile_id <= 0 or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+		return {"ok": false, "reason": "invalid_input"}
+
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	if pile == null or not is_instance_valid(pile) or not pile.is_valid() or pile.amount <= 0:
+		return {"ok": false, "reason": "invalid_or_missing_pile"}
+	if pile.resource_id != resource_id or pile.definition == null or not pile.definition.is_valid() or pile.definition.resource_id != resource_id:
+		return {"ok": false, "reason": "pile_resource_mismatch"}
+	if _definitions.has(resource_id):
+		var registered_def: Variant = _definitions[resource_id]
+		if not (registered_def is ResourceDefinition) or not (registered_def as ResourceDefinition).is_valid():
+			return {"ok": false, "reason": "resource_or_weight_mismatch"}
+		var reg_rd: ResourceDefinition = registered_def as ResourceDefinition
+		if reg_rd.resource_id != resource_id or reg_rd.unit_weight != pile.definition.unit_weight:
+			return {"ok": false, "reason": "resource_or_weight_mismatch"}
+
+	var total_reserved_on_pile: int = _ledger.get_pile_reserved_amount(pile_id)
+	if total_reserved_on_pile < 0 or total_reserved_on_pile > pile.amount:
+		return {"ok": false, "reason": "unreconciled_pile_reservations"}
+
+	var reserved_for_site_on_pile: int = _ledger.get_pile_reservation_amount(pile_id, reservation_id)
+	if reserved_for_site_on_pile <= 0:
+		if total_reserved_on_pile > 0:
+			return {"ok": false, "reason": "reservation_belongs_to_other_site"}
+		return {"ok": false, "reason": "no_site_reservation_on_pile"}
+
+	if amount > reserved_for_site_on_pile:
+		return {"ok": false, "reason": "insufficient_pile_reservation"}
+	if amount > pile.amount:
+		return {"ok": false, "reason": "insufficient_pile_physical"}
+
+	var before_ledger_state: Dictionary = _ledger.snapshot_state()
+	var candidate_ledger := PileReservationLedger.new()
+	candidate_ledger.restore_state(before_ledger_state)
+	var deducted: int = candidate_ledger.deduct_from_pile(pile_id, reservation_id, amount)
+	if deducted != amount:
+		return {"ok": false, "reason": "ledger_deduction_mismatch"}
+
+	var next_pile_amount: int = pile.amount - amount
+	var next_pile_total_reserved: int = candidate_ledger.get_pile_reserved_amount(pile_id)
+	var free_before: int = pile.amount - total_reserved_on_pile
+	var free_after: int = next_pile_amount - next_pile_total_reserved
+	if next_pile_amount < 0 or next_pile_total_reserved != total_reserved_on_pile - amount or free_after != free_before:
+		return {"ok": false, "reason": "unreconciled_pile_reservations"}
+
+	var pile_res_before: Dictionary = _ledger.get_pile_reservations(pile_id)
+	var pile_res_after: Dictionary = candidate_ledger.get_pile_reservations(pile_id)
+	for res_key: Variant in pile_res_before.keys():
+		var rid: StringName = res_key as StringName
+		if rid != reservation_id and int(pile_res_after.get(rid, 0)) != int(pile_res_before[rid]):
+			return {"ok": false, "reason": "unreconciled_pile_reservations"}
+	if candidate_ledger.get_reservation_amount(reservation_id, resource_id) != _ledger.get_reservation_amount(reservation_id, resource_id) - amount:
+		return {"ok": false, "reason": "ledger_deduction_mismatch"}
+
+	return {
+		"ok": true,
+		"reason": "",
+		"pile_id": pile_id,
+		"pile_instance_id": pile.get_instance_id(),
+		"reservation_id": reservation_id,
+		"resource_id": resource_id,
+		"unit_weight": pile.definition.unit_weight,
+		"amount": amount,
+		"revisions": {
+			"storage_revision": get_transaction_revision(),
+			"pile_ledger_revision": _ledger.get_transaction_revision(),
+			"pile_revision": pile.get_transaction_revision(),
+		},
+		"before": {
+			"pile_amount": pile.amount,
+			"pile_will_remove": false,
+			"pile_elapsed_exposure_sec": pile.elapsed_exposure_sec,
+			"pile_decay_accumulator_sec": pile.decay_accumulator_sec,
+			"pile_reserved_for_site": reserved_for_site_on_pile,
+			"pile_total_reserved": total_reserved_on_pile,
+			"pile_free_amount": free_before,
+			"pile_reservations": pile_res_before,
+			"site_total_reserved_resource": _ledger.get_reservation_amount(reservation_id, resource_id),
+			"ledger_state": before_ledger_state,
+		},
+		"after": {
+			"pile_amount": next_pile_amount,
+			"pile_will_remove": next_pile_amount == 0,
+			"pile_reserved_for_site": candidate_ledger.get_pile_reservation_amount(pile_id, reservation_id),
+			"pile_total_reserved": next_pile_total_reserved,
+			"pile_free_amount": free_after,
+			"pile_reservations": pile_res_after,
+			"site_total_reserved_resource": candidate_ledger.get_reservation_amount(reservation_id, resource_id),
+			"ledger_state": candidate_ledger.snapshot_state(),
+		},
+	}

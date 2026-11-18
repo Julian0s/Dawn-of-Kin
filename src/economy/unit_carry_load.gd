@@ -259,6 +259,22 @@ func _is_weight_consistent(resource_id: StringName, unit_weight: int) -> bool:
 	return int(_unit_weights[resource_id]) == unit_weight
 
 
+func get_transaction_revision() -> int:
+	return _transaction_revision
+
+
+func is_provenance_enabled() -> bool:
+	return _provenance != null
+
+
+func get_provenance_unit_id() -> StringName:
+	return _provenance_unit
+
+
+func is_transaction_busy() -> bool:
+	return _provenance_busy or _provenance_applying or _batch_depth > 0
+
+
 ## An owned ledger is created here and never exposed: one ledger per load.
 func enable_provenance(unit_id: StringName) -> bool:
 	if _provenance != null or _provenance_busy or String(unit_id).strip_edges().is_empty() or not _amounts.is_empty() or not _unit_weights.is_empty():

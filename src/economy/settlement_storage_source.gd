@@ -11,6 +11,11 @@ signal reservation_lost_to_decay(reservation_id: StringName, resource_id: String
 var _batch_depth: int = 0
 var _batch_dirty: bool = false
 var _reservation_batch_dirty: bool = false
+var _transaction_revision: int = 0
+
+
+func get_transaction_revision() -> int:
+	return _transaction_revision
 
 
 func begin_batch() -> void:
@@ -41,6 +46,7 @@ func is_batch_active() -> bool:
 
 
 func _emit_storage_changed() -> void:
+	_transaction_revision += 1
 	if _batch_depth > 0:
 		_batch_dirty = true
 		return
@@ -48,6 +54,7 @@ func _emit_storage_changed() -> void:
 
 
 func _emit_reservations_changed() -> void:
+	_transaction_revision += 1
 	if _batch_depth > 0:
 		_reservation_batch_dirty = true
 		return

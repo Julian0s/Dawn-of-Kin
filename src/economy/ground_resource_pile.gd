@@ -15,12 +15,17 @@ var decay_accumulator_sec: float = 0.0
 
 var _visual_root: Node3D = null
 var _mesh_instances: Array[MeshInstance3D] = []
+var _transaction_revision: int = 0
 
 
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
 	add_to_group(GROUP_GROUND_PILES)
+
+
+func get_transaction_revision() -> int:
+	return _transaction_revision
 
 
 func configure_initial(
@@ -40,6 +45,7 @@ func configure_initial(
 	decay_accumulator_sec = p_decay_accumulator_sec
 	position = p_position
 	name = "Pile_%d_%s" % [pile_id, String(resource_id)]
+	_transaction_revision += 1
 	_rebuild_visuals(p_visual_cache)
 	sync_visual()
 
@@ -52,6 +58,7 @@ func apply_state(
 	amount = p_amount
 	elapsed_exposure_sec = p_elapsed_exposure_sec
 	decay_accumulator_sec = p_decay_accumulator_sec
+	_transaction_revision += 1
 	sync_visual()
 
 

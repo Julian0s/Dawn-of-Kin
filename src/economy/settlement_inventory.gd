@@ -10,11 +10,27 @@ signal reservation_lost_to_decay(reservation_id: StringName, resource_id: String
 
 var _storage_source: SettlementStorageSource = null
 var _is_delivering: bool = false
+var _transaction_revision: int = 0
 
 
 func _init(storage_source: SettlementStorageSource = null) -> void:
 	if storage_source != null:
 		set_storage_source(storage_source)
+
+
+func get_transaction_revision() -> int:
+	return _transaction_revision
+
+
+func is_transaction_busy() -> bool:
+	if _is_delivering:
+		return true
+	if _storage_source != null:
+		if _storage_source.is_batch_active():
+			return true
+		if _storage_source is GroundPileManager and (_storage_source as GroundPileManager).is_locked():
+			return true
+	return false
 
 
 func set_storage_source(storage_source: SettlementStorageSource) -> void:
@@ -35,6 +51,7 @@ func set_storage_source(storage_source: SettlementStorageSource) -> void:
 			_storage_source.reservations_changed.connect(_on_source_reservations_changed)
 		if not _storage_source.reservation_lost_to_decay.is_connected(_on_source_reservation_lost_to_decay):
 			_storage_source.reservation_lost_to_decay.connect(_on_source_reservation_lost_to_decay)
+	_transaction_revision += 1
 	inventory_changed.emit()
 	reservations_changed.emit()
 
@@ -323,10 +340,12 @@ func get_all_decayed() -> Dictionary:
 
 
 func _on_source_storage_changed() -> void:
+	_transaction_revision += 1
 	inventory_changed.emit()
 
 
 func _on_source_reservations_changed() -> void:
+	_transaction_revision += 1
 	reservations_changed.emit()
 
 
@@ -335,4 +354,5 @@ func _on_source_reservation_lost_to_decay(
 	resource_id: StringName,
 	lost_amount: int
 ) -> void:
+	_transaction_revision += 1
 	reservation_lost_to_decay.emit(reservation_id, resource_id, lost_amount)

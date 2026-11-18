@@ -84,9 +84,13 @@ var _last_completion_error: String = ""
 var _completion_retry_timer: Timer = null
 var _starved_resources: Array[StringName] = []
 var _supply_rebalance_completed: bool = false
+var _generation: int = 0
+var _transaction_revision: int = 0
+var _is_preparing_or_transacting: bool = false
 
 
 func _exit_tree() -> void:
+	_transaction_revision += 1
 	if _site_state == SiteState.COMPLETED:
 		# Existing observers (including the temporary inspector) must drop the old site.
 		_is_configured = false
@@ -99,6 +103,18 @@ func _exit_tree() -> void:
 	_builder_slot_positions.clear()
 	_last_work_physics_frame_by_unit.clear()
 	_supply_rebalance_completed = false
+
+
+func get_generation() -> int:
+	return _generation
+
+
+func get_transaction_revision() -> int:
+	return _transaction_revision
+
+
+func is_transaction_busy() -> bool:
+	return _work_transaction_in_progress or _is_complementing or _is_preparing_or_transacting
 
 
 func configure(
@@ -145,10 +161,12 @@ func configure(
 		return false
 	_build_foundation_visual()
 	_bind_inventory()
+	_generation += 1
 	_site_state = SiteState.ACTIVE
 	_assembly_substate = AssemblySubstate.WAITING_ASSEMBLY
 	_is_configured = true
 	_was_fully_supplied = is_fully_supplied()
+	_transaction_revision += 1
 	return true
 
 
@@ -193,6 +211,7 @@ func get_completion_diagnostic() -> Dictionary:
 
 
 func record_completion_failure(reason: String) -> void:
+	_transaction_revision += 1
 	_completion_retry_count += 1
 	_last_completion_error = reason
 	_retry_cooldown_remaining_sec = RETRY_COOLDOWN_SEC if _completion_retry_count < MAX_COMPLETION_RETRIES else 0.0
@@ -203,6 +222,7 @@ func record_completion_failure(reason: String) -> void:
 
 
 func commit_completed_building(building: BuildingInstance) -> void:
+	_transaction_revision += 1
 	_site_state = SiteState.COMPLETED
 	_assembly_substate = AssemblySubstate.NONE
 	# Snapshot before callbacks: finishing an order unregisters it and rebalances roles.
@@ -319,6 +339,7 @@ func assign_builder_slot_position(unit: Unit, slot_idx: int, resolved_slot_pos: 
 	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(resolved_slot_pos, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()):
 		return false
 	_builder_slot_positions[unit.get_instance_id()] = {"slot_idx": slot_idx, "position": resolved_slot_pos}
+	_transaction_revision += 1
 	_refresh_assembly_substate()
 	return true
 
@@ -363,7 +384,7 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(unit.global_position, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()):
 		return _work_rejection("worker_out_of_reach")
 	var frame: int = Engine.get_physics_frames()
-	if _work_transaction_in_progress or int(_last_work_physics_frame_by_unit.get(uid, -1)) == frame:
+	if _work_transaction_in_progress or _is_preparing_or_transacting or int(_last_work_physics_frame_by_unit.get(uid, -1)) == frame:
 		return _work_rejection("duplicate_cycle_contribution")
 	var evaluation: Dictionary = evaluate_work_transaction_usec(_work_progress_usec, _total_work_usec,
 		maxi(1, roundi(delta_sec * USEC_PER_SEC)), _required_amounts, _consumed_materials, _delivered_buffer)
@@ -374,6 +395,7 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 	var prev_starved_resources: Array[StringName] = _starved_resources.duplicate()
 	_work_transaction_in_progress = true
 	_work_cycle_serial += 1
+	_transaction_revision += 1
 	_last_work_physics_frame_by_unit[uid] = frame
 	var debits: Dictionary = evaluation["consumed"]
 	var buffer_mutated: bool = false
@@ -632,8 +654,9 @@ func authorize_manual_complement(
 	# One-shot consumption occurs immediately after structural intent validation,
 	# including when downstream preconditions or free stock validation fail.
 	intent.consumed = true
+	_transaction_revision += 1
 
-	if _is_complementing:
+	if _is_complementing or _is_preparing_or_transacting:
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
 
 	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
@@ -659,6 +682,8 @@ func authorize_manual_complement(
 
 	_is_complementing = true
 	var committed: bool = _inventory.complement_reservation(reservation_id, target_batch)
+	if committed:
+		_transaction_revision += 1
 	var should_emit_direct: bool = committed and not _signals_bound
 	if should_emit_direct:
 		state_changed.emit(self)
@@ -786,10 +811,13 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 		return 0
 
 	var uid: int = unit.get_instance_id()
+	var had_pending: bool = _pending_pickups.has(uid)
 	_pending_pickups.erase(uid)
 
 	var remaining_for_site: int = get_remaining_supply_to_claim(resource_id, unit)
 	if remaining_for_site <= 0:
+		if had_pending:
+			_transaction_revision += 1
 		return 0
 
 	var pile_cap: int = pile_reserved_total
@@ -799,6 +827,8 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 	var pile_available_to_claim: int = maxi(0, pile_cap - other_on_pile)
 	var claim_amt: int = mini(desired_amount, mini(remaining_for_site, pile_available_to_claim))
 	if claim_amt <= 0:
+		if had_pending:
+			_transaction_revision += 1
 		return 0
 
 	_pending_pickups[uid] = {
@@ -807,6 +837,7 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 		"resource_id": resource_id,
 		"amount": claim_amt,
 	}
+	_transaction_revision += 1
 	return claim_amt
 
 
@@ -817,6 +848,7 @@ func release_pickup_claim(unit: Unit) -> void:
 	var uid: int = unit.get_instance_id()
 	if _pending_pickups.has(uid):
 		_pending_pickups.erase(uid)
+		_transaction_revision += 1
 
 
 func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int) -> void:
@@ -828,6 +860,7 @@ func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int)
 		return
 
 	var uid: int = unit.get_instance_id()
+	var had_pending: bool = _pending_pickups.has(uid)
 	_pending_pickups.erase(uid)
 
 	var accounting_headroom: int = maxi(
@@ -839,6 +872,8 @@ func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int)
 	)
 	var allowed_add: int = mini(amount, accounting_headroom)
 	if allowed_add <= 0:
+		if had_pending:
+			_transaction_revision += 1
 		return
 
 	_ensure_transit_listener(unit, carry_load)
@@ -846,6 +881,7 @@ func record_withdrawn_for_site(unit: Unit, resource_id: StringName, amount: int)
 	var amounts: Dictionary = claim["amounts"] as Dictionary
 	amounts[resource_id] = int(amounts.get(resource_id, 0)) + allowed_add
 	_clamp_unit_transit_claim(uid)
+	_transaction_revision += 1
 	state_changed.emit(self)
 
 
@@ -960,6 +996,7 @@ func accept_delivery_from_carry_load(unit: Unit, carry_load: UnitCarryLoad) -> D
 				_clamp_unit_transit_claim(uid)
 
 	carry_load.end_batch(false)
+	_transaction_revision += 1
 	_refresh_assembly_substate()
 	buffer_changed.emit(self)
 	state_changed.emit(self)
@@ -989,6 +1026,7 @@ func register_worker(
 		existing["order"] = order
 		existing["force_transporter"] = force_transporter
 		existing["solo_promoted_builder"] = false
+		_transaction_revision += 1
 		_rebalance_worker_roles(true)
 		return get_worker_role(unit)
 
@@ -1008,6 +1046,7 @@ func register_worker(
 	if not _worker_order_ids.has(uid):
 		_worker_order_ids.append(uid)
 
+	_transaction_revision += 1
 	_rebalance_worker_roles(true)
 	return get_worker_role(unit)
 
@@ -1057,6 +1096,7 @@ func try_promote_solo_to_builder(unit: Unit) -> bool:
 	if is_fully_supplied():
 		_supply_rebalance_completed = true
 	_builder_slot_positions.erase(uid)
+	_transaction_revision += 1
 	_refresh_assembly_substate()
 	workers_changed.emit(self)
 	state_changed.emit(self)
@@ -1094,6 +1134,7 @@ func rebalance_for_assembly_on_supply_complete(unit: Unit) -> WorkerRole:
 		entry["role"] = WorkerRole.BUILDER
 		entry["solo_promoted_builder"] = true
 		_clear_mismatched_builder_anchors()
+		_transaction_revision += 1
 		_refresh_assembly_substate()
 		workers_changed.emit(self)
 		state_changed.emit(self)
@@ -1119,6 +1160,7 @@ func unregister_worker(unit: Unit, order: UnitOrder = null) -> void:
 	_assigned_workers.erase(uid)
 	_builder_slot_positions.erase(uid)
 	_worker_order_ids.erase(uid)
+	_transaction_revision += 1
 	_rebalance_worker_roles(true)
 
 
@@ -1341,6 +1383,7 @@ func _unbind_inventory() -> void:
 
 
 func _on_inventory_reservations_changed() -> void:
+	_transaction_revision += 1
 	var demoted: bool = false
 	if is_active() and not is_fully_supplied() and _count_auto_workers() == 1:
 		for uid: int in _worker_order_ids:
@@ -1366,6 +1409,7 @@ func _on_inventory_reservation_lost_to_decay(
 ) -> void:
 	if p_reservation_id != reservation_id:
 		return
+	_transaction_revision += 1
 	# Alternative B: lost reserved units stay lost without automatic reallocation.
 	reservation_lost.emit(self, resource_id, lost_amount)
 	state_changed.emit(self)
@@ -1398,6 +1442,7 @@ func _clear_all_transit_listeners() -> void:
 
 func _on_unit_carry_load_changed(uid: int) -> void:
 	_clamp_unit_transit_claim(uid)
+	_transaction_revision += 1
 	state_changed.emit(self)
 
 
@@ -1413,10 +1458,12 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 			if carry_load.load_changed.is_connected(cb):
 				carry_load.load_changed.disconnect(cb)
 		_transit_claims.erase(uid)
+		_transaction_revision += 1
 		return
 
 	var amounts: Dictionary = claim["amounts"] as Dictionary
 	var to_erase: Array[StringName] = []
+	var mutated: bool = false
 	for res_key: Variant in amounts.keys():
 		var res_id: StringName = res_key as StringName
 		var claimed: int = int(amounts[res_id])
@@ -1424,8 +1471,10 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 		var clamped: int = mini(claimed, held_now)
 		if clamped <= 0:
 			to_erase.append(res_id)
-		else:
+			mutated = true
+		elif clamped != claimed:
 			amounts[res_id] = clamped
+			mutated = true
 	for res_id: StringName in to_erase:
 		amounts.erase(res_id)
 	if amounts.is_empty():
@@ -1433,6 +1482,9 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 		if cb_variant is Callable and carry_load.load_changed.is_connected(cb_variant as Callable):
 			carry_load.load_changed.disconnect(cb_variant as Callable)
 		_transit_claims.erase(uid)
+		mutated = true
+	if mutated:
+		_transaction_revision += 1
 
 
 func _prune_stale_state() -> void:
@@ -1445,6 +1497,8 @@ func _prune_stale_state() -> void:
 			dead_pending.append(uid)
 	for uid: int in dead_pending:
 		_pending_pickups.erase(uid)
+	if not dead_pending.is_empty():
+		_transaction_revision += 1
 
 	var dead_transit: Array[int] = []
 	for uid_key: Variant in _transit_claims.keys():
@@ -1473,6 +1527,7 @@ func _prune_stale_state() -> void:
 			_assigned_workers.erase(uid)
 			_builder_slot_positions.erase(uid)
 			_worker_order_ids.erase(uid)
+		_transaction_revision += 1
 		_rebalance_worker_roles(false)
 
 
@@ -1631,6 +1686,7 @@ func _rebalance_worker_roles(emit_changes: bool) -> void:
 			break
 
 	if emit_changes or changed:
+		_transaction_revision += 1
 		workers_changed.emit(self)
 		state_changed.emit(self)
 
@@ -1654,3 +1710,739 @@ static func _normalize_costs(costs: Dictionary) -> Dictionary:
 			return {}
 		result[res_id] = amt
 	return result
+
+
+static func _prep_rejection(reason: String, dependency: String = "") -> Dictionary:
+	return {
+		"ok": false,
+		"reason": reason,
+		"dependency": dependency,
+	}
+
+
+func _has_stale_participants_pure() -> bool:
+	for uid_key: Variant in _pending_pickups.keys():
+		var entry: Dictionary = _pending_pickups[uid_key] as Dictionary
+		var entry_unit: Unit = entry.get("unit") as Unit
+		if entry_unit == null or not is_instance_valid(entry_unit) or not entry_unit.is_inside_tree():
+			return true
+	for uid_key: Variant in _transit_claims.keys():
+		var claim: Dictionary = _transit_claims[uid_key] as Dictionary
+		var claim_unit: Unit = claim.get("unit") as Unit
+		if claim_unit == null or not is_instance_valid(claim_unit):
+			return true
+	for uid: int in _worker_order_ids:
+		if not _assigned_workers.has(uid):
+			return true
+		var w: Dictionary = _assigned_workers[uid] as Dictionary
+		var w_unit: Unit = w.get("unit") as Unit
+		var order: UnitOrder = w.get("order") as UnitOrder
+		if w_unit == null or not is_instance_valid(w_unit) or not w_unit.is_inside_tree():
+			return true
+		if order == null or not order.is_active():
+			return true
+	return false
+
+
+func _resolve_resource_definition_pure(resource_id: StringName) -> ResourceDefinition:
+	if _resource_defs.has(resource_id):
+		var def_val: Variant = _resource_defs[resource_id]
+		if def_val is ResourceDefinition and (def_val as ResourceDefinition).is_valid():
+			return def_val as ResourceDefinition
+	if _inventory != null:
+		var src: SettlementStorageSource = _inventory.get_storage_source()
+		if src is GroundPileManager:
+			var mgr_def: ResourceDefinition = (src as GroundPileManager).get_resource_definition_pure(resource_id)
+			if mgr_def != null:
+				return mgr_def
+	var fallback_path: String = "res://data/resources/%s.tres" % String(resource_id)
+	if ResourceLoader.exists(fallback_path):
+		var loaded: Resource = ResourceLoader.load(fallback_path)
+		if loaded is ResourceDefinition and (loaded as ResourceDefinition).is_valid():
+			return loaded as ResourceDefinition
+	return null
+
+
+func _read_in_transit_amounts_pure() -> Dictionary:
+	var totals: Dictionary = {}
+	for res_id: StringName in _required_amounts.keys():
+		totals[res_id] = 0
+	for uid_key: Variant in _transit_claims.keys():
+		var claim: Dictionary = _transit_claims[uid_key] as Dictionary
+		var amounts: Dictionary = claim.get("amounts", {}) as Dictionary
+		for res_key: Variant in amounts.keys():
+			var res_id: StringName = res_key as StringName
+			totals[res_id] = int(totals.get(res_id, 0)) + int(amounts[res_id])
+	return totals
+
+
+func _read_in_transit_amount_pure(resource_id: StringName) -> int:
+	var totals: Dictionary = _read_in_transit_amounts_pure()
+	return int(totals.get(resource_id, 0))
+
+
+func _read_transit_claim_for_unit_pure(uid: int) -> Dictionary:
+	if not _transit_claims.has(uid):
+		return {}
+	var claim: Dictionary = _transit_claims[uid] as Dictionary
+	var raw: Dictionary = claim.get("amounts", {}) as Dictionary
+	var cleaned: Dictionary = {}
+	for res_key: Variant in raw.keys():
+		var res_id: StringName = res_key as StringName
+		var amt: int = int(raw[res_id])
+		if amt > 0:
+			cleaned[res_id] = amt
+	return cleaned
+
+
+func _read_pending_pickup_amount_pure(pile_id_val: int, resource_id: StringName, exclude_uid: int = -1) -> int:
+	var total: int = 0
+	for uid_key: Variant in _pending_pickups.keys():
+		var uid: int = int(uid_key)
+		if uid == exclude_uid:
+			continue
+		var entry: Dictionary = _pending_pickups[uid_key] as Dictionary
+		if int(entry["pile_id"]) == pile_id_val and (entry["resource_id"] as StringName) == resource_id:
+			total += int(entry["amount"])
+	return total
+
+
+func _read_total_pending_pickup_for_resource_pure(resource_id: StringName, exclude_uid: int = -1) -> int:
+	var total: int = 0
+	for uid_key: Variant in _pending_pickups.keys():
+		var uid: int = int(uid_key)
+		if uid == exclude_uid:
+			continue
+		var entry: Dictionary = _pending_pickups[uid_key] as Dictionary
+		if (entry["resource_id"] as StringName) == resource_id:
+			total += int(entry["amount"])
+	return total
+
+
+func _read_remaining_supply_to_claim_pure(resource_id: StringName, exclude_uid: int = -1) -> int:
+	var remaining_dropoff: int = get_remaining_need_for_dropoff(resource_id)
+	var in_transit: int = _read_in_transit_amount_pure(resource_id)
+	var pending_other: int = _read_total_pending_pickup_for_resource_pure(resource_id, exclude_uid)
+	return maxi(0, remaining_dropoff - in_transit - pending_other)
+
+
+func _read_accounting_breakdown_pure(resource_id: StringName) -> Dictionary:
+	var required: int = get_required_amount(resource_id)
+	var reserved: int = get_reserved_in_piles_amount(resource_id)
+	var in_transit: int = _read_in_transit_amount_pure(resource_id)
+	var delivered_buffer: int = get_delivered_buffer_amount(resource_id)
+	var consumed: int = get_consumed_amount(resource_id)
+	var uncovered_missing: int = maxi(0, required - (delivered_buffer + consumed) - reserved - in_transit)
+	return {
+		"required": required,
+		"reserved": reserved,
+		"in_transit": in_transit,
+		"delivered_buffer": delivered_buffer,
+		"consumed": consumed,
+		"uncovered_missing": uncovered_missing,
+		"sum": reserved + in_transit + delivered_buffer + consumed + uncovered_missing,
+	}
+
+
+func _verify_accounting_invariant_pure() -> bool:
+	for res_id: StringName in _required_amounts.keys():
+		var b: Dictionary = _read_accounting_breakdown_pure(res_id)
+		if (
+			int(b["reserved"]) < 0
+			or int(b["in_transit"]) < 0
+			or int(b["delivered_buffer"]) < 0
+			or int(b["consumed"]) < 0
+			or int(b["uncovered_missing"]) < 0
+		):
+			return false
+		if int(b["sum"]) != int(b["required"]):
+			return false
+	return true
+
+
+func _collect_known_other_sites_pure(options: Dictionary) -> Array[ConstructionSite]:
+	var result: Array[ConstructionSite] = []
+	if is_inside_tree() and get_tree() != null:
+		for node: Node in get_tree().get_nodes_in_group(GROUP_CONSTRUCTION_SITES):
+			if node is ConstructionSite and node != self and is_instance_valid(node):
+				result.append(node as ConstructionSite)
+	var extra: Variant = options.get("other_sites", [])
+	if extra is Array:
+		for item: Variant in extra as Array:
+			if item is ConstructionSite and item != self and is_instance_valid(item):
+				var other_site: ConstructionSite = item as ConstructionSite
+				if not result.has(other_site):
+					result.append(other_site)
+	return result
+
+
+func _has_conflicting_unit_identity_pure(target_unit: Unit, target_load: UnitCarryLoad, options: Dictionary) -> bool:
+	var target_prov_id: StringName = target_load.get_provenance_unit_id()
+	var sites_to_check: Array[ConstructionSite] = [self]
+	sites_to_check.append_array(_collect_known_other_sites_pure(options))
+	for s: ConstructionSite in sites_to_check:
+		for uid_key: Variant in s._assigned_workers.keys():
+			var w: Dictionary = s._assigned_workers[uid_key] as Dictionary
+			var u: Unit = w.get("unit") as Unit
+			if _unit_conflicts_with_target(u, target_unit, target_load, target_prov_id):
+				return true
+		for uid_key: Variant in s._transit_claims.keys():
+			var c: Dictionary = s._transit_claims[uid_key] as Dictionary
+			var u: Unit = c.get("unit") as Unit
+			if _unit_conflicts_with_target(u, target_unit, target_load, target_prov_id):
+				return true
+		for uid_key: Variant in s._pending_pickups.keys():
+			var p: Dictionary = s._pending_pickups[uid_key] as Dictionary
+			var u: Unit = p.get("unit") as Unit
+			if _unit_conflicts_with_target(u, target_unit, target_load, target_prov_id):
+				return true
+	return false
+
+
+static func _unit_conflicts_with_target(
+	other_unit: Unit,
+	target_unit: Unit,
+	target_load: UnitCarryLoad,
+	target_prov_id: StringName
+) -> bool:
+	if other_unit == null or not is_instance_valid(other_unit) or other_unit == target_unit:
+		return false
+	var other_load: UnitCarryLoad = other_unit.get_carry_load()
+	if other_load == null:
+		return false
+	if other_load == target_load:
+		return true
+	if other_load.is_provenance_enabled() and other_load.get_provenance_unit_id() == target_prov_id:
+		return true
+	return false
+
+
+func _verify_unit_claims_reconciled_with_provenance_pure(
+	typed_unit: Unit,
+	carry_load: UnitCarryLoad,
+	options: Dictionary
+) -> Dictionary:
+	var uid: int = typed_unit.get_instance_id()
+	var snap: Dictionary = carry_load.provenance_snapshot()
+	if snap.is_empty() or not snap.has("ledger"):
+		return _prep_rejection("provenance_disabled", "carry_load")
+
+	var ledger_snap: Dictionary = snap["ledger"] as Dictionary
+	var lots: Dictionary = ledger_snap.get("lots", {}) as Dictionary
+	var unit_prov_id: StringName = carry_load.get_provenance_unit_id()
+	var site_reserved_lots: Dictionary = {}
+	var free_lots: Dictionary = {}
+	var site_generations: Dictionary = {}
+
+	for lot_key: Variant in lots.keys():
+		var lot: Dictionary = lots[lot_key] as Dictionary
+		if StringName(lot.get("unit_id", &"")) != unit_prov_id:
+			return _prep_rejection("ambiguous_unit_identity", "provenance_ledger")
+		var lot_res: StringName = StringName(lot.get("resource_id", &""))
+		var lot_qty: int = int(lot.get("quantity", 0))
+		var lot_origin: StringName = StringName(lot.get("origin", &""))
+		var lot_site: StringName = StringName(lot.get("site_id", &""))
+		var lot_gen: int = int(lot.get("generation", -1))
+		if lot_origin == CarryProvenanceLedger.FREE_GATHERED:
+			free_lots[lot_res] = int(free_lots.get(lot_res, 0)) + lot_qty
+		elif lot_origin == CarryProvenanceLedger.SITE_RESERVED:
+			if lot_site == site_id and lot_gen != _generation:
+				return _prep_rejection("generation_mismatch", "provenance_ledger")
+			if site_generations.has(lot_site) and int(site_generations[lot_site]) != lot_gen:
+				return _prep_rejection("conflicting_site_claims", "provenance_ledger")
+			site_generations[lot_site] = lot_gen
+			if not site_reserved_lots.has(lot_site):
+				site_reserved_lots[lot_site] = {}
+			var per_site: Dictionary = site_reserved_lots[lot_site] as Dictionary
+			per_site[lot_res] = int(per_site.get(lot_res, 0)) + lot_qty
+		else:
+			return _prep_rejection("invalid_lot_origin", "provenance_ledger")
+
+	if _transit_claims.has(uid):
+		var self_claim_entry: Dictionary = _transit_claims[uid] as Dictionary
+		if self_claim_entry.get("carry_load") != carry_load:
+			return _prep_rejection("carry_load_mismatch", "claims")
+	var self_claim: Dictionary = _read_transit_claim_for_unit_pure(uid)
+	var self_lots: Dictionary = site_reserved_lots.get(site_id, {}) as Dictionary
+	if self_claim != self_lots:
+		return _prep_rejection("unreconciled_site_claim", "claims")
+
+	var all_claims_by_res: Dictionary = {}
+	for res_key: Variant in self_claim.keys():
+		var r: StringName = res_key as StringName
+		all_claims_by_res[r] = int(self_claim[r])
+
+	var sites_by_id: Dictionary = {site_id: self}
+	for other_site: ConstructionSite in _collect_known_other_sites_pure(options):
+		if other_site.site_id.is_empty():
+			continue
+		if sites_by_id.has(other_site.site_id):
+			return _prep_rejection("conflicting_site_claims", "claims")
+		sites_by_id[other_site.site_id] = other_site
+
+		if other_site._transit_claims.has(uid):
+			var other_entry: Dictionary = other_site._transit_claims[uid] as Dictionary
+			if other_entry.get("carry_load") != carry_load:
+				return _prep_rejection("conflicting_site_claims", "claims")
+		var other_claim: Dictionary = other_site._read_transit_claim_for_unit_pure(uid)
+		var other_lots: Dictionary = site_reserved_lots.get(other_site.site_id, {}) as Dictionary
+		if not other_claim.is_empty() or not other_lots.is_empty():
+			if other_claim != other_lots:
+				return _prep_rejection("conflicting_site_claims", "claims")
+			if site_generations.has(other_site.site_id) and other_site.get_generation() > 0:
+				if int(site_generations[other_site.site_id]) != other_site.get_generation():
+					return _prep_rejection("generation_mismatch", "claims")
+			for res_key: Variant in other_claim.keys():
+				var r: StringName = res_key as StringName
+				all_claims_by_res[r] = int(all_claims_by_res.get(r, 0)) + int(other_claim[r])
+
+	# Include any unreferenced SITE_RESERVED lots from sites outside the active list.
+	for lot_site_key: Variant in site_reserved_lots.keys():
+		var lot_site: StringName = lot_site_key as StringName
+		if sites_by_id.has(lot_site):
+			continue
+		var extra_lots: Dictionary = site_reserved_lots[lot_site] as Dictionary
+		for res_key: Variant in extra_lots.keys():
+			var r: StringName = res_key as StringName
+			all_claims_by_res[r] = int(all_claims_by_res.get(r, 0)) + int(extra_lots[r])
+
+	var physical_amounts: Dictionary = carry_load.get_all_amounts()
+	for res_key: Variant in all_claims_by_res.keys():
+		var r: StringName = res_key as StringName
+		if int(all_claims_by_res[r]) + int(free_lots.get(r, 0)) > int(physical_amounts.get(r, 0)):
+			return _prep_rejection("conflicting_site_claims", "claims")
+
+	return {"ok": true, "ledger_snapshot": ledger_snap}
+
+
+## Pure opt-in preparation of a site-reserved pile withdrawal to carry load with provenance and claim.
+## Strictly side-effect-free: alters no piles, reservations, loads, ledgers, claims, sites, revisions, or signals.
+func prepare_reserved_withdrawal(
+	unit: Variant,
+	pile_id: Variant,
+	resource_id: Variant,
+	requested_amount: Variant,
+	operation_id: Variant,
+	lot_id: Variant,
+	options: Dictionary = {}
+) -> Dictionary:
+	if is_transaction_busy():
+		return _prep_rejection("busy", "site")
+	if _inventory != null and _inventory.is_transaction_busy():
+		return _prep_rejection("busy", "inventory")
+	var storage_source: SettlementStorageSource = _inventory.get_storage_source() if _inventory != null else null
+	if storage_source != null and storage_source.is_batch_active():
+		return _prep_rejection("busy", "storage")
+	if storage_source is GroundPileManager and (storage_source as GroundPileManager).is_locked():
+		return _prep_rejection("busy", "storage")
+	if unit is Unit and is_instance_valid(unit):
+		var pre_cl: UnitCarryLoad = (unit as Unit).get_carry_load()
+		if pre_cl != null and pre_cl.is_transaction_busy():
+			return _prep_rejection("busy", "carry_load")
+	if options.has("carry_load") and options["carry_load"] is UnitCarryLoad:
+		if (options["carry_load"] as UnitCarryLoad).is_transaction_busy():
+			return _prep_rejection("busy", "carry_load")
+
+	if not is_valid() or _site_state != SiteState.ACTIVE or _generation <= 0:
+		return _prep_rejection("site_not_active", "site")
+	if _has_stale_participants_pure():
+		return _prep_rejection("stale_site_participants", "site")
+
+	if options.has("site_id"):
+		if not CarryProvenanceLedger._id(options["site_id"]) or StringName(options["site_id"]) != site_id:
+			return _prep_rejection("site_mismatch", "site")
+	if options.has("generation"):
+		if typeof(options["generation"]) != TYPE_INT or int(options["generation"]) != _generation:
+			return _prep_rejection("invalid_generation", "site")
+	if options.has("reservation_id"):
+		if not CarryProvenanceLedger._id(options["reservation_id"]) or StringName(options["reservation_id"]) != reservation_id:
+			return _prep_rejection("reservation_mismatch", "site")
+
+	if storage_source == null or not (storage_source is GroundPileManager):
+		return _prep_rejection("unsupported_storage_source", "storage")
+	var pile_manager: GroundPileManager = storage_source as GroundPileManager
+
+	if not (unit is Unit) or not is_instance_valid(unit) or not (unit as Unit).is_inside_tree():
+		return _prep_rejection("invalid_unit", "unit")
+	var typed_unit: Unit = unit as Unit
+	var carry_load: UnitCarryLoad = typed_unit.get_carry_load()
+	if carry_load == null:
+		return _prep_rejection("invalid_carry_load", "carry_load")
+	if options.has("carry_load") and options["carry_load"] != carry_load:
+		return _prep_rejection("carry_load_mismatch", "carry_load")
+	if not carry_load.is_provenance_enabled() or not CarryProvenanceLedger._id(carry_load.get_provenance_unit_id()):
+		return _prep_rejection("provenance_disabled", "carry_load")
+	if not carry_load.validate_provenance():
+		return _prep_rejection("unreconciled_cargo", "carry_load")
+	if options.has("unit_id"):
+		if not CarryProvenanceLedger._id(options["unit_id"]) or StringName(options["unit_id"]) != carry_load.get_provenance_unit_id():
+			return _prep_rejection("unit_mismatch", "unit")
+	if _has_conflicting_unit_identity_pure(typed_unit, carry_load, options):
+		return _prep_rejection("ambiguous_unit_identity", "unit")
+
+	if not CarryProvenanceLedger._id(operation_id):
+		return _prep_rejection("invalid_operation", "input")
+	if not CarryProvenanceLedger._id(lot_id):
+		return _prep_rejection("invalid_lot", "input")
+	if not CarryProvenanceLedger._id(resource_id):
+		return _prep_rejection("invalid_resource", "input")
+	if typeof(pile_id) != TYPE_INT or int(pile_id) <= 0:
+		return _prep_rejection("invalid_pile", "input")
+	if typeof(requested_amount) != TYPE_INT or int(requested_amount) <= 0:
+		return _prep_rejection("invalid_amount", "input")
+
+	var op_id_sn: StringName = StringName(operation_id)
+	var lot_id_sn: StringName = StringName(lot_id)
+	var res_id_sn: StringName = StringName(resource_id)
+	var pile_id_int: int = int(pile_id)
+	var req_amount: int = int(requested_amount)
+	if not _required_amounts.has(res_id_sn) or get_required_amount(res_id_sn) <= 0:
+		return _prep_rejection("resource_not_required", "site")
+
+	# Cooperative guard acquisition in fixed R2 order: (1) site -> (2) storage -> (3) carry_load.
+	_is_preparing_or_transacting = true
+	pile_manager._is_preparing_withdrawal = true
+	carry_load._provenance_busy = true
+
+	var outcome: Dictionary = _prepare_reserved_withdrawal_guarded(
+		typed_unit,
+		carry_load,
+		pile_manager,
+		pile_id_int,
+		res_id_sn,
+		req_amount,
+		op_id_sn,
+		lot_id_sn,
+		options
+	)
+
+	carry_load._provenance_busy = false
+	pile_manager._is_preparing_withdrawal = false
+	_is_preparing_or_transacting = false
+	return outcome
+
+
+func _prepare_reserved_withdrawal_guarded(
+	typed_unit: Unit,
+	carry_load: UnitCarryLoad,
+	pile_manager: GroundPileManager,
+	pile_id_int: int,
+	res_id_sn: StringName,
+	req_amount: int,
+	op_id_sn: StringName,
+	lot_id_sn: StringName,
+	options: Dictionary
+) -> Dictionary:
+	var uid: int = typed_unit.get_instance_id()
+	var pile: GroundResourcePile = pile_manager.get_pile_by_id(pile_id_int)
+	var current_revisions := {
+		"site_revision": _transaction_revision,
+		"site_work_serial": _work_cycle_serial,
+		"inventory_revision": _inventory.get_transaction_revision(),
+		"storage_revision": pile_manager.get_transaction_revision(),
+		"pile_ledger_revision": pile_manager.get_pile_ledger_revision(),
+		"pile_revision": pile.get_transaction_revision() if is_instance_valid(pile) else -1,
+		"carry_load_revision": carry_load.get_transaction_revision(),
+	}
+
+	if options.has("expected_revisions"):
+		var expected: Variant = options["expected_revisions"]
+		if not (expected is Dictionary) or (expected as Dictionary).is_empty():
+			return _prep_rejection("stale_revision", "revisions")
+		var exp_dict: Dictionary = expected as Dictionary
+		for rev_key: Variant in exp_dict.keys():
+			if not current_revisions.has(rev_key) or int(current_revisions[rev_key]) != int(exp_dict[rev_key]):
+				return _prep_rejection("stale_revision", "revisions")
+
+	if options.has("prior_plan"):
+		var prior: Variant = options["prior_plan"]
+		if prior is Dictionary and bool((prior as Dictionary).get("ok", false)):
+			var prior_dict: Dictionary = prior as Dictionary
+			var prev_op: StringName = StringName(prior_dict.get("operation_id", &""))
+			var prev_lot: StringName = StringName(prior_dict.get("lot_id", &""))
+			if prev_op == op_id_sn:
+				if (
+					prev_lot != lot_id_sn
+					or StringName(prior_dict.get("site_id", &"")) != site_id
+					or int(prior_dict.get("generation", -1)) != _generation
+					or StringName(prior_dict.get("reservation_id", &"")) != reservation_id
+					or int(prior_dict.get("pile_id", 0)) != pile_id_int
+					or StringName(prior_dict.get("resource_id", &"")) != res_id_sn
+					or int(prior_dict.get("requested_amount", 0)) != req_amount
+					or int(prior_dict.get("unit_instance_id", -1)) != uid
+					or StringName(prior_dict.get("unit_id", &"")) != carry_load.get_provenance_unit_id()
+				):
+					return _prep_rejection("operation_conflict", "revisions")
+				if prior_dict.get("revisions", {}) != current_revisions:
+					return _prep_rejection("stale_revision", "revisions")
+			elif prev_lot == lot_id_sn:
+				return _prep_rejection("duplicate_lot", "provenance_ledger")
+
+	var claim_check: Dictionary = _verify_unit_claims_reconciled_with_provenance_pure(typed_unit, carry_load, options)
+	if not bool(claim_check.get("ok", false)):
+		return claim_check
+	var ledger_snap: Dictionary = claim_check["ledger_snapshot"] as Dictionary
+	var ledger_ops: Dictionary = ledger_snap.get("operations", {}) as Dictionary
+	var ledger_used_lots: Dictionary = ledger_snap.get("used_lots", {}) as Dictionary
+	if ledger_ops.has(op_id_sn):
+		return _prep_rejection("operation_conflict", "provenance_ledger")
+	if ledger_used_lots.has(lot_id_sn):
+		return _prep_rejection("duplicate_lot", "provenance_ledger")
+
+	if not _verify_accounting_invariant_pure():
+		return _prep_rejection("accounting_invariant_violated", "accounting")
+
+	if _assigned_workers.has(uid):
+		var worker_entry: Dictionary = _assigned_workers[uid] as Dictionary
+		var worker_role: WorkerRole = worker_entry.get("role", WorkerRole.UNASSIGNED) as WorkerRole
+		if worker_role == WorkerRole.BUILDER or worker_role == WorkerRole.UNASSIGNED:
+			return _prep_rejection("claim_not_eligible", "claims")
+		var worker_order: UnitOrder = worker_entry.get("order") as UnitOrder
+		if worker_order == null or not worker_order.is_active():
+			return _prep_rejection("claim_not_eligible", "claims")
+	elif bool(options.get("require_assigned_worker", false)):
+		return _prep_rejection("worker_not_registered", "claims")
+
+	if _pending_pickups.has(uid):
+		var pending_entry: Dictionary = _pending_pickups[uid] as Dictionary
+		if (
+			pending_entry.get("unit") != typed_unit
+			or int(pending_entry.get("pile_id", 0)) != pile_id_int
+			or (pending_entry.get("resource_id") as StringName) != res_id_sn
+			or int(pending_entry.get("amount", 0)) < req_amount
+		):
+			return _prep_rejection("claim_not_eligible", "claims")
+
+	if is_fully_supplied():
+		return _prep_rejection("site_already_supplied", "site")
+	if _read_remaining_supply_to_claim_pure(res_id_sn, uid) < req_amount:
+		return _prep_rejection("claim_not_eligible", "claims")
+
+	var pile_plan: Dictionary = pile_manager._prepare_reserved_pile_withdrawal(
+		pile_id_int,
+		reservation_id,
+		res_id_sn,
+		req_amount
+	)
+	if not bool(pile_plan.get("ok", false)):
+		return _prep_rejection(String(pile_plan.get("reason", "pile_preparation_failed")), "pile")
+
+	var reserved_on_pile: int = int((pile_plan["before"] as Dictionary).get("pile_reserved_for_site", 0))
+	var other_pending_on_pile: int = _read_pending_pickup_amount_pure(pile_id_int, res_id_sn, uid)
+	if reserved_on_pile - other_pending_on_pile < req_amount:
+		return _prep_rejection("claim_not_eligible", "claims")
+
+	var pile_unit_weight: int = int(pile_plan["unit_weight"])
+	var site_def: ResourceDefinition = _resolve_resource_definition_pure(res_id_sn)
+	if site_def != null:
+		if not site_def.is_valid() or site_def.resource_id != res_id_sn or site_def.unit_weight != pile_unit_weight:
+			return _prep_rejection("resource_or_weight_mismatch", "pile")
+	if options.has("unit_weight"):
+		if typeof(options["unit_weight"]) != TYPE_INT or int(options["unit_weight"]) != pile_unit_weight:
+			return _prep_rejection("resource_or_weight_mismatch", "input")
+
+	var carry_plan: Dictionary = carry_load._prepare_provenance_add(
+		op_id_sn,
+		lot_id_sn,
+		res_id_sn,
+		pile_unit_weight,
+		req_amount,
+		CarryProvenanceLedger.SITE_RESERVED,
+		site_id,
+		_generation
+	)
+	if not bool(carry_plan.get("ok", false)):
+		var fail_reason: String = String(carry_plan.get("reason", "carry_preparation_failed"))
+		if fail_reason == "invalid_resource" and not carry_load._is_weight_consistent(res_id_sn, pile_unit_weight):
+			fail_reason = "resource_or_weight_mismatch"
+		return _prep_rejection(fail_reason, "carry_load")
+	if bool(carry_plan.get("replayed", false)):
+		return _prep_rejection("operation_conflict", "provenance_ledger")
+
+	var before_unit_claim: Dictionary = _read_transit_claim_for_unit_pure(uid)
+	var after_unit_claim: Dictionary = before_unit_claim.duplicate(true)
+	after_unit_claim[res_id_sn] = int(after_unit_claim.get(res_id_sn, 0)) + req_amount
+
+	var before_pending: Dictionary = (_pending_pickups[uid] as Dictionary).duplicate(true) if _pending_pickups.has(uid) else {}
+	var after_pending: Dictionary = {}
+	var before_in_transit: Dictionary = _read_in_transit_amounts_pure()
+	var after_in_transit: Dictionary = before_in_transit.duplicate(true)
+	after_in_transit[res_id_sn] = int(after_in_transit.get(res_id_sn, 0)) + req_amount
+
+	var before_accounting: Dictionary = _read_accounting_breakdown_pure(res_id_sn)
+	var after_reserved: int = int(before_accounting["reserved"]) - req_amount
+	var after_in_transit_amt: int = int(before_accounting["in_transit"]) + req_amount
+	var after_buffer: int = int(before_accounting["delivered_buffer"])
+	var after_consumed: int = int(before_accounting["consumed"])
+	var after_missing: int = int(before_accounting["uncovered_missing"])
+	var after_sum: int = after_reserved + after_in_transit_amt + after_buffer + after_consumed + after_missing
+
+	var after_ledger_lots: Dictionary = (carry_plan["ledger"] as Dictionary).get("lots", {}) as Dictionary
+	var after_site_res_lot_sum: int = 0
+	for l_key: Variant in after_ledger_lots.keys():
+		var l_dict: Dictionary = after_ledger_lots[l_key] as Dictionary
+		if (
+			StringName(l_dict.get("origin", &"")) == CarryProvenanceLedger.SITE_RESERVED
+			and StringName(l_dict.get("site_id", &"")) == site_id
+			and StringName(l_dict.get("resource_id", &"")) == res_id_sn
+		):
+			after_site_res_lot_sum += int(l_dict.get("quantity", 0))
+
+	if (
+		after_reserved < 0
+		or after_reserved != int((pile_plan["after"] as Dictionary)["site_total_reserved_resource"])
+		or after_in_transit_amt != int(after_in_transit[res_id_sn])
+		or after_sum != int(before_accounting["required"])
+		or after_site_res_lot_sum != int(after_unit_claim[res_id_sn])
+		or int((carry_plan["amounts"] as Dictionary).get(res_id_sn, -1)) != carry_load.get_amount(res_id_sn) + req_amount
+	):
+		return _prep_rejection("projected_invariant_violation", "accounting")
+
+	return {
+		"ok": true,
+		"reason": "",
+		"dependency": "",
+		"dry_run_only": true,
+		"commit_supported": false,
+		"operation_id": op_id_sn,
+		"lot_id": lot_id_sn,
+		"site_instance_id": get_instance_id(),
+		"site_id": site_id,
+		"generation": _generation,
+		"reservation_id": reservation_id,
+		"region_id": region_id,
+		"pile_id": pile_id_int,
+		"pile_instance_id": int(pile_plan["pile_instance_id"]),
+		"resource_id": res_id_sn,
+		"unit_weight": pile_unit_weight,
+		"requested_amount": req_amount,
+		"unit_instance_id": uid,
+		"unit_id": carry_load.get_provenance_unit_id(),
+		"revisions": current_revisions,
+		"lock_order": ["site", "inventory_storage", "carry_load"],
+		"pile_plan": pile_plan,
+		"carry_plan": {
+			"before_snapshot": carry_plan["base"],
+			"before_capacity": carry_plan["capacity"],
+			"before_weight": carry_load.get_current_weight(),
+			"after_weight": carry_load.get_current_weight() + req_amount * pile_unit_weight,
+			"after_amounts": carry_plan["amounts"],
+			"after_ledger": carry_plan["ledger"],
+			"new_lot": {
+				"lot_id": lot_id_sn,
+				"unit_id": carry_load.get_provenance_unit_id(),
+				"resource_id": res_id_sn,
+				"quantity": req_amount,
+				"origin": CarryProvenanceLedger.SITE_RESERVED,
+				"site_id": site_id,
+				"generation": _generation,
+			},
+			"raw_add_plan": carry_plan,
+		},
+		"claim_plan": {
+			"unit_instance_id": uid,
+			"before_transit_claim": before_unit_claim,
+			"after_transit_claim": after_unit_claim,
+			"before_pending_pickup": before_pending,
+			"after_pending_pickup": after_pending,
+			"before_site_in_transit": before_in_transit,
+			"after_site_in_transit": after_in_transit,
+			"before_accounting": before_accounting,
+			"after_accounting": {
+				"required": int(before_accounting["required"]),
+				"reserved": after_reserved,
+				"in_transit": after_in_transit_amt,
+				"delivered_buffer": after_buffer,
+				"consumed": after_consumed,
+				"uncovered_missing": after_missing,
+				"sum": after_sum,
+			},
+		},
+	}
+
+
+## Validates an uncommitted plan produced by prepare_reserved_withdrawal, rejecting any
+## stale or ABA revision, tampered payload, missing participant, or busy reentrancy.
+func validate_reserved_withdrawal_plan(plan: Variant, options: Dictionary = {}) -> Dictionary:
+	if not (plan is Dictionary):
+		return _prep_rejection("invalid_plan", "plan")
+	var p: Dictionary = plan as Dictionary
+	if not bool(p.get("ok", false)) or not bool(p.get("dry_run_only", false)):
+		return _prep_rejection("invalid_plan", "plan")
+	for required_key: String in [
+		"operation_id", "lot_id", "site_instance_id", "site_id", "generation",
+		"reservation_id", "pile_id", "pile_instance_id", "resource_id",
+		"unit_weight", "requested_amount", "unit_instance_id", "unit_id",
+		"revisions", "pile_plan", "carry_plan", "claim_plan"
+	]:
+		if not p.has(required_key):
+			return _prep_rejection("invalid_plan", "plan")
+	if int(p["site_instance_id"]) != get_instance_id():
+		return _prep_rejection("site_mismatch", "site")
+
+	if is_transaction_busy():
+		return _prep_rejection("busy", "site")
+	if _inventory != null and _inventory.is_transaction_busy():
+		return _prep_rejection("busy", "inventory")
+
+	var storage_source: SettlementStorageSource = _inventory.get_storage_source() if _inventory != null else null
+	if storage_source == null or not (storage_source is GroundPileManager):
+		return _prep_rejection("unsupported_storage_source", "storage")
+	var pile_manager: GroundPileManager = storage_source as GroundPileManager
+	if pile_manager.is_locked() or pile_manager.is_batch_active():
+		return _prep_rejection("busy", "storage")
+
+	var unit_obj: Object = instance_from_id(int(p["unit_instance_id"]))
+	if not (unit_obj is Unit) or not is_instance_valid(unit_obj):
+		return _prep_rejection("invalid_unit", "unit")
+	var typed_unit: Unit = unit_obj as Unit
+	var carry_load: UnitCarryLoad = typed_unit.get_carry_load()
+	if carry_load == null:
+		return _prep_rejection("invalid_carry_load", "carry_load")
+	if carry_load.is_transaction_busy():
+		return _prep_rejection("busy", "carry_load")
+
+	var pile: GroundResourcePile = pile_manager.get_pile_by_id(int(p["pile_id"]))
+	if pile == null or not is_instance_valid(pile) or pile.get_instance_id() != int(p["pile_instance_id"]):
+		return _prep_rejection("stale_revision", "pile")
+
+	if not (p["revisions"] is Dictionary):
+		return _prep_rejection("invalid_plan", "revisions")
+	var plan_revs: Dictionary = p["revisions"] as Dictionary
+	var live_revs := {
+		"site_revision": _transaction_revision,
+		"site_work_serial": _work_cycle_serial,
+		"inventory_revision": _inventory.get_transaction_revision(),
+		"storage_revision": pile_manager.get_transaction_revision(),
+		"pile_ledger_revision": pile_manager.get_pile_ledger_revision(),
+		"pile_revision": pile.get_transaction_revision(),
+		"carry_load_revision": carry_load.get_transaction_revision(),
+	}
+	if plan_revs != live_revs:
+		return _prep_rejection("stale_revision", "revisions")
+
+	var check_opts := {
+		"site_id": p["site_id"],
+		"generation": p["generation"],
+		"reservation_id": p["reservation_id"],
+		"unit_id": p["unit_id"],
+		"unit_weight": p["unit_weight"],
+		"expected_revisions": plan_revs,
+	}
+	if options.has("other_sites"):
+		check_opts["other_sites"] = options["other_sites"]
+
+	var recomputed: Dictionary = prepare_reserved_withdrawal(
+		typed_unit,
+		p["pile_id"],
+		p["resource_id"],
+		p["requested_amount"],
+		p["operation_id"],
+		p["lot_id"],
+		check_opts
+	)
+	if not bool(recomputed.get("ok", false)):
+		return recomputed
+	if recomputed != p:
+		return _prep_rejection("tampered_or_stale_plan", "plan")
+	return {"ok": true, "reason": "", "dependency": ""}
