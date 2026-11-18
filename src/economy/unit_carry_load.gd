@@ -6,6 +6,10 @@ extends RefCounted
 signal load_changed()
 signal capacity_changed()
 
+var _provenance: CarryProvenanceLedger = null
+var _provenance_unit: StringName = &""
+var _provenance_busy: bool = false
+
 var _base_capacity: int = 0
 var _capacity_modifiers: Dictionary = {}
 var _amounts: Dictionary = {}
@@ -146,6 +150,8 @@ func get_all_unit_weights() -> Dictionary:
 
 
 func restore_load_snapshot(amounts: Dictionary, unit_weights: Dictionary) -> void:
+	if _provenance != null:
+		return
 	_amounts = amounts.duplicate()
 	_unit_weights = unit_weights.duplicate()
 
@@ -186,6 +192,8 @@ func add_units(definition: ResourceDefinition, amount: int) -> bool:
 
 
 func add_resource(resource_id: StringName, unit_weight: int, amount: int) -> bool:
+	if _provenance != null:
+		return false
 	if amount <= 0:
 		return false
 	if not _is_valid_resource_input(resource_id, unit_weight):
@@ -204,6 +212,8 @@ func add_resource(resource_id: StringName, unit_weight: int, amount: int) -> boo
 
 
 func remove_units(resource_id: StringName, amount: int) -> int:
+	if _provenance != null:
+		return 0
 	if resource_id.is_empty() or amount <= 0:
 		return 0
 	var current: int = get_amount(resource_id)
@@ -223,6 +233,8 @@ func remove_units(resource_id: StringName, amount: int) -> int:
 
 
 func take_all() -> Dictionary:
+	if _provenance != null:
+		return {}
 	if _amounts.is_empty():
 		return {}
 	var taken: Dictionary = _amounts.duplicate()
@@ -240,3 +252,52 @@ func _is_weight_consistent(resource_id: StringName, unit_weight: int) -> bool:
 	if not _unit_weights.has(resource_id):
 		return true
 	return int(_unit_weights[resource_id]) == unit_weight
+
+
+## An owned ledger is created here and never exposed: one ledger per load.
+func enable_provenance(unit_id: StringName) -> bool:
+	if _provenance != null or _provenance_busy or String(unit_id).strip_edges().is_empty() or not _amounts.is_empty() or not _unit_weights.is_empty():
+		return false
+	_provenance_unit = unit_id
+	_provenance = CarryProvenanceLedger.new()
+	return true
+
+func provenance_snapshot() -> Dictionary:
+	if _provenance == null:
+		return {}
+	return {"unit_id": _provenance_unit, "amounts": _amounts.duplicate(true), "weights": _unit_weights.duplicate(true), "ledger": _provenance.snapshot_transaction_state()}
+
+func validate_provenance() -> bool:
+	return _provenance != null and _provenance.validate_aggregate(_provenance_unit, _amounts).ok
+
+## No signal or live state is modified during preparation; successful replay is a no-op.
+func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
+	if _provenance == null or _provenance_busy:
+		return {"ok": false, "reason": "unavailable"}
+	if resource_id.is_empty() or unit_weight <= 0 or amount <= 0 or not _is_weight_consistent(resource_id, unit_weight):
+		return {"ok": false, "reason": "invalid_resource"}
+	if not validate_provenance():
+		return {"ok": false, "reason": "unreconciled"}
+	var candidate := CarryProvenanceLedger.new()
+	if not candidate.restore_transaction_state(_provenance.snapshot_transaction_state()):
+		return {"ok": false, "reason": "invalid_ledger"}
+	var lot := {"lot_id": lot_id, "unit_id": _provenance_unit, "resource_id": resource_id, "quantity": amount, "origin": origin, "site_id": site_id, "generation": generation}
+	var result: Dictionary = candidate.register_lot(operation_id, lot)
+	if not result.ok or result.replayed:
+		return result
+	if amount > get_max_additional_for(resource_id, unit_weight):
+		return {"ok": false, "reason": "capacity"}
+	var next_amounts: Dictionary = _amounts.duplicate(true)
+	var existing: int = get_amount(resource_id)
+	if existing > CarryProvenanceLedger.MAX_INT - amount:
+		return {"ok": false, "reason": "overflow"}
+	next_amounts[resource_id] = existing + amount
+	if not candidate.validate_aggregate(_provenance_unit, next_amounts).ok:
+		return {"ok": false, "reason": "unreconciled"}
+	_provenance_busy = true
+	_amounts = next_amounts
+	_unit_weights[resource_id] = unit_weight
+	_provenance = candidate
+	_emit_load_changed()
+	_provenance_busy = false
+	return {"ok": true, "replayed": false}
