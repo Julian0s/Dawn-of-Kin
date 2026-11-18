@@ -9,6 +9,7 @@ signal capacity_changed()
 var _provenance: CarryProvenanceLedger = null
 var _provenance_unit: StringName = &""
 var _provenance_busy: bool = false
+var _provenance_applying: bool = false
 
 var _base_capacity: int = 0
 var _capacity_modifiers: Dictionary = {}
@@ -270,9 +271,10 @@ func provenance_snapshot() -> Dictionary:
 func validate_provenance() -> bool:
 	return _provenance != null and _provenance.validate_aggregate(_provenance_unit, _amounts).ok
 
-## No signal or live state is modified during preparation; successful replay is a no-op.
-func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
-	if _provenance == null or _provenance_busy:
+## Only the owning transaction invokes these internal helpers while holding the guard.
+## A plan is detached data: application replays validation and rejects stale or edited plans.
+func _prepare_provenance_add(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
+	if _provenance == null:
 		return {"ok": false, "reason": "unavailable"}
 	if resource_id.is_empty() or unit_weight <= 0 or amount <= 0 or not _is_weight_consistent(resource_id, unit_weight):
 		return {"ok": false, "reason": "invalid_resource"}
@@ -294,10 +296,46 @@ func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: St
 	next_amounts[resource_id] = existing + amount
 	if not candidate.validate_aggregate(_provenance_unit, next_amounts).ok:
 		return {"ok": false, "reason": "unreconciled"}
-	_provenance_busy = true
-	_amounts = next_amounts
-	_unit_weights[resource_id] = unit_weight
+	return {"ok": true, "replayed": false, "base": provenance_snapshot(), "capacity": get_effective_capacity(),
+		"operation": operation_id, "lot_id": lot_id, "resource": resource_id, "weight": unit_weight,
+		"amount": amount, "origin": origin, "site": site_id, "generation": generation,
+		"amounts": next_amounts, "ledger": candidate.snapshot_transaction_state()}
+
+func _apply_prepared_provenance_add(plan: Dictionary) -> bool:
+	# This is an internal operation; public callers use add_with_provenance().
+	if not _provenance_applying or not _provenance_busy or _provenance == null or not plan.get("ok", false) or plan.get("replayed", true):
+		return false
+	for key: String in ["base", "capacity", "operation", "lot_id", "resource", "weight", "amount", "origin", "site", "generation", "amounts", "ledger"]:
+		if not plan.has(key):
+			return false
+	if plan.base != provenance_snapshot() or plan.capacity != get_effective_capacity():
+		return false
+	# Recompute rather than trust mutable caller-supplied amounts or ledger state.
+	var checked := _prepare_provenance_add(plan.operation, plan.lot_id, plan.resource, plan.weight, plan.amount, plan.origin, plan.site, plan.generation)
+	if not checked.get("ok", false) or checked.get("replayed", true) or checked != plan:
+		return false
+	var candidate := CarryProvenanceLedger.new()
+	if not candidate.restore_transaction_state(plan.ledger):
+		return false
+	_amounts = plan.amounts.duplicate(true)
+	_unit_weights[plan.resource] = plan.weight
 	_provenance = candidate
+	return true
+
+func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
+	if _provenance == null or _provenance_busy:
+		return {"ok": false, "reason": "unavailable"}
+	_provenance_busy = true
+	var plan := _prepare_provenance_add(operation_id, lot_id, resource_id, unit_weight, amount, origin, site_id, generation)
+	if not plan.ok or plan.get("replayed", false):
+		_provenance_busy = false
+		return plan
+	_provenance_applying = true
+	var applied := _apply_prepared_provenance_add(plan)
+	_provenance_applying = false
+	if not applied:
+		_provenance_busy = false
+		return {"ok": false, "reason": "stale_plan"}
 	_emit_load_changed()
 	_provenance_busy = false
 	return {"ok": true, "replayed": false}
