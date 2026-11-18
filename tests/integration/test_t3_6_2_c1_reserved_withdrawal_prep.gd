@@ -167,6 +167,17 @@ func _copy_transit_claims(s: ConstructionSite) -> Dictionary:
 	return out
 
 
+func _seed_site_transit_claim(site: ConstructionSite, unit: Unit, res_id: StringName, amount: int) -> void:
+	var cl: UnitCarryLoad = unit.get_carry_load()
+	site._ensure_transit_listener(unit, cl)
+	var uid: int = unit.get_instance_id()
+	var claim: Dictionary = site._transit_claims[uid] as Dictionary
+	var amounts: Dictionary = claim["amounts"] as Dictionary
+	amounts[res_id] = int(amounts.get(res_id, 0)) + amount
+	site._clamp_unit_transit_claim(uid)
+	site._transaction_revision += 1
+
+
 class SignalSpy extends RefCounted:
 	var events: Array[String] = []
 	var _connections: Array[Dictionary] = []
@@ -457,11 +468,11 @@ func test_03_mixed_carry_load_multi_site_claims_and_unreconciled_detection() -> 
 	# 2. Seed valid existing SITE_RESERVED cargo for Site B (1 stone, weight 2) and Site A (1 wood, weight 1)
 	assert_true(manager.withdraw_reserved_from_pile(pile_s.pile_id, site_b.reservation_id, &"stone", 1))
 	assert_true(bool(load1.add_with_provenance(&"op_b_prev", &"lot_b_prev", &"stone", STONE_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_b.site_id, site_b.get_generation())["ok"]))
-	site_b.record_withdrawn_for_site(u1, &"stone", 1)
+	_seed_site_transit_claim(site_b, u1, &"stone", 1)
 
 	assert_true(manager.withdraw_reserved_from_pile(pile_w.pile_id, site_a.reservation_id, &"wood", 1))
 	assert_true(bool(load1.add_with_provenance(&"op_a_prev", &"lot_a_prev", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_a.site_id, site_a.get_generation())["ok"]))
-	site_a.record_withdrawn_for_site(u1, &"wood", 1)
+	_seed_site_transit_claim(site_a, u1, &"wood", 1)
 
 	# Current weight: 2*2 + 1*3 + 1*2 = 9 / 20 kg. Wood total = 3 (2 FREE, 1 SITE_A). Stone total = 1 (SITE_B).
 	assert_eq(load1.get_current_weight(), 9)
@@ -500,7 +511,7 @@ func test_03_mixed_carry_load_multi_site_claims_and_unreconciled_detection() -> 
 	stone_source.configure(&"src_s", STONE_BASE.duplicate(), 5, 5, 2)
 	assert_true(bool(stone_source.transfer_to_carry_load_with_provenance(load2, &"op_f_s", &"lot_f_s", 1)["ok"]))
 	assert_true(manager.withdraw_reserved_from_pile(pile_s.pile_id, site_b.reservation_id, &"stone", 1))
-	site_b.record_withdrawn_for_site(u2, &"stone", 1)
+	_seed_site_transit_claim(site_b, u2, &"stone", 1)
 	assert_eq(site_b.get_transit_claim_for_unit(u2), {&"stone": 1})
 	var conflict_res: Dictionary = site_a.prepare_reserved_withdrawal(u2, pile_w.pile_id, &"wood", 1, &"op_c1", &"lot_c1")
 	assert_false(bool(conflict_res["ok"]))
@@ -518,7 +529,7 @@ func test_03_mixed_carry_load_multi_site_claims_and_unreconciled_detection() -> 
 	var load3: UnitCarryLoad = u3.get_carry_load()
 	assert_true(bool(wood_source.transfer_to_carry_load_with_provenance(load3, &"op_f_w3", &"lot_f_w3", 1)["ok"]))
 	assert_true(manager.withdraw_reserved_from_pile(pile_w.pile_id, site_a.reservation_id, &"wood", 1))
-	site_a.record_withdrawn_for_site(u3, &"wood", 1)
+	_seed_site_transit_claim(site_a, u3, &"wood", 1)
 	assert_eq(site_a.get_transit_claim_for_unit(u3), {&"wood": 1})
 	var self_desync_res: Dictionary = site_a.prepare_reserved_withdrawal(u3, pile_w.pile_id, &"wood", 1, &"op_c3", &"lot_c3")
 	assert_false(bool(self_desync_res["ok"]))
@@ -918,7 +929,7 @@ func test_09_claim_proof_is_scoped_to_site_identity_region_and_world() -> void:
 	assert_true(manager.withdraw_reserved_from_pile(pile.pile_id, peer.reservation_id, &"wood", 1))
 	assert_true(load.add_with_provenance(&"peer_op", &"peer_lot", &"wood", WOOD_BASE.unit_weight, 1,
 		CarryProvenanceLedger.SITE_RESERVED, peer.site_id, peer.get_generation()).ok)
-	peer.record_withdrawn_for_site(unit, &"wood", 1)
+	_seed_site_transit_claim(peer, unit, &"wood", 1)
 	var spy := SignalSpy.new()
 	spy.watch_all(manager, fx.inventory, [site, peer], [load])
 	var before := _snapshot_all(manager, fx.inventory, [site, peer], [load])
