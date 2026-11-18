@@ -183,6 +183,78 @@ static func inspect_domain_for_preparation(site: ConstructionSite, storage: Grou
 	return {"ok": true}
 
 
+## Pure read-only domain inspection for camp-level preparation when no specific
+## ConstructionSite is required as the entry point. Never creates a RegionalAuthority,
+## never writes world metadata, and never consumes a serial or receipt.
+static func inspect_camp_domain_for_preparation(
+	world: World3D,
+	region_id: StringName,
+	inventory: SettlementInventory,
+	storage: GroundPileManager,
+	operation_id: StringName,
+	tree: SceneTree
+) -> Dictionary:
+	if world == null or not CarryProvenanceLedger._id(region_id) or inventory == null or storage == null or tree == null:
+		return _failure("invalid_domain", "coordinator")
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	var authority: RegionalAuthority = domains.get(region_id) as RegionalAuthority
+	var domain_check := _inspect_camp_economic_domain(world, region_id, inventory, storage, authority, domains, tree)
+	if not bool(domain_check.get("ok", false)):
+		return domain_check
+	if authority != null:
+		if authority.is_executing:
+			return _failure("busy", "coordinator")
+		if authority.receipts.has(operation_id):
+			return _failure("operation_conflict", "receipt")
+	return {"ok": true}
+
+
+static func _inspect_camp_economic_domain(
+	world: World3D,
+	region: StringName,
+	inventory: SettlementInventory,
+	storage: GroundPileManager,
+	authority: RegionalAuthority,
+	domains: Dictionary,
+	tree: SceneTree
+) -> Dictionary:
+	if authority != null and authority.storage.get_ref() != storage:
+		return _failure("ambiguous_domain", "coordinator")
+	var bound_world: World3D = storage._withdrawal_world.get_ref() as World3D if storage._withdrawal_world != null else null
+	if bound_world != null:
+		if bound_world != world:
+			return _failure("world_mismatch", "storage")
+		if storage._withdrawal_region != region:
+			return _failure("region_mismatch", "storage")
+	if not is_instance_valid(storage._piles_root) or not storage._piles_root.is_inside_tree():
+		return _failure("invalid_piles_root", "storage")
+	if storage._piles_root.get_world_3d() != world:
+		return _failure("world_mismatch", "storage")
+
+	for other_region: Variant in domains.keys():
+		if StringName(other_region) == region:
+			continue
+		var other_auth: RegionalAuthority = domains.get(other_region) as RegionalAuthority
+		if other_auth != null and other_auth.storage.get_ref() == storage:
+			return _failure("region_mismatch", "coordinator")
+
+	for node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		var peer := node as ConstructionSite
+		if peer == null or not peer.is_valid():
+			continue
+		var peer_inventory := peer.get_inventory()
+		var peer_storage := peer_inventory.get_storage_source() if peer_inventory != null else null
+		var same_domain: bool = peer.region_id == region and peer.get_world_3d() == world
+		if same_domain != (peer_storage == storage) or (same_domain and peer_inventory != inventory):
+			if peer_storage == storage and peer.get_world_3d() != world:
+				return _failure("world_mismatch", "coordinator")
+			if peer_storage == storage and peer.region_id != region:
+				return _failure("region_mismatch", "coordinator")
+			return _failure("ambiguous_domain", "coordinator")
+
+	return {"ok": true}
+
+
 static func _matches_economic_domain(site: ConstructionSite, world: World3D, storage: GroundPileManager, authority: RegionalAuthority) -> bool:
 	var region := site.region_id
 	if authority != null and authority.storage.get_ref() != storage:
