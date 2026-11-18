@@ -57,24 +57,8 @@ func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundP
 	var region: StringName = site.region_id
 	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
 	var authority: RegionalAuthority = domains.get(region) as RegionalAuthority
-	if authority != null and authority.storage.get_ref() != storage:
+	if not _matches_economic_domain(site, world, storage, authority):
 		return null
-	var bound_world: World3D = storage._withdrawal_world.get_ref() as World3D if storage._withdrawal_world != null else null
-	if bound_world != null and (bound_world != world or storage._withdrawal_region != region):
-		return null
-	if not is_instance_valid(storage._piles_root) or not storage._piles_root.is_inside_tree() or storage._piles_root.get_world_3d() != world:
-		return null
-
-	# Refuse conflicting live site bindings before assigning an authority.
-	for node: Node in site.get_tree().get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
-		var peer := node as ConstructionSite
-		if peer == null or not peer.is_valid():
-			continue
-		var peer_inventory := peer.get_inventory()
-		var peer_storage := peer_inventory.get_storage_source()
-		var same_domain: bool = peer.region_id == region and peer.get_world_3d() == world
-		if same_domain != (peer_storage == storage) or (same_domain and peer_inventory != site.get_inventory()):
-			return null
 
 	if authority == null:
 		authority = RegionalAuthority.new()
@@ -86,6 +70,46 @@ func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundP
 	_last_world = weakref(world)
 	_last_region = region
 	return authority
+
+
+## Preconditions: a live site with a world and a physical storage source.
+## Reading the domain neither establishes an authority nor reserves an ID.
+static func inspect_domain_for_preparation(site: ConstructionSite, storage: GroundPileManager, operation_id: StringName) -> Dictionary:
+	var world := site.get_world_3d()
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	var authority: RegionalAuthority = domains.get(site.region_id) as RegionalAuthority
+	if not _matches_economic_domain(site, world, storage, authority):
+		return _failure("ambiguous_domain", "coordinator")
+	if authority != null:
+		if authority.is_executing:
+			return _failure("busy", "coordinator")
+		if authority.receipts.has(operation_id):
+			return _failure("operation_conflict", "receipt")
+	return {"ok": true}
+
+
+static func _matches_economic_domain(site: ConstructionSite, world: World3D, storage: GroundPileManager, authority: RegionalAuthority) -> bool:
+	var region := site.region_id
+	if authority != null and authority.storage.get_ref() != storage:
+		return false
+	var bound_world: World3D = storage._withdrawal_world.get_ref() as World3D if storage._withdrawal_world != null else null
+	if bound_world != null and (bound_world != world or storage._withdrawal_region != region):
+		return false
+	if not is_instance_valid(storage._piles_root) or not storage._piles_root.is_inside_tree() or storage._piles_root.get_world_3d() != world:
+		return false
+
+	# Refuse conflicting live site bindings before assigning an authority.
+	for node: Node in site.get_tree().get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		var peer := node as ConstructionSite
+		if peer == null or not peer.is_valid():
+			continue
+		var peer_inventory := peer.get_inventory()
+		var peer_storage := peer_inventory.get_storage_source()
+		var same_domain: bool = peer.region_id == region and peer.get_world_3d() == world
+		if same_domain != (peer_storage == storage) or (same_domain and peer_inventory != site.get_inventory()):
+			return false
+
+	return true
 
 
 func execute_reserved_withdrawal(
