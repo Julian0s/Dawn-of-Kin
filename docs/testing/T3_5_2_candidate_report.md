@@ -1,6 +1,6 @@
 # T3.5.2 — Relatório da candidata
 
-Base: `56d8e97fc0bac0bd999fb4734b6eb12bdcd74ba9`; branch `feat/t3-5-2-building-inspector`. A candidata aguarda auditoria independente e testes manuais do proprietário.
+Base: `56d8e97fc0bac0bd999fb4734b6eb12bdcd74ba9`; branch `feat/t3-5-2-building-inspector`. O proprietário declarou 7/7 testes manuais aprovados e informou auditoria estática independente favorável; consulte o [registro de aceite](T3_5_2_closeout_ACCEPTANCE.md).
 
 ## Implementação e contratos
 
@@ -18,6 +18,6 @@ Regressões isoladas: T3.3 logística 11/11 testes e 225 asserções; T3.5.1 3/3
 
 `tools/validate.ps1`: 122 scripts validados e inicialização headless aprovada, zero erros e avisos. `tools/run_tests.ps1 -Segmented`: **41 suítes, 284/284 testes, 12.922 asserções**, zero falhas ou erros de suíte; `Discovered=41`, `ExecutedUnique=41`, `Duplicates=0`, `Missing=0`.
 
-Inspeção gráfica da candidata final: pendente. Foi iniciada uma sessão gráfica, porém a tela estava ocupada por outra atividade e o painel não foi observado; a sessão também antecede os últimos ajustes e não valida o código final. Nenhuma aprovação visual ou manual é alegada. Ver [protocolo manual](T3_5_2_manual_test_protocol.md).
+O proprietário declarou os sete testes manuais e visuais aprovados em 17/11/2026, sem observações; veja o [protocolo manual](T3_5_2_manual_test_protocol.md). A auditoria estática independente favorável foi informada pelo proprietário. O Codex não realizou essas verificações manuais nem inspeção gráfica independente da candidata final: a sessão gráfica anterior aos últimos ajustes não valida o código final. Os testes automatizados acima foram executados anteriormente e não foram repetidos no encerramento documental.
 
 Código: `e32f0d51e801578c89cbbfe531f55d386ae9a472` (`src/ui/building_inspector_panel.gd`, UID, integração em `src/main/main.gd` e isolamento em `src/buildings/placement_test_overlay.gd`). Testes: `eae2b3ef8f8cad30c6557c8b1518b07db17d739d` (nova suíte, UID e adaptação da regressão T3.3). O commit documental é identificável pelo histórico Git; este documento não tenta registrar o próprio hash.
