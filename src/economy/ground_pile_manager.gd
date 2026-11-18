@@ -23,6 +23,8 @@ var _last_decay_time_sec: float = 0.0
 var _is_mutating: bool = false
 var _is_notifying: bool = false
 var _is_preparing_withdrawal: bool = false
+var _withdrawal_world: WeakRef
+var _withdrawal_region: StringName
 var _visual_cache: Dictionary = {"meshes": {}, "materials": {}}
 var _ledger: PileReservationLedger = PileReservationLedger.new()
 var _pending_decay_reservation_losses: Array[Dictionary] = []
@@ -43,6 +45,8 @@ func configure(
 	p_piles_root: Node3D,
 	p_time_provider: WorldTimeProvider = null
 ) -> void:
+	if _is_preparing_withdrawal:
+		return
 	set_definitions(p_definitions)
 	_camp_zone = p_camp_zone
 	_piles_root = p_piles_root
@@ -51,6 +55,8 @@ func configure(
 
 
 func set_definitions(p_definitions: Dictionary) -> void:
+	if _is_preparing_withdrawal:
+		return
 	_definitions.clear()
 	for raw_key: Variant in p_definitions.keys():
 		var def_var: Variant = p_definitions[raw_key]
@@ -62,6 +68,8 @@ func set_definitions(p_definitions: Dictionary) -> void:
 
 
 func set_camp_zone(p_camp_zone: CampStorageZone) -> void:
+	if _is_preparing_withdrawal:
+		return
 	_camp_zone = p_camp_zone
 	_transaction_revision += 1
 
@@ -71,11 +79,15 @@ func get_camp_zone() -> CampStorageZone:
 
 
 func set_piles_root(p_piles_root: Node3D) -> void:
+	if _is_preparing_withdrawal:
+		return
 	_piles_root = p_piles_root
 	_transaction_revision += 1
 
 
 func set_time_provider(p_time_provider: WorldTimeProvider) -> void:
+	if _is_preparing_withdrawal:
+		return
 	_time_provider = p_time_provider
 	if _time_provider != null:
 		var now: float = _time_provider.get_world_time_sec()
@@ -93,6 +105,16 @@ func is_locked() -> bool:
 	return _is_mutating or _is_notifying or _is_preparing_withdrawal
 
 
+func begin_batch() -> void:
+	if not _is_preparing_withdrawal:
+		super.begin_batch()
+
+
+func end_batch(discard_dirty: bool = false) -> void:
+	if not _is_preparing_withdrawal:
+		super.end_batch(discard_dirty)
+
+
 func get_pile_ledger_revision() -> int:
 	return _ledger.get_transaction_revision()
 
@@ -107,6 +129,8 @@ func get_resource_definition_pure(resource_id: StringName) -> ResourceDefinition
 
 
 func cleanup() -> void:
+	if _is_preparing_withdrawal:
+		return
 	for pile: GroundResourcePile in _piles:
 		if is_instance_valid(pile):
 			if pile.get_parent() != null:
@@ -767,11 +791,13 @@ func _instantiate_pile(
 		if not (custom_result is GroundResourcePile):
 			return null
 		var override_pile: GroundResourcePile = custom_result as GroundResourcePile
+		override_pile._storage_owner = weakref(self)
 		if override_pile.get_parent() == null:
 			_piles_root.add_child(override_pile)
 		return override_pile
 
 	var pile: GroundResourcePile = GroundResourcePile.new()
+	pile._storage_owner = weakref(self)
 	_piles_root.add_child(pile)
 	pile.configure_initial(
 		p_pile_id,
@@ -1260,7 +1286,7 @@ func _apply_prepared_pile_withdrawal_silent(pile_plan: Dictionary, checkpoint: D
 
 	checkpoint["mutated"] = true
 	var next_amount: int = int((pile_plan["after"] as Dictionary)["pile_amount"])
-	pile.apply_state(
+	pile._apply_state_without_visual(
 		next_amount,
 		float((pile_plan["before"] as Dictionary)["pile_elapsed_exposure_sec"]),
 		float((pile_plan["before"] as Dictionary)["pile_decay_accumulator_sec"])
@@ -1279,7 +1305,7 @@ func _restore_pile_withdrawal_checkpoint_silent(checkpoint: Dictionary) -> void:
 		_ledger.restore_state(ledger_state as Dictionary)
 	var pile: GroundResourcePile = checkpoint.get("pile") as GroundResourcePile
 	if pile != null and is_instance_valid(pile):
-		pile.apply_state(
+		pile._apply_state_without_visual(
 			int(checkpoint.get("amount", 0)),
 			float(checkpoint.get("elapsed", 0.0)),
 			float(checkpoint.get("accum", 0.0))

@@ -157,7 +157,7 @@ func _complete_queued_site(uid: int) -> void:
 
 
 func _valid_completion_site(site: ConstructionSite) -> bool:
-	return is_instance_valid(site) and _sites.has(site) and site.is_inside_tree() and site.get_parent() == _sites_root and site.region_id == _region_id and site.is_completion_ready()
+	return is_instance_valid(site) and _sites.has(site) and site.is_inside_tree() and site.get_parent() == _sites_root and site.region_id == _region_id and not site._is_preparing_or_transacting and site.is_completion_ready()
 
 
 func complete_site_transaction(site: ConstructionSite, building_instance: BuildingInstance = null) -> bool:

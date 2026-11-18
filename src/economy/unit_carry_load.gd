@@ -10,6 +10,7 @@ var _provenance: CarryProvenanceLedger = null
 var _provenance_unit: StringName = &""
 var _transaction_revision: int = 0
 var _provenance_busy: bool = false
+var _coordinator_transaction_locked: bool = false
 var _provenance_applying: bool = false
 
 var _base_capacity: int = 0
@@ -26,10 +27,14 @@ func _init(initial_base_capacity: int = 20) -> void:
 
 
 func begin_batch() -> void:
+	if _coordinator_transaction_locked:
+		return
 	_batch_depth += 1
 
 
 func end_batch(discard_load_dirty: bool = false) -> void:
+	if _coordinator_transaction_locked:
+		return
 	if _batch_depth <= 0:
 		return
 	_batch_depth -= 1
@@ -65,6 +70,8 @@ func get_base_capacity() -> int:
 
 
 func set_base_capacity(new_capacity: int) -> bool:
+	if _coordinator_transaction_locked:
+		return false
 	if new_capacity < 0:
 		return false
 	if _base_capacity == new_capacity:
@@ -75,6 +82,8 @@ func set_base_capacity(new_capacity: int) -> bool:
 
 
 func set_capacity_modifier(modifier_id: StringName, delta: int) -> bool:
+	if _coordinator_transaction_locked:
+		return false
 	if modifier_id.is_empty():
 		return false
 	if delta == 0:
@@ -87,6 +96,8 @@ func set_capacity_modifier(modifier_id: StringName, delta: int) -> bool:
 
 
 func remove_capacity_modifier(modifier_id: StringName) -> bool:
+	if _coordinator_transaction_locked:
+		return false
 	if modifier_id.is_empty() or not _capacity_modifiers.has(modifier_id):
 		return false
 	_capacity_modifiers.erase(modifier_id)

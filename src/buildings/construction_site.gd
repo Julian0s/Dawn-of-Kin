@@ -48,10 +48,22 @@ signal workers_changed(site: ConstructionSite)
 signal supply_completed(site: ConstructionSite)
 signal reservation_lost(site: ConstructionSite, resource_id: StringName, lost_amount: int)
 
-var site_id: StringName = &""
-var reservation_id: StringName = &""
-var region_id: StringName = &"default"
-var definition: BuildingDefinition = null
+var site_id: StringName = &"":
+	set(value):
+		if not _is_preparing_or_transacting:
+			site_id = value
+var reservation_id: StringName = &"":
+	set(value):
+		if not _is_preparing_or_transacting:
+			reservation_id = value
+var region_id: StringName = &"default":
+	set(value):
+		if not _is_preparing_or_transacting:
+			region_id = value
+var definition: BuildingDefinition = null:
+	set(value):
+		if not _is_preparing_or_transacting:
+			definition = value
 
 var _inventory: SettlementInventory = null
 var _resource_defs: Dictionary = {}
@@ -212,6 +224,8 @@ func get_completion_diagnostic() -> Dictionary:
 
 
 func record_completion_failure(reason: String) -> void:
+	if _is_preparing_or_transacting:
+		return
 	_transaction_revision += 1
 	_completion_retry_count += 1
 	_last_completion_error = reason
@@ -223,6 +237,8 @@ func record_completion_failure(reason: String) -> void:
 
 
 func commit_completed_building(building: BuildingInstance) -> void:
+	if _is_preparing_or_transacting:
+		return
 	_transaction_revision += 1
 	_site_state = SiteState.COMPLETED
 	_assembly_substate = AssemblySubstate.NONE
@@ -356,6 +372,8 @@ func get_assigned_builder_slot_position(unit: Unit) -> Dictionary:
 
 
 func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
+	if _is_preparing_or_transacting:
+		return _work_rejection("duplicate_cycle_contribution")
 	# Nine ordered guards; no progress, economic state or signals change on rejection.
 	if _site_state == SiteState.COMPLETION_FAILED_RETRYABLE:
 		return _work_rejection("completion_pending_retry")
@@ -652,12 +670,15 @@ func authorize_manual_complement(
 	if intent == null or not is_instance_valid(intent) or not intent.is_structurally_valid_for(self):
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "unauthorized_or_missing_intent"}
 
+	if _is_preparing_or_transacting:
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
+
 	# One-shot consumption occurs immediately after structural intent validation,
 	# including when downstream preconditions or free stock validation fail.
 	intent.consumed = true
 	_transaction_revision += 1
 
-	if _is_complementing or _is_preparing_or_transacting:
+	if _is_complementing:
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
 
 	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
@@ -1509,6 +1530,8 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 
 
 func _prune_stale_state() -> void:
+	if _is_preparing_or_transacting:
+		return
 	var dead_pending: Array[int] = []
 	for uid_key: Variant in _pending_pickups.keys():
 		var uid: int = int(uid_key)

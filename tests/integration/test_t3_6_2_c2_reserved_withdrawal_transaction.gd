@@ -23,12 +23,14 @@ func after_each() -> void:
 	_managers_to_cleanup.clear()
 
 
-func _make_fixture(max_pile_amount: int = 0, parent: Node = null) -> Dictionary:
-	var host := Node3D.new()
+func _make_fixture(max_pile_amount: int = 0, parent: Node = null, region: StringName = &"c2_region") -> Dictionary:
 	if parent == null:
-		add_test_child(host)
-	else:
-		parent.add_child(host)
+		var viewport := SubViewport.new()
+		viewport.own_world_3d = true
+		add_test_child(viewport)
+		parent = viewport
+	var host := Node3D.new()
+	parent.add_child(host)
 
 	var zone := CampStorageZone.new()
 	zone.zone_id = &"c2_test_camp"
@@ -60,7 +62,7 @@ func _make_fixture(max_pile_amount: int = 0, parent: Node = null) -> Dictionary:
 
 	var cm := ConstructionManager.new()
 	host.add_child(cm)
-	cm.configure(sites_root, inventory, defs, zone, null, &"c2_region")
+	cm.configure(sites_root, inventory, defs, zone, null, region)
 
 	return {
 		"host": host,
@@ -598,7 +600,7 @@ func test_15_16_17_18_19_23_fault_injection_rollbacks_and_retry_after_abort() ->
 		assert_eq(int(res["withdrawn"]), 0)
 		assert_eq(spy.events, [], "Aborted transaction must emit zero signals at stage " + stage)
 		assert_false(coord.has_receipt(&"op_retryable"))
-		assert_false(coord._committed_lots.has(&"lot_retryable"))
+		assert_false(coord._last_authority().committed_lots.has(&"lot_retryable"))
 		assert_true(is_instance_valid(pile_w), "Exhausted pile node must stay alive & valid on rollback at " + stage)
 		assert_true(pile_w.is_inside_tree())
 		assert_eq(manager.get_pile_by_id(pile_w.pile_id), pile_w)
@@ -1094,3 +1096,270 @@ func test_30_legacy_flow_without_provenance_remains_intact() -> void:
 	assert_true(legacy_load.is_empty())
 	assert_true(site.is_fully_supplied())
 	assert_true(site.verify_accounting_invariant())
+
+func _make_r1_withdrawal(fx: Dictionary, suffix: String, position: Vector3, slot_index: int) -> Dictionary:
+	var manager: GroundPileManager = fx.manager
+	var zone: CampStorageZone = fx.zone
+	var cm: ConstructionManager = fx.cm
+	var pile := manager.try_create_pile_at(&"wood", 4, zone.get_candidate_slots()[slot_index])
+	var site: ConstructionSite = cm.try_create_site_from_placement(
+		_make_building_def(StringName("r1_" + suffix), {&"wood": 4}), position).site
+	var unit := _spawn_unit(fx.host, suffix, StringName(suffix), 20)
+	_assign_transporter_and_claim(site, unit, pile, &"wood", 2)
+	return {"site": site, "pile": pile, "unit": unit, "load": unit.get_carry_load(), "pile_id": pile.pile_id}
+
+
+func _r1_execute(coord: ReservedWithdrawalCoordinator, request: Dictionary, op: StringName, lot: StringName) -> Dictionary:
+	return coord.execute_reserved_withdrawal(request.site, request.unit, request.pile_id, &"wood", 2, op, lot)
+
+
+func test_r1_capacity_during_application_and_after_rollback() -> void:
+	var fx := _make_fixture()
+	var request := _make_r1_withdrawal(fx, "Apply", Vector3(8, 0, 8), 0)
+	var load: UnitCarryLoad = request.load
+	load.set_capacity_modifier(&"existing", 3)
+	var capacity_calls: Array = []
+	var attempts: Array = []
+	var on_capacity := func() -> void: capacity_calls.append(true)
+	load.capacity_changed.connect(on_capacity)
+	var snapshot := _snapshot_all(fx.manager, fx.inventory, [request.site], [load])
+	var rev := load.get_transaction_revision()
+	var coord := ReservedWithdrawalCoordinator.new()
+	coord.fault_injection_hook = func(stage: String, _ctx: Dictionary) -> bool:
+		if stage != "after_pile_deduction":
+			return true
+		attempts.append(load.set_base_capacity(9))
+		attempts.append(load.set_capacity_modifier(&"existing", 8))
+		attempts.append(load.remove_capacity_modifier(&"existing"))
+		return false
+	var failed := _r1_execute(coord, request, &"r1_apply", &"r1_apply_lot")
+	assert_eq(failed.reason, "aborted_after_pile_deduction")
+	assert_eq(attempts, [false, false, false])
+	assert_eq(load.get_base_capacity(), 20)
+	assert_eq(load.get_effective_capacity(), 23)
+	assert_eq(load.get_transaction_revision(), rev)
+	assert_eq(capacity_calls, [])
+	assert_false(coord.has_receipt(&"r1_apply"))
+	# Rollback advances storage revisions, so compare the physical and ledger views separately.
+	assert_eq(fx.manager.get_physical_amount(&"wood"), 4)
+	assert_eq(fx.inventory.get_reservation_amount(request.site.reservation_id, &"wood"), 4)
+	assert_eq(fx.manager._ledger.snapshot_state(), snapshot.ledger)
+	assert_true(load.is_empty())
+	assert_eq(request.site.get_transit_claim_for_unit(request.unit), {})
+	assert_true(load.set_base_capacity(24))
+	assert_eq(capacity_calls.size(), 1)
+	load.capacity_changed.disconnect(on_capacity)
+	coord.fault_injection_hook = Callable()
+
+
+func test_r1_capacity_and_second_coordinator_during_commit_signals() -> void:
+	var fx := _make_fixture()
+	var request := _make_r1_withdrawal(fx, "Signals", Vector3(8, 0, 8), 0)
+	var load: UnitCarryLoad = request.load
+	var site: ConstructionSite = request.site
+	load.set_capacity_modifier(&"existing", 3)
+	var owner := ReservedWithdrawalCoordinator.new()
+	var second := ReservedWithdrawalCoordinator.new()
+	var views: Dictionary = {}
+	var capacity_calls: Array = []
+	var on_capacity := func() -> void: capacity_calls.append(true)
+	load.capacity_changed.connect(on_capacity)
+	var probe := func(label: String, mutate: Callable) -> void:
+		var rev := load.get_transaction_revision()
+		var outcome: Variant = mutate.call()
+		var nested := _r1_execute(second, request, &"r1_nested", &"r1_nested_lot")
+		views[label] = {
+			"outcome": outcome, "revision_delta": load.get_transaction_revision() - rev,
+			"revisions": [load.get_transaction_revision(), fx.manager.get_transaction_revision(),
+				fx.inventory.get_transaction_revision(), site.get_transaction_revision()],
+			"modifiers": load._capacity_modifiers.duplicate(),
+			"capacity": load.get_effective_capacity(), "nested": nested.reason,
+			"nested_dependency": nested.dependency, "physical": fx.manager.get_physical_amount(&"wood"),
+			"reservation": fx.inventory.get_reservation_amount(site.reservation_id, &"wood"),
+			"load": load.provenance_snapshot(), "weight": load.get_current_weight(),
+			"claim": site.get_transit_claim_for_unit(request.unit),
+			"receipt": owner.has_receipt(&"r1_signals"),
+		}
+	var reservation_cb := func() -> void: probe.call("reservations", func() -> bool: return load.set_base_capacity(30))
+	var storage_cb := func() -> void: probe.call("storage", func() -> bool: return load.set_capacity_modifier(&"added", 5))
+	var inventory_cb := func() -> void: probe.call("inventory", func() -> bool: return load.set_base_capacity(load.get_base_capacity()))
+	var load_cb := func() -> void: probe.call("load", func() -> bool: return load.remove_capacity_modifier(&"existing"))
+	var site_cb := func(_site: ConstructionSite) -> void: probe.call("site", func() -> bool: return load.set_capacity_modifier(&"added", 7))
+	fx.manager.reservations_changed.connect(reservation_cb)
+	fx.manager.storage_changed.connect(storage_cb)
+	fx.inventory.inventory_changed.connect(inventory_cb)
+	load.load_changed.connect(load_cb)
+	site.state_changed.connect(site_cb)
+	var result := _r1_execute(owner, request, &"r1_signals", &"r1_signals_lot")
+	fx.manager.reservations_changed.disconnect(reservation_cb)
+	fx.manager.storage_changed.disconnect(storage_cb)
+	fx.inventory.inventory_changed.disconnect(inventory_cb)
+	load.load_changed.disconnect(load_cb)
+	site.state_changed.disconnect(site_cb)
+	assert_true(result.ok)
+	assert_eq(views.size(), 5)
+	for label: String in views:
+		var view: Dictionary = views[label]
+		assert_false(view.outcome, label)
+		assert_eq(view.revision_delta, 0, label)
+		assert_eq(view.capacity, 23, label)
+		assert_eq(view.modifiers, {&"existing": 3}, label)
+		assert_eq(view.revisions, [load.get_transaction_revision(), fx.manager.get_transaction_revision(),
+			fx.inventory.get_transaction_revision(), site.get_transaction_revision()], label)
+		assert_eq(view.nested, "busy", label)
+		assert_eq(view.nested_dependency, "coordinator", label)
+		assert_eq(view.physical + int(view.load.amounts[&"wood"]), 4, label)
+		assert_eq(view.reservation, 2, label)
+		assert_eq(view.load, load.provenance_snapshot(), label)
+		assert_eq(view.weight, 2 * WOOD_BASE.unit_weight, label)
+		assert_eq(view.claim, {&"wood": 2}, label)
+		assert_true(view.receipt, label)
+	assert_eq(capacity_calls, [])
+	assert_true(load.set_base_capacity(26))
+	assert_eq(capacity_calls.size(), 1)
+	load.capacity_changed.disconnect(on_capacity)
+
+
+func test_r1_regional_replay_and_identifier_conflicts_across_handles() -> void:
+	var fx := _make_fixture()
+	var a := _make_r1_withdrawal(fx, "First", Vector3(8, 0, 8), 0)
+	var b := _make_r1_withdrawal(fx, "Second", Vector3(14, 0, 8), 1)
+	var owner := ReservedWithdrawalCoordinator.new()
+	var second := ReservedWithdrawalCoordinator.new()
+	var committed := _r1_execute(owner, a, &"r1_op", &"r1_lot")
+	assert_true(committed.ok)
+	var before := _snapshot_all(fx.manager, fx.inventory, [a.site, b.site], [a.load, b.load])
+	var replay := _r1_execute(second, a, &"r1_op", &"r1_lot")
+	assert_true(replay.get("ok", false))
+	assert_true(replay.get("replayed", false))
+	assert_eq(replay.get("withdrawn"), 0)
+	assert_eq(replay.get("committed_amount"), 2)
+	assert_eq(replay.get("receipt"), committed.get("receipt"))
+	owner = null
+	second = null
+	var replacement := ReservedWithdrawalCoordinator.new()
+	assert_true(_r1_execute(replacement, a, &"r1_op", &"r1_lot").get("replayed", false))
+	assert_eq(_r1_execute(replacement, b, &"r1_op", &"r1_other_lot").reason, "operation_conflict")
+	assert_eq(_r1_execute(replacement, b, &"r1_other_op", &"r1_lot").reason, "duplicate_lot")
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [a.site, b.site], [a.load, b.load]), before)
+
+
+func test_r1_regions_worlds_and_domain_lifetime() -> void:
+	var fx := _make_fixture()
+	var request := _make_r1_withdrawal(fx, "Local", Vector3(8, 0, 8), 0)
+	var viewport: SubViewport = fx.host.get_viewport()
+	var coord := ReservedWithdrawalCoordinator.new()
+	var remote_view := SubViewport.new()
+	remote_view.own_world_3d = true
+	add_test_child(remote_view)
+	var remote := _make_fixture(0, remote_view)
+	var remote_request := _make_r1_withdrawal(remote, "Local", Vector3(8, 0, 8), 0)
+	var region := _make_fixture(0, viewport, &"other_c2_region")
+	region.host.position = Vector3(40, 0, 0)
+	var region_request := _make_r1_withdrawal(region, "Local", Vector3(48, 0, 8), 0)
+
+	var site: ConstructionSite = request.site
+	var region_site: ConstructionSite = region_request.site
+	var local_before := _snapshot_all(fx.manager, fx.inventory, [site], [request.load])
+	var home := site.region_id
+	site.region_id = &" "
+	assert_eq(_r1_execute(coord, request, &"shared_id", &"shared_lot").reason, "invalid_domain")
+	site.region_id = home
+	var region_home := region_site.region_id
+	region_site.region_id = home
+	assert_eq(_r1_execute(coord, request, &"shared_id", &"shared_lot").reason, "ambiguous_domain")
+	region_site.region_id = region_home
+	assert_eq(_snapshot_all(fx.manager, fx.inventory, [site], [request.load]), local_before)
+
+	for candidate: Dictionary in [request, remote_request, region_request]:
+		var result := _r1_execute(coord, candidate, &"shared_id", &"shared_lot")
+		assert_true(result.ok)
+		assert_false(result.replayed)
+		assert_eq(result.withdrawn, 2)
+		assert_eq(candidate.load.get_amount(&"wood") + candidate.pile.amount, 4)
+
+	# Even after the original site's relabeling, the same physical storage cannot be rebound.
+	site.region_id = &"fake_region"
+	assert_eq(_r1_execute(coord, request, &"fresh_id", &"fresh_lot").reason, "ambiguous_domain")
+	site.region_id = home
+	assert_true(_r1_execute(coord, request, &"shared_id", &"shared_lot").replayed)
+	var world_ref: WeakRef = weakref(site.get_world_3d())
+	var authority_ref: WeakRef = weakref(coord._last_authority())
+	viewport.free()
+	assert_null(world_ref.get_ref())
+	assert_null(authority_ref.get_ref())
+	assert_false(coord.has_receipt(&"shared_id"))
+	assert_true(_r1_execute(coord, remote_request, &"shared_id", &"shared_lot").replayed)
+
+
+func test_r1_scene_callbacks_run_after_receipt_and_mutators_are_excluded() -> void:
+	var fx := _make_fixture()
+	var request := _make_r1_withdrawal(fx, "Exhaust", Vector3(8, 0, 8), 0)
+	var site: ConstructionSite = request.site
+	var unit: Unit = request.unit
+	var load: UnitCarryLoad = request.load
+	var pile: GroundResourcePile = request.pile
+	var manager: GroundPileManager = fx.manager
+	var inventory: SettlementInventory = fx.inventory
+	assert_eq(site.claim_pickup(unit, pile.pile_id, &"wood", 4), 4)
+	var original_order := unit.get_current_order()
+	var own_region := site.region_id
+	var coord := ReservedWithdrawalCoordinator.new()
+	var observations: Array = []
+	var on_exit := func() -> void:
+		observations.append(coord.has_receipt(&"exhaust"))
+		observations.append(manager.get_physical_amount(&"wood"))
+		observations.append(load.get_amount(&"wood"))
+		observations.append(site.get_transit_claim_for_unit(unit))
+		manager.begin_batch()
+		load.begin_batch()
+		manager.cleanup()
+		inventory.set_storage_source(InMemoryStorageSource.new())
+		site.region_id = &"redirected"
+		unit.cancel_current_order()
+		site.record_completion_failure("observer")
+	pile.tree_exiting.connect(on_exit, CONNECT_ONE_SHOT)
+	var result := coord.execute_reserved_withdrawal(site, unit, pile.pile_id, &"wood", 4, &"exhaust", &"exhaust_lot")
+	assert_true(result.ok)
+	assert_eq(observations, [true, 0, 4, {&"wood": 4}])
+	assert_eq(inventory.get_storage_source(), manager)
+	assert_eq(site.region_id, own_region)
+	assert_eq(site.get_site_state(), ConstructionSite.SiteState.ACTIVE)
+	assert_eq(unit.get_current_order(), original_order)
+	assert_false(load.is_transaction_busy())
+	assert_false(manager.is_batch_active())
+
+
+func test_r1_visual_sync_never_reports_a_provisional_pile() -> void:
+	var fx := _make_fixture()
+	var manager: GroundPileManager = fx.manager
+	var zone: CampStorageZone = fx.zone
+	var cm: ConstructionManager = fx.cm
+	var pile := manager.try_create_pile_at(&"wood", 6, zone.get_candidate_slots()[0])
+	var peer_pile := manager.try_create_pile_at(&"wood", 3, zone.get_candidate_slots()[1])
+	var site: ConstructionSite = cm.try_create_site_from_placement(
+		_make_building_def(&"r1_visual", {&"wood": 6}), Vector3(8, 0, 8)).site
+	var unit := _spawn_unit(fx.host, "Visual", &"visual")
+	_assign_transporter_and_claim(site, unit, pile, &"wood", 2)
+	var load := unit.get_carry_load()
+	var coord := ReservedWithdrawalCoordinator.new()
+	var observations: Array = []
+	var cb := func() -> void:
+		peer_pile.apply_state(99, 0.0, 0.0)
+		pile.amount = 111
+		observations.append([pile.amount, peer_pile.amount, load.get_amount(&"wood"),
+			site.get_transit_claim_for_unit(unit), coord.has_receipt(&"vis")])
+	var mesh: MeshInstance3D = pile._mesh_instances[1]
+	assert_true(mesh.visible)
+	mesh.visibility_changed.connect(cb)
+	coord.fault_injection_hook = func(stage: String, _ctx: Dictionary) -> bool:
+		return stage != "after_pile_deduction"
+	assert_false(coord.execute_reserved_withdrawal(site, unit, pile.pile_id, &"wood", 2, &"vis", &"vis_lot").ok)
+	assert_eq(observations, [])
+	assert_true(mesh.visible)
+	assert_false(coord.is_busy())
+	coord.fault_injection_hook = Callable()
+	assert_true(coord.execute_reserved_withdrawal(site, unit, pile.pile_id, &"wood", 2, &"vis", &"vis_lot").ok)
+	mesh.visibility_changed.disconnect(cb)
+	assert_eq(observations, [[4, 3, 2, {&"wood": 2}, true]])
+	assert_false(mesh.visible)

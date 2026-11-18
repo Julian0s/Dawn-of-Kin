@@ -216,7 +216,17 @@ func get_selection_indicator() -> SelectionIndicator:
 	return _selection_indicator
 
 
+func _is_reserved_withdrawal_locked() -> bool:
+	if _carry_load._coordinator_transaction_locked:
+		return true
+	# Only construction orders expose a site. Avoid a Unit -> ConstructOrder dependency.
+	var assigned_site: Variant = _current_order.get("site") if _current_order != null else null
+	return is_instance_valid(assigned_site) and bool(assigned_site.get("_is_preparing_or_transacting"))
+
+
 func issue_order(order: UnitOrder) -> void:
+	if _is_reserved_withdrawal_locked():
+		return
 	if _current_order != null and _current_order.is_active():
 		var previous_order: UnitOrder = _current_order
 		_current_order = null
@@ -249,6 +259,8 @@ func issue_order(order: UnitOrder) -> void:
 
 
 func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
+	if _is_reserved_withdrawal_locked():
+		return
 	if _current_order == null:
 		if _movement != null:
 			_movement.stop_movement()

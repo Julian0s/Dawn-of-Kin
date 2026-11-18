@@ -6,16 +6,51 @@ extends Node3D
 
 const GROUP_GROUND_PILES: StringName = &"ground_resource_piles"
 
-var pile_id: int = 0
-var resource_id: StringName = &""
-var definition: ResourceDefinition = null
-var amount: int = 0
-var elapsed_exposure_sec: float = 0.0
-var decay_accumulator_sec: float = 0.0
+var _storage_owner: WeakRef
+var pile_id: int = 0:
+	set(value):
+		if not _is_coordinator_locked():
+			pile_id = value
+var resource_id: StringName = &"":
+	set(value):
+		if not _is_coordinator_locked():
+			resource_id = value
+var definition: ResourceDefinition = null:
+	set(value):
+		if not _is_coordinator_locked():
+			definition = value
+var _amount: int = 0
+var amount: int:
+	get:
+		return _amount
+	set(value):
+		if not _is_coordinator_locked():
+			_amount = value
+var _elapsed_exposure_sec: float = 0.0
+var elapsed_exposure_sec: float:
+	get:
+		return _elapsed_exposure_sec
+	set(value):
+		if not _is_coordinator_locked():
+			_elapsed_exposure_sec = value
+var _decay_accumulator_sec: float = 0.0
+var decay_accumulator_sec: float:
+	get:
+		return _decay_accumulator_sec
+	set(value):
+		if not _is_coordinator_locked():
+			_decay_accumulator_sec = value
 
 var _visual_root: Node3D = null
 var _mesh_instances: Array[MeshInstance3D] = []
 var _transaction_revision: int = 0
+
+
+func _is_coordinator_locked() -> bool:
+	# The manager creates this pile and owns its guard. Keep the reference weak
+	# and avoid a pile script dependency on its manager.
+	var storage: Object = _storage_owner.get_ref() if _storage_owner != null else null
+	return storage != null and bool(storage.get("_is_preparing_withdrawal"))
 
 
 func _ready() -> void:
@@ -37,6 +72,8 @@ func configure_initial(
 	p_decay_accumulator_sec: float = 0.0,
 	p_visual_cache: Dictionary = {}
 ) -> void:
+	if _is_coordinator_locked():
+		return
 	pile_id = p_pile_id
 	definition = p_definition
 	resource_id = p_definition.resource_id if p_definition != null else &""
@@ -55,11 +92,17 @@ func apply_state(
 	p_elapsed_exposure_sec: float,
 	p_decay_accumulator_sec: float
 ) -> void:
-	amount = p_amount
-	elapsed_exposure_sec = p_elapsed_exposure_sec
-	decay_accumulator_sec = p_decay_accumulator_sec
-	_transaction_revision += 1
+	if _is_coordinator_locked():
+		return
+	_apply_state_without_visual(p_amount, p_elapsed_exposure_sec, p_decay_accumulator_sec)
 	sync_visual()
+
+
+func _apply_state_without_visual(p_amount: int, p_elapsed_exposure_sec: float, p_decay_accumulator_sec: float) -> void:
+	_amount = p_amount
+	_elapsed_exposure_sec = p_elapsed_exposure_sec
+	_decay_accumulator_sec = p_decay_accumulator_sec
+	_transaction_revision += 1
 
 
 func is_valid() -> bool:
@@ -104,6 +147,11 @@ func get_visible_mesh_count() -> int:
 
 
 func sync_visual() -> void:
+	if not _is_coordinator_locked():
+		_sync_visual_committed_state()
+
+
+func _sync_visual_committed_state() -> void:
 	if _visual_root == null or not is_instance_valid(_visual_root):
 		return
 	var tier: int = get_visual_tier()

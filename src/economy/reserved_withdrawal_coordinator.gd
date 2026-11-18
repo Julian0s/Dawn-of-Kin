@@ -7,29 +7,85 @@ extends RefCounted
 
 var fault_injection_hook: Callable = Callable()
 
+const DOMAIN_META := &"_reserved_withdrawal_domains"
+
+
+class RegionalAuthority extends RefCounted:
+	var storage: WeakRef
+	var is_executing: bool = false
+	var receipts: Dictionary = {}
+	var committed_lots: Dictionary = {}
+
+
 var _owner_thread_id: int = OS.get_thread_caller_id()
-var _is_executing: bool = false
-var _receipts: Dictionary = {}
-var _committed_lots: Dictionary = {}
+var _handle_executing: bool = false
+var _last_world: WeakRef
+var _last_region: StringName
+
+
+func _last_authority() -> RegionalAuthority:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or _last_world == null:
+		return null
+	var world: World3D = _last_world.get_ref() as World3D
+	if world == null:
+		return null
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	return domains.get(_last_region) as RegionalAuthority
 
 
 func is_busy() -> bool:
-	return _is_executing
+	var authority := _last_authority()
+	return authority != null and authority.is_executing
 
 
+## Queries refer to the last domain resolved by this handle.
 func has_receipt(operation_id: Variant) -> bool:
-	if not CarryProvenanceLedger._id(operation_id):
-		return false
-	return _receipts.has(StringName(operation_id))
+	var authority := _last_authority()
+	return authority != null and CarryProvenanceLedger._id(operation_id) and authority.receipts.has(StringName(operation_id))
 
 
 func get_receipt(operation_id: Variant) -> Dictionary:
-	if not CarryProvenanceLedger._id(operation_id):
+	var authority := _last_authority()
+	if authority == null or not CarryProvenanceLedger._id(operation_id):
 		return {}
-	var key := StringName(operation_id)
-	if not _receipts.has(key):
-		return {}
-	return (_receipts[key] as Dictionary).duplicate(true)
+	var record: Dictionary = authority.receipts.get(StringName(operation_id), {})
+	var receipt: Dictionary = record.get("receipt", {})
+	return receipt.duplicate(true)
+
+
+func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundPileManager) -> RegionalAuthority:
+	var region: StringName = site.region_id
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	var authority: RegionalAuthority = domains.get(region) as RegionalAuthority
+	if authority != null and authority.storage.get_ref() != storage:
+		return null
+	var bound_world: World3D = storage._withdrawal_world.get_ref() as World3D if storage._withdrawal_world != null else null
+	if bound_world != null and (bound_world != world or storage._withdrawal_region != region):
+		return null
+	if not is_instance_valid(storage._piles_root) or not storage._piles_root.is_inside_tree() or storage._piles_root.get_world_3d() != world:
+		return null
+
+	# Refuse conflicting live site bindings before assigning an authority.
+	for node: Node in site.get_tree().get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		var peer := node as ConstructionSite
+		if peer == null or not peer.is_valid():
+			continue
+		var peer_inventory := peer.get_inventory()
+		var peer_storage := peer_inventory.get_storage_source()
+		var same_domain: bool = peer.region_id == region and peer.get_world_3d() == world
+		if same_domain != (peer_storage == storage) or (same_domain and peer_inventory != site.get_inventory()):
+			return null
+
+	if authority == null:
+		authority = RegionalAuthority.new()
+		authority.storage = weakref(storage)
+		domains[region] = authority
+		world.set_meta(DOMAIN_META, domains)
+		storage._withdrawal_world = weakref(world)
+		storage._withdrawal_region = region
+	_last_world = weakref(world)
+	_last_region = region
+	return authority
 
 
 func execute_reserved_withdrawal(
@@ -60,9 +116,9 @@ func commit_prepared_withdrawal(
 	prepared_plan: Variant,
 	options: Dictionary = {}
 ) -> Dictionary:
-	if OS.get_thread_caller_id() != _owner_thread_id:
+	if OS.get_thread_caller_id() != _owner_thread_id or _owner_thread_id != OS.get_main_thread_id():
 		return _failure("wrong_thread", "thread")
-	if _is_executing:
+	if _handle_executing:
 		return _failure("busy", "coordinator")
 	if not (site is ConstructionSite) or not is_instance_valid(site):
 		return _failure("invalid_site", "site")
@@ -95,9 +151,9 @@ func _execute_core(
 	lot_id: Variant,
 	options: Dictionary
 ) -> Dictionary:
-	if OS.get_thread_caller_id() != _owner_thread_id:
+	if OS.get_thread_caller_id() != _owner_thread_id or _owner_thread_id != OS.get_main_thread_id():
 		return _failure("wrong_thread", "thread")
-	if _is_executing:
+	if _handle_executing:
 		return _failure("busy", "coordinator")
 
 	if not CarryProvenanceLedger._id(operation_id):
@@ -128,10 +184,29 @@ func _execute_core(
 	var pile_id_int: int = int(pile_id)
 	var req_amount: int = int(requested_amount)
 
+	if not typed_site.is_inside_tree() or not CarryProvenanceLedger._id(typed_site.region_id):
+		return _failure("invalid_domain", "coordinator")
+	var world := typed_site.get_world_3d()
+	if world == null:
+		return _failure("invalid_domain", "coordinator")
+	var inventory := typed_site.get_inventory()
+	var storage_source := inventory.get_storage_source() if inventory != null else null
+	var storage := storage_source as GroundPileManager
+	if storage == null:
+		return _failure("unsupported_storage_source", "storage")
+	var authority := _resolve_authority(typed_site, world, storage)
+	if authority == null:
+		return _failure("ambiguous_domain", "coordinator")
+	if authority.is_executing:
+		return _failure("busy", "coordinator")
+
 	# 1. Idempotent replay & conflict detection by committed operation_id / lot_id.
-	if _receipts.has(op_id_sn):
+	if authority.receipts.has(op_id_sn):
+		var record: Dictionary = authority.receipts[op_id_sn]
+		if record.site.get_ref() != typed_site or record.unit.get_ref() != typed_unit or record.load.get_ref() != typed_unit.get_carry_load():
+			return _failure("operation_conflict", "receipt")
 		return _evaluate_receipt_replay(
-			_receipts[op_id_sn] as Dictionary,
+			record.receipt,
 			typed_site,
 			typed_unit,
 			pile_id_int,
@@ -140,16 +215,14 @@ func _execute_core(
 			lot_id_sn,
 			options
 		)
-	if _committed_lots.has(lot_id_sn):
+	if authority.committed_lots.has(lot_id_sn):
 		return _failure("duplicate_lot", "receipt")
 
 	# 2. Check busy participants before locking.
 	if typed_site.is_transaction_busy():
 		return _failure("busy", "site")
-	var inventory: SettlementInventory = typed_site.get_inventory()
 	if inventory != null and inventory.is_transaction_busy():
 		return _failure("busy", "inventory")
-	var storage_source: SettlementStorageSource = inventory.get_storage_source() if inventory != null else null
 	if storage_source != null and storage_source.is_batch_active():
 		return _failure("busy", "storage")
 	if storage_source is GroundPileManager and (storage_source as GroundPileManager).is_locked():
@@ -184,7 +257,8 @@ func _execute_core(
 
 	# 4. Acquire cooperative guards in strict R2 order:
 	#    (1) coordinator -> site (+ region/world peer sites) -> (2) inventory -> storage -> (3) carry_load
-	_is_executing = true
+	authority.is_executing = true
+	_handle_executing = true
 	typed_site._is_preparing_or_transacting = true
 	var locked_peers: Array[ConstructionSite] = []
 	for peer: ConstructionSite in peer_sites:
@@ -193,6 +267,7 @@ func _execute_core(
 	inventory._is_delivering = true
 	pile_manager._is_preparing_withdrawal = true
 	carry_load._provenance_busy = true
+	carry_load._coordinator_transaction_locked = true
 
 	var reval_opts: Dictionary = options.duplicate()
 	reval_opts["require_assigned_worker"] = true
@@ -206,7 +281,7 @@ func _execute_core(
 			reval_opts
 		)
 		if not bool(prior_check.get("ok", false)):
-			_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+			_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 			return _prep_to_failure(prior_check)
 
 	if options.has("prepared_plan"):
@@ -216,7 +291,7 @@ func _execute_core(
 			reval_opts
 		)
 		if not bool(plan_check.get("ok", false)):
-			_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+			_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 			return _prep_to_failure(plan_check)
 
 	var fresh_plan: Dictionary = typed_site._prepare_reserved_withdrawal_under_coordinator_guards(
@@ -229,14 +304,14 @@ func _execute_core(
 		reval_opts
 	)
 	if not bool(fresh_plan.get("ok", false)):
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _prep_to_failure(fresh_plan)
 
 	# 5. Enforce mandatory C2 physical authorization under guards:
 	#    registered transporter/solo worker + matching active pending pickup + physical pile reach.
 	var uid: int = typed_unit.get_instance_id()
 	if not typed_site._pending_pickups.has(uid):
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("claim_not_eligible", "claims")
 	var pending_entry: Dictionary = typed_site._pending_pickups[uid] as Dictionary
 	if (
@@ -245,15 +320,15 @@ func _execute_core(
 		or (pending_entry.get("resource_id") as StringName) != res_id_sn
 		or int(pending_entry.get("amount", 0)) < req_amount
 	):
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("claim_not_eligible", "claims")
 
 	var pile: GroundResourcePile = pile_manager.get_pile_by_id(pile_id_int)
 	if pile == null or not is_instance_valid(pile) or not pile.is_inside_tree():
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("invalid_or_missing_pile", "pile")
 	if pile.get_world_3d() != typed_site.get_world_3d():
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("pile_world_mismatch", "pile")
 	var live_pile_pos: Vector3 = pile_manager.get_pile_world_position(pile)
 	if not BuildSlotPlanner.is_unit_in_pile_reach(
@@ -262,7 +337,7 @@ func _execute_core(
 		ConstructionSite.DEFAULT_PILE_PICKUP_REACH,
 		typed_site.get_world_3d()
 	):
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("out_of_pile_reach", "reach")
 
 	# 6. Capture full pre-mutation checkpoints and accounting baselines.
@@ -293,7 +368,7 @@ func _execute_core(
 
 	# Fault injection point 1: before physical deduction.
 	if _should_abort_at_stage("before_pile_deduction", hook_ctx):
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("aborted_before_pile_deduction", "fault_injection")
 
 	# Stage A: Silent pile & reservation deduction (node removal deferred if amount reaches 0).
@@ -303,13 +378,13 @@ func _execute_core(
 	)
 	if not bool(pile_apply.get("ok", false)):
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure(String(pile_apply.get("reason", "pile_apply_failed")), "pile")
 
 	# Fault injection point 2: after physical deduction, before carry load / provenance.
 	if _should_abort_at_stage("after_pile_deduction", hook_ctx):
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("aborted_after_pile_deduction", "fault_injection")
 
 	# Stage B: Silent carry load & provenance ledger mutation.
@@ -321,14 +396,14 @@ func _execute_core(
 	if not carry_ok:
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("carry_apply_failed", "carry_load")
 
 	# Fault injection point 3: after carry load / provenance, before claim update.
 	if _should_abort_at_stage("after_carry_add", hook_ctx):
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("aborted_after_carry_add", "fault_injection")
 
 	# Stage C: Silent construction site transit claim & pending pickup update.
@@ -344,7 +419,7 @@ func _execute_core(
 		typed_site._restore_claim_checkpoint_silent(claim_ckpt)
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("claim_apply_failed", "claims")
 
 	# Fault injection point 4: after claim update, before final invariant check.
@@ -352,7 +427,7 @@ func _execute_core(
 		typed_site._restore_claim_checkpoint_silent(claim_ckpt)
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("aborted_after_claim_update", "fault_injection")
 
 	# Fault injection point 5 & full post-mutation invariant verification.
@@ -360,7 +435,7 @@ func _execute_core(
 		typed_site._restore_claim_checkpoint_silent(claim_ckpt)
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("aborted_during_final_invariants", "fault_injection")
 
 	var invariants_ok: bool = _verify_post_mutation_invariants(
@@ -383,13 +458,11 @@ func _execute_core(
 		typed_site._restore_claim_checkpoint_silent(claim_ckpt)
 		carry_load._restore_provenance_checkpoint_silent(carry_ckpt)
 		pile_manager._restore_pile_withdrawal_checkpoint_silent(pile_ckpt)
-		_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+		_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 		return _failure("invariant_violation_aborted", "invariants")
 
-	# 7. Irreversible commit boundary: finalize exhausted pile node removal & record receipt.
-	if pile.amount <= 0:
-		pile_manager._finalize_exhausted_pile_after_commit_silent(pile)
-
+	# 7. Record the receipt before any visual or scene-tree callbacks.
+	inventory._transaction_revision += 1
 	var receipt: Dictionary = {
 		"operation_id": op_id_sn,
 		"lot_id": lot_id_sn,
@@ -409,8 +482,13 @@ func _execute_core(
 		"carry_load_instance_id": carry_load.get_instance_id(),
 		"unit_id": fresh_plan["unit_id"],
 	}
-	_receipts[op_id_sn] = receipt
-	_committed_lots[lot_id_sn] = op_id_sn
+	authority.receipts[op_id_sn] = {
+		"receipt": receipt,
+		"site": weakref(typed_site),
+		"unit": weakref(typed_unit),
+		"load": weakref(carry_load),
+	}
+	authority.committed_lots[lot_id_sn] = op_id_sn
 
 	# 8. Publish consistent signals with reentrancy guards still active so all
 	#    observers inspect identical final values and cannot re-enter mutators.
@@ -418,17 +496,25 @@ func _execute_core(
 	for peer: ConstructionSite in locked_peers:
 		peer._suppress_coordinator_signal_echo = true
 
-	pile_manager._emit_reservations_changed()
-	pile_manager._emit_storage_changed()
-	carry_load._emit_load_changed()
+	if pile.amount <= 0:
+		pile_manager._finalize_exhausted_pile_after_commit_silent(pile)
+	else:
+		pile._sync_visual_committed_state()
 
-	for peer: ConstructionSite in locked_peers:
-		peer._suppress_coordinator_signal_echo = false
-	typed_site._suppress_coordinator_signal_echo = false
+	# Revisions were advanced by the commit before publishing any callback.
+	pile_manager._dispatch_reservations_changed()
+	pile_manager._dispatch_storage_changed()
+	carry_load.load_changed.emit()
+
 	typed_site.state_changed.emit(typed_site)
+	for peer: ConstructionSite in locked_peers:
+		if is_instance_valid(peer):
+			peer._suppress_coordinator_signal_echo = false
+	if is_instance_valid(typed_site):
+		typed_site._suppress_coordinator_signal_echo = false
 
 	# 9. Release guards in strict reverse order.
-	_release_guards(typed_site, locked_peers, inventory, pile_manager, carry_load)
+	_release_guards(authority, typed_site, locked_peers, inventory, pile_manager, carry_load)
 
 	return {
 		"ok": true,
@@ -580,12 +666,14 @@ func _should_abort_at_stage(stage: String, ctx: Dictionary) -> bool:
 
 
 func _release_guards(
+	authority: RegionalAuthority,
 	typed_site: ConstructionSite,
 	locked_peers: Array[ConstructionSite],
 	inventory: SettlementInventory,
 	pile_manager: GroundPileManager,
 	carry_load: UnitCarryLoad
 ) -> void:
+	carry_load._coordinator_transaction_locked = false
 	carry_load._provenance_busy = false
 	pile_manager._is_preparing_withdrawal = false
 	inventory._is_delivering = false
@@ -595,7 +683,8 @@ func _release_guards(
 			peer._is_preparing_or_transacting = false
 	if is_instance_valid(typed_site):
 		typed_site._is_preparing_or_transacting = false
-	_is_executing = false
+	_handle_executing = false
+	authority.is_executing = false
 
 
 static func _failure(reason: String, dependency: String = "") -> Dictionary:
