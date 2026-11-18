@@ -61,6 +61,8 @@ static func prepare_selective_camp_delivery(
 		return _reject("world_mismatch", "camp_zone", op, normalized_request)
 	if storage.get_camp_zone() != camp_zone:
 		return _reject("invalid_camp_zone", "camp_zone", op, normalized_request)
+	if _has_untrusted_custom_position_validator(camp_zone):
+		return _reject("unsafe_custom_position_validator", "camp_zone", op, normalized_request)
 
 	if storage._piles_root == null or not is_instance_valid(storage._piles_root) or not storage._piles_root.is_inside_tree():
 		return _reject("invalid_piles_root", "storage", op, normalized_request)
@@ -285,8 +287,8 @@ static func prepare_selective_camp_delivery(
 		"piles_root_global_pos": storage._piles_root.global_position,
 		"nav_instance_id": nav.get_instance_id() if nav != null else 0,
 		"nav_ready": nav.is_navigation_ready() if nav != null else false,
-		"nav_revision": nav._navigation_revision if nav != null else 0,
-		"has_custom_validator": camp_zone._custom_position_validator.is_valid(),
+		"nav_revision": nav.get_navigation_revision() if nav != null else 0,
+		"has_custom_validator": _has_untrusted_custom_position_validator(camp_zone),
 	}
 
 	return {
@@ -581,13 +583,45 @@ static func _measure_cargo(
 	return {"ok": true, "value": total}
 
 
+static func _has_untrusted_custom_position_validator(camp_zone: CampStorageZone) -> bool:
+	var validator: Callable = camp_zone._custom_position_validator
+	return validator.is_valid() or not validator.is_null()
+
+
 static func _inspect_storage_state_pure(
 	storage: GroundPileManager,
 	world: World3D,
 	op: StringName,
 	normalized_request: Array[Dictionary]
 ) -> Dictionary:
-	var ordered_piles: Array[GroundResourcePile] = storage.get_piles()
+	if storage._next_pile_id <= 0:
+		return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
+
+	# Inspect the raw internal `_piles` array directly (never via `get_piles()`, which silently skips
+	# invalid references) without pruning, erasing, or modifying the underlying collection.
+	var ordered_piles: Array[GroundResourcePile] = []
+	var seen_instances: Dictionary = {}
+	for raw_entry: Variant in storage._piles:
+		if raw_entry == null or not is_instance_valid(raw_entry) or not (raw_entry is GroundResourcePile):
+			return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
+		var raw_pile: GroundResourcePile = raw_entry as GroundResourcePile
+		if (
+			raw_pile.is_queued_for_deletion()
+			or not raw_pile.is_valid()
+			or not raw_pile.is_inside_tree()
+			or raw_pile.get_parent() != storage._piles_root
+			or raw_pile.pile_id <= 0
+			or raw_pile.pile_id >= storage._next_pile_id
+		):
+			return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
+		var owner_ref: Object = raw_pile._storage_owner.get_ref() if raw_pile._storage_owner != null else null
+		if owner_ref != storage:
+			return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
+		var inst_id: int = raw_pile.get_instance_id()
+		if seen_instances.has(inst_id):
+			return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
+		seen_instances[inst_id] = true
+		ordered_piles.append(raw_pile)
 	ordered_piles.sort_custom(func(a: GroundResourcePile, b: GroundResourcePile) -> bool: return a.pile_id < b.pile_id)
 
 	var pile_by_id: Dictionary = {}
@@ -596,12 +630,10 @@ static func _inspect_storage_state_pure(
 	var pile_revisions: Dictionary = {}
 
 	for pile: GroundResourcePile in ordered_piles:
-		if not is_instance_valid(pile) or not pile.is_valid() or not pile.is_inside_tree():
-			return _reject("reservation_restoration_unavailable", "storage", op, normalized_request)
 		if pile.get_world_3d() != world:
 			return _reject("world_mismatch", "storage", op, normalized_request)
 		if pile_by_id.has(pile.pile_id):
-			return _reject("reservation_restoration_unavailable", "storage", op, normalized_request)
+			return _reject("invalid_physical_pile_collection", "storage", op, normalized_request)
 		var def := storage.get_resource_definition_pure(pile.resource_id)
 		if def == null or def.unit_weight != pile.definition.unit_weight:
 			return _reject("resource_or_weight_mismatch", "storage", op, normalized_request)
@@ -1126,6 +1158,8 @@ static func _project_camp_deposit_and_reservations_pure(
 			remaining -= add_here
 
 		while remaining > 0:
+			if _has_untrusted_custom_position_validator(camp_zone):
+				return _reject("unsafe_custom_position_validator", "camp_zone", op, normalized_request, blocked_lots)
 			var placed: bool = false
 			var saw_nav_not_ready: bool = false
 			for slot_world: Vector3 in candidate_slots:
