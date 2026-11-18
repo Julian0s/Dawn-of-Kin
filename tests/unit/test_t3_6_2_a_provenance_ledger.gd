@@ -45,3 +45,33 @@ func test_invalid_ids_types_overflow_and_no_mutation() -> void:
 	assert_true(l.register_lot("one", lot("one", "wood", 9223372036854775807, Ledger.FREE_GATHERED)).replayed)
 	assert_false(l.register_lot("one", lot("changed", "wood", 1, Ledger.FREE_GATHERED)).ok)
 	assert_eq(l.snapshot(), before)
+
+func test_identity_replay_and_query_isolation() -> void:
+	var ledger = Ledger.new()
+	var a: Dictionary = lot("a", "wood", 5, Ledger.SITE_RESERVED, "A")
+	var b: Dictionary = lot("b", "wood", 3, Ledger.FREE_GATHERED)
+	b.unit_id = "worker2"
+	assert_true(ledger.register_lot("add-a", a).ok)
+	assert_true(ledger.register_lot("add-b", b).ok)
+	assert_true(ledger.validate_aggregate("worker", {"wood": 5}).ok)
+	assert_true(ledger.validate_aggregate("worker2", {"wood": 3}).ok)
+	assert_true(ledger.split_lot("split", "a", "child", 2).ok)
+	var before: Dictionary = ledger.snapshot()
+	assert_true(ledger.split_lot("split", "a", "child", 2).replayed)
+	assert_false(ledger.split_lot("split", "a", "child", 1).ok)
+	assert_eq(ledger.snapshot(), before)
+	var queried: Array = ledger.query("worker", "wood", Ledger.SITE_RESERVED, "A")
+	queried[0].quantity = 999
+	assert_eq(ledger.snapshot(), before)
+	assert_false(ledger.register_lot("", lot("z", "wood", 1, Ledger.FREE_GATHERED)).ok)
+	var bad: Dictionary = lot("z", "wood", 1, Ledger.FREE_GATHERED)
+	bad.unit_id = " "
+	assert_false(ledger.register_lot("bad1", bad).ok)
+	bad.unit_id = "worker"
+	bad.resource_id = ""
+	assert_false(ledger.register_lot("bad2", bad).ok)
+	assert_true(ledger.withdraw("consume", "child", 2).ok)
+	before = ledger.snapshot()
+	assert_false(ledger.register_lot("reuse", lot("child", "wood", 1, Ledger.FREE_GATHERED)).ok)
+	assert_false(ledger.validate_aggregate("worker", {"wood": 99}).ok)
+	assert_eq(ledger.snapshot(), before)
