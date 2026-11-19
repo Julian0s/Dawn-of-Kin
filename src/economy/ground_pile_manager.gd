@@ -1324,3 +1324,196 @@ func _finalize_exhausted_pile_after_commit_silent(pile: GroundResourcePile) -> b
 		return false
 	_remove_and_free_pile(pile)
 	return true
+
+
+## Captures an isolated pre-mutation checkpoint for a selective camp delivery transaction.
+func _capture_camp_delivery_checkpoint(merge_pile_ids: Array[int]) -> Dictionary:
+	var merge_states: Dictionary = {}
+	for pid: int in merge_pile_ids:
+		var pile: GroundResourcePile = get_pile_by_id(pid)
+		if pile != null and is_instance_valid(pile):
+			merge_states[pid] = {
+				"pile": pile,
+				"amount": pile.amount,
+				"elapsed": pile.elapsed_exposure_sec,
+				"accum": pile.decay_accumulator_sec,
+			}
+	var created: Array[GroundResourcePile] = []
+	var merged: Array[GroundResourcePile] = []
+	return {
+		"piles_array": _piles.duplicate(),
+		"merge_states": merge_states,
+		"ledger_state": _ledger.snapshot_state(),
+		"ledger_revision": _ledger.get_transaction_revision(),
+		"next_pile_id": _next_pile_id,
+		"storage_revision": _transaction_revision,
+		"created_piles": created,
+		"merged_piles": merged,
+		"ledger_mutated": false,
+		"mutated": false,
+	}
+
+
+## Applies a single planned merge silently while the coordinator holds `_is_preparing_withdrawal`.
+## Defers visual updates until the irreversible commit boundary.
+func _apply_camp_delivery_merge_silent(merge_entry: Dictionary, checkpoint: Dictionary) -> Dictionary:
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy"}
+	var pid: int = int(merge_entry.get("pile_id", 0))
+	var expected_inst: int = int(merge_entry.get("pile_instance_id", 0))
+	var res_id: StringName = StringName(merge_entry.get("resource_id", &""))
+	var add_amount: int = int(merge_entry.get("add_amount", 0))
+	var before_amount: int = int(merge_entry.get("before_amount", 0))
+	var after_amount: int = int(merge_entry.get("after_amount", 0))
+	if pid <= 0 or add_amount <= 0 or after_amount != before_amount + add_amount:
+		return {"ok": false, "reason": "invalid_merge_entry"}
+	var pile: GroundResourcePile = get_pile_by_id(pid)
+	if (
+		pile == null
+		or not is_instance_valid(pile)
+		or pile.get_instance_id() != expected_inst
+		or pile.resource_id != res_id
+		or pile.amount != before_amount
+	):
+		return {"ok": false, "reason": "pile_merge_mismatch"}
+	if before_amount > CarryProvenanceLedger.MAX_INT - add_amount:
+		return {"ok": false, "reason": "amount_overflow"}
+	var next_state: Dictionary = _compute_merged_state(pile, add_amount)
+	if int(next_state.get("amount", -1)) != after_amount:
+		return {"ok": false, "reason": "pile_merge_mismatch"}
+	_is_mutating = true
+	pile._apply_state_without_visual(
+		after_amount,
+		float(next_state["elapsed"]),
+		float(next_state["accum"])
+	)
+	var merged_list: Array[GroundResourcePile] = checkpoint["merged_piles"] as Array[GroundResourcePile]
+	if not merged_list.has(pile):
+		merged_list.append(pile)
+	checkpoint["mutated"] = true
+	_is_mutating = false
+	return {"ok": true, "pile": pile}
+
+
+## Instantiates a brand-new detached pile (not yet attached to `_piles_root`) and registers it
+## in `_piles` silently while the coordinator holds `_is_preparing_withdrawal`.
+## Refuses whenever `pile_creator_override` is configured to prevent external callback execution.
+func _apply_camp_delivery_create_detached_silent(create_entry: Dictionary, checkpoint: Dictionary) -> Dictionary:
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy"}
+	if pile_creator_override.is_valid() or not pile_creator_override.is_null():
+		return {"ok": false, "reason": "unsafe_pile_creator_override"}
+	if _next_pile_id <= 0 or _next_pile_id >= CarryProvenanceLedger.MAX_INT:
+		return {"ok": false, "reason": "pile_id_exhausted"}
+	var res_id: StringName = StringName(create_entry.get("resource_id", &""))
+	var amount: int = int(create_entry.get("amount", 0))
+	var local_pos_var: Variant = create_entry.get("local_pos")
+	if res_id.is_empty() or amount <= 0 or not (local_pos_var is Vector3):
+		return {"ok": false, "reason": "invalid_create_entry"}
+	var local_pos: Vector3 = local_pos_var as Vector3
+	if not local_pos.is_finite():
+		return {"ok": false, "reason": "invalid_create_entry"}
+	var def: ResourceDefinition = get_resource_definition_pure(res_id)
+	if def == null or not def.is_valid():
+		return {"ok": false, "reason": "resource_or_weight_mismatch"}
+	if _camp_zone != null and _camp_zone.max_pile_amount > 0 and amount > _camp_zone.max_pile_amount:
+		return {"ok": false, "reason": "pile_capacity_exceeded"}
+
+	_is_mutating = true
+	var real_pile_id: int = _next_pile_id
+	_next_pile_id += 1
+	var new_pile := GroundResourcePile.new()
+	new_pile._configure_initial_detached_for_commit(self, real_pile_id, def, amount, local_pos)
+	if not new_pile.is_valid():
+		new_pile.free()
+		_next_pile_id = real_pile_id
+		_is_mutating = false
+		return {"ok": false, "reason": "invalid_created_pile"}
+	_piles.append(new_pile)
+	var created_list: Array[GroundResourcePile] = checkpoint["created_piles"] as Array[GroundResourcePile]
+	created_list.append(new_pile)
+	checkpoint["mutated"] = true
+	_is_mutating = false
+	return {"ok": true, "pile_id": real_pile_id, "pile": new_pile}
+
+
+## Restores a site reservation onto an existing or newly created physical pile silently.
+func _apply_camp_delivery_reservation_restore_silent(
+	pile_id: int,
+	resource_id: StringName,
+	reservation_id: StringName,
+	amount: int,
+	checkpoint: Dictionary
+) -> Dictionary:
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy"}
+	if pile_id <= 0 or resource_id.is_empty() or reservation_id.is_empty() or amount <= 0:
+		return {"ok": false, "reason": "invalid_reservation_restore"}
+	var pile: GroundResourcePile = get_pile_by_id(pile_id)
+	if pile == null or not is_instance_valid(pile) or not pile.is_valid() or pile.resource_id != resource_id:
+		return {"ok": false, "reason": "invalid_or_missing_pile"}
+	var current_reserved: int = _ledger.get_pile_reserved_amount(pile_id)
+	if amount > CarryProvenanceLedger.MAX_INT - current_reserved or current_reserved + amount > pile.amount:
+		return {"ok": false, "reason": "reservation_exceeds_physical_pile"}
+	_is_mutating = true
+	_ledger.allocate_on_pile(pile_id, resource_id, reservation_id, amount)
+	checkpoint["ledger_mutated"] = true
+	checkpoint["mutated"] = true
+	_is_mutating = false
+	return {"ok": true}
+
+
+## Restores merges, frees detached created piles, restores `_next_pile_id` and reservation ledger
+## silently on pre-commit rollback, advancing storage and touched pile revisions monotonically.
+func _restore_camp_delivery_checkpoint_silent(checkpoint: Dictionary) -> void:
+	if checkpoint.is_empty() or not bool(checkpoint.get("mutated", false)):
+		return
+	_is_mutating = true
+	var ledger_state: Variant = checkpoint.get("ledger_state")
+	if ledger_state is Dictionary and bool(checkpoint.get("ledger_mutated", false)):
+		_ledger.restore_state(ledger_state as Dictionary)
+	var saved_piles: Variant = checkpoint.get("piles_array")
+	if saved_piles is Array:
+		_piles.clear()
+		for item: Variant in saved_piles as Array:
+			_piles.append(item as GroundResourcePile)
+	_next_pile_id = int(checkpoint.get("next_pile_id", _next_pile_id))
+	var created_list: Array[GroundResourcePile] = checkpoint.get("created_piles", []) as Array[GroundResourcePile]
+	for created_pile: GroundResourcePile in created_list:
+		if created_pile != null and is_instance_valid(created_pile):
+			if created_pile.get_parent() != null:
+				created_pile.get_parent().remove_child(created_pile)
+			created_pile.free()
+	created_list.clear()
+	var merge_states: Dictionary = checkpoint.get("merge_states", {}) as Dictionary
+	var merged_list: Array[GroundResourcePile] = checkpoint.get("merged_piles", []) as Array[GroundResourcePile]
+	for merged_pile: GroundResourcePile in merged_list:
+		if merged_pile != null and is_instance_valid(merged_pile) and merge_states.has(merged_pile.pile_id):
+			var snap: Dictionary = merge_states[merged_pile.pile_id] as Dictionary
+			merged_pile._apply_state_without_visual(
+				int(snap["amount"]),
+				float(snap["elapsed"]),
+				float(snap["accum"])
+			)
+	merged_list.clear()
+	checkpoint["ledger_mutated"] = false
+	checkpoint["mutated"] = false
+	_transaction_revision += 1
+	_is_mutating = false
+
+
+## Attaches newly created detached piles to `_piles_root` and syncs visuals for all touched piles
+## strictly at the irreversible post-commit boundary, after the receipt has been recorded.
+func _finalize_camp_delivery_after_commit_silent(checkpoint: Dictionary) -> void:
+	if not _is_preparing_withdrawal or _is_mutating:
+		return
+	var merged_list: Array[GroundResourcePile] = checkpoint.get("merged_piles", []) as Array[GroundResourcePile]
+	for merged_pile: GroundResourcePile in merged_list:
+		if merged_pile != null and is_instance_valid(merged_pile):
+			merged_pile._sync_visual_committed_state()
+	var created_list: Array[GroundResourcePile] = checkpoint.get("created_piles", []) as Array[GroundResourcePile]
+	for new_pile: GroundResourcePile in created_list:
+		if new_pile != null and is_instance_valid(new_pile) and _piles_root != null and is_instance_valid(_piles_root):
+			if new_pile.get_parent() == null:
+				_piles_root.add_child(new_pile)
+			new_pile._finalize_detached_visuals_after_commit(_visual_cache)

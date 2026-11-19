@@ -10,11 +10,24 @@ var fault_injection_hook: Callable = Callable()
 const DOMAIN_META := &"_reserved_withdrawal_domains"
 const RECEIPT_WITHDRAWAL := &"reserved_withdrawal"
 const RECEIPT_DELIVERY := &"selective_site_delivery"
+const RECEIPT_CAMP_DELIVERY := &"selective_camp_delivery"
 
 
 ## Capability for the one active selective delivery in this domain.
 class DeliveryScope extends RefCounted:
 	var site: ConstructionSite
+	var unit: Unit
+	var load: UnitCarryLoad
+	var inventory: SettlementInventory
+	var storage: GroundPileManager
+	var sites: Array[ConstructionSite] = []
+
+
+## Capability for the one active selective camp delivery in this domain.
+class CampDeliveryScope extends RefCounted:
+	var world: World3D
+	var region_id: StringName
+	var camp_zone: CampStorageZone
 	var unit: Unit
 	var load: UnitCarryLoad
 	var inventory: SettlementInventory
@@ -28,6 +41,7 @@ class RegionalAuthority extends RefCounted:
 	var receipts: Dictionary = {}
 	var committed_lots: Dictionary = {}
 	var active_delivery: DeliveryScope
+	var active_camp_delivery: CampDeliveryScope
 	var construction_transfer_serial: int = 0
 
 
@@ -70,15 +84,20 @@ func get_receipt(operation_id: Variant) -> Dictionary:
 static func _read_receipt(record: Variant, operation: StringName, kind: StringName) -> Dictionary:
 	if not record is Dictionary or not record.get("receipt") is Dictionary:
 		return {}
-	for field: String in ["site", "unit", "load"]:
-		if not record.get(field) is WeakRef:
-			return {}
+	if kind == RECEIPT_CAMP_DELIVERY:
+		for field: String in ["camp_zone", "unit", "load", "inventory", "storage"]:
+			if not record.get(field) is WeakRef:
+				return {}
+	else:
+		for field: String in ["site", "unit", "load"]:
+			if not record.get(field) is WeakRef:
+				return {}
 	var receipt: Dictionary = record.receipt
 	if typeof(receipt.get("operation_id")) != TYPE_STRING_NAME or receipt.operation_id != operation:
 		return {}
 	if receipt.has("kind") and (typeof(receipt.kind) != TYPE_STRING_NAME or receipt.kind != kind):
 		return {}
-	if kind == RECEIPT_DELIVERY:
+	if kind == RECEIPT_DELIVERY or kind == RECEIPT_CAMP_DELIVERY:
 		return receipt if receipt.has("kind") else {}
 	if kind != RECEIPT_WITHDRAWAL or receipt.size() != (18 if receipt.has("kind") else 17):
 		return {}
@@ -106,10 +125,70 @@ static func _owns_delivery_scope(scope: DeliveryScope) -> bool:
 	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
 	var authority := domains.get(scope.site.region_id) as RegionalAuthority
 	return authority != null and authority.is_executing and authority.active_delivery == scope \
+		and authority.active_camp_delivery == null \
 		and authority.storage.get_ref() == scope.storage and scope.site.get_inventory() == scope.inventory \
 		and scope.inventory.get_storage_source() == scope.storage and scope.inventory._is_delivering \
 		and scope.storage._is_preparing_withdrawal and scope.load._coordinator_transaction_locked \
 		and scope.load._provenance_busy and scope.site._is_preparing_or_transacting
+
+
+static func _owns_camp_delivery_scope(scope: CampDeliveryScope) -> bool:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or scope == null:
+		return false
+	if scope.world == null or not CarryProvenanceLedger._id(scope.region_id):
+		return false
+	if not is_instance_valid(scope.camp_zone) or not scope.camp_zone.is_inside_tree() or scope.camp_zone.get_world_3d() != scope.world:
+		return false
+	if not is_instance_valid(scope.unit) or not scope.unit.is_inside_tree() or scope.unit.get_world_3d() != scope.world:
+		return false
+	if scope.load == null or scope.inventory == null or scope.storage == null:
+		return false
+	var domains: Dictionary = scope.world.get_meta(DOMAIN_META, {})
+	var authority := domains.get(scope.region_id) as RegionalAuthority
+	if (
+		authority == null
+		or not authority.is_executing
+		or authority.active_camp_delivery != scope
+		or authority.active_delivery != null
+		or authority.storage.get_ref() != scope.storage
+		or scope.inventory.get_storage_source() != scope.storage
+		or scope.storage.get_camp_zone() != scope.camp_zone
+		or not scope.inventory._is_delivering
+		or not scope.storage._is_preparing_withdrawal
+		or not scope.load._coordinator_transaction_locked
+		or not scope.load._provenance_busy
+	):
+		return false
+	for site: ConstructionSite in scope.sites:
+		if not is_instance_valid(site) or not site.is_inside_tree() or site.get_world_3d() != scope.world or site.region_id != scope.region_id or not site._is_preparing_or_transacting:
+			return false
+	return true
+
+
+func _resolve_camp_authority(
+	world: World3D,
+	region_id: StringName,
+	inventory: SettlementInventory,
+	storage: GroundPileManager,
+	tree: SceneTree
+) -> Dictionary:
+	if world == null or not CarryProvenanceLedger._id(region_id) or inventory == null or storage == null or tree == null:
+		return _failure("invalid_domain", "coordinator")
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	var authority: RegionalAuthority = domains.get(region_id) as RegionalAuthority
+	var domain_check := _inspect_camp_economic_domain(world, region_id, inventory, storage, authority, domains, tree)
+	if not bool(domain_check.get("ok", false)):
+		return domain_check
+	if authority == null:
+		authority = RegionalAuthority.new()
+		authority.storage = weakref(storage)
+		domains[region_id] = authority
+		world.set_meta(DOMAIN_META, domains)
+		storage._withdrawal_world = weakref(world)
+		storage._withdrawal_region = region_id
+	_last_world = weakref(world)
+	_last_region = region_id
+	return {"ok": true, "authority": authority}
 
 
 func _resolve_authority(site: ConstructionSite, world: World3D, storage: GroundPileManager) -> RegionalAuthority:

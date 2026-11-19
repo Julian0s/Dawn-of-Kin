@@ -21,6 +21,30 @@ static func prepare_selective_camp_delivery(
 	operation_id: Variant,
 	requested_lots: Variant = []
 ) -> Dictionary:
+	return _prepare(inventory, camp_zone, unit, region_id, operation_id, requested_lots, null)
+
+
+## Internal revalidation entry point restricted to an owned SelectiveCampDeliveryCoordinator scope.
+## Never exposed as a public busy bypass: rejects any scope not actively held by the regional authority.
+static func _prepare_under_camp_delivery_scope(
+	scope: ReservedWithdrawalCoordinator.CampDeliveryScope,
+	operation_id: StringName,
+	requested_lots: Array[Dictionary]
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_camp_delivery_scope(scope):
+		return _reject("busy", "coordinator", operation_id)
+	return _prepare(scope.inventory, scope.camp_zone, scope.unit, scope.region_id, operation_id, requested_lots, scope)
+
+
+static func _prepare(
+	inventory: SettlementInventory,
+	camp_zone: CampStorageZone,
+	unit: Unit,
+	region_id: Variant,
+	operation_id: Variant,
+	requested_lots: Variant,
+	scope: ReservedWithdrawalCoordinator.CampDeliveryScope
+) -> Dictionary:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		return _reject("wrong_thread", "thread")
 	if not CarryProvenanceLedger._id(operation_id):
@@ -80,24 +104,43 @@ static func prepare_selective_camp_delivery(
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _reject("provenance_disabled", "carry_load", op, normalized_request)
 
-	if inventory.is_transaction_busy() or storage.is_locked() or storage.is_batch_active() or load.is_transaction_busy():
-		return _reject("busy", "participants", op, normalized_request)
-
 	var tree := unit.get_tree()
 	if tree == null:
 		return _reject("invalid_domain", "unit", op, normalized_request)
-	var domain_check := ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation(
-		world, region, inventory, storage, op, tree
-	)
-	if not bool(domain_check.get("ok", false)):
-		return _reject(
-			String(domain_check.get("reason", "ambiguous_domain")),
-			String(domain_check.get("dependency", "coordinator")),
-			op,
-			normalized_request
+	if scope == null:
+		if inventory.is_transaction_busy() or storage.is_locked() or storage.is_batch_active() or load.is_transaction_busy():
+			return _reject("busy", "participants", op, normalized_request)
+		var domain_check := ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation(
+			world, region, inventory, storage, op, tree
 		)
+		if not bool(domain_check.get("ok", false)):
+			return _reject(
+				String(domain_check.get("reason", "ambiguous_domain")),
+				String(domain_check.get("dependency", "coordinator")),
+				op,
+				normalized_request
+			)
+	else:
+		if (
+			not ReservedWithdrawalCoordinator._owns_camp_delivery_scope(scope)
+			or scope.inventory != inventory
+			or scope.camp_zone != camp_zone
+			or scope.unit != unit
+			or scope.load != load
+			or scope.storage != storage
+			or scope.region_id != region
+		):
+			return _reject("busy", "coordinator", op, normalized_request)
+		if storage._is_mutating or storage._is_notifying or storage.is_batch_active() or load._provenance_applying or load._batch_depth > 0:
+			return _reject("busy", "participants", op, normalized_request)
+		var domains: Dictionary = world.get_meta(ReservedWithdrawalCoordinator.DOMAIN_META, {})
+		var authority: ReservedWithdrawalCoordinator.RegionalAuthority = domains.get(region) as ReservedWithdrawalCoordinator.RegionalAuthority
+		if authority == null or authority.active_camp_delivery != scope:
+			return _reject("busy", "coordinator", op, normalized_request)
+		if authority.receipts.has(op):
+			return _reject("operation_conflict", "receipt", op, normalized_request)
 
-	var site_scan := _scan_sites_pure(tree, world, region, unit, load, op, normalized_request)
+	var site_scan := _scan_sites_pure(tree, world, region, unit, load, op, normalized_request, scope)
 	if not bool(site_scan.get("ok", false)):
 		return site_scan
 	var domain_sites_by_id: Dictionary = site_scan["domain_sites_by_id"] as Dictionary
@@ -276,6 +319,7 @@ static func prepare_selective_camp_delivery(
 
 	var camp_config_rev: Dictionary = {
 		"zone_id": camp_zone.zone_id,
+		"config_revision": camp_zone.get_config_revision(),
 		"anchor": camp_zone.get_anchor_position(),
 		"half_extents": camp_zone.zone_bounds_half_extents,
 		"slot_spacing": camp_zone.slot_spacing,
@@ -474,7 +518,8 @@ static func _scan_sites_pure(
 	unit: Unit,
 	load: UnitCarryLoad,
 	op: StringName,
-	normalized_request: Array[Dictionary]
+	normalized_request: Array[Dictionary],
+	scope: ReservedWithdrawalCoordinator.CampDeliveryScope = null
 ) -> Dictionary:
 	var domain_sites: Array[ConstructionSite] = []
 	var domain_sites_by_id: Dictionary = {}
@@ -502,8 +547,12 @@ static func _scan_sites_pure(
 				other_region_site_ids[site.site_id] = true
 			continue
 
-		if site.is_transaction_busy():
-			return _reject("busy", "site", op, normalized_request)
+		if scope == null:
+			if site.is_transaction_busy():
+				return _reject("busy", "site", op, normalized_request)
+		else:
+			if not scope.sites.has(site) or not site._is_preparing_or_transacting or site._work_transaction_in_progress or site._is_complementing:
+				return _reject("busy", "site", op, normalized_request)
 		domain_sites.append(site)
 
 		if CarryProvenanceLedger._id(site.site_id):

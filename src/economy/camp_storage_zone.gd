@@ -3,13 +3,41 @@ extends Node3D
 ## Logical camp storage area validating slot coordinates and navigation reachability.
 ## Contains no StaticBody3D colliders or pre-existing buildings, keeping T2.1 pure ground storage.
 
-@export var zone_id: StringName = &"camp_storage_main"
-@export var zone_bounds_half_extents: Vector2 = Vector2(4.0, 4.0)
-@export var slot_spacing: float = 1.2
-@export var min_pile_clearance: float = 0.85
-@export var max_pile_amount: int = 0
-@export var decay_multiplier: float = 1.0
-@export var max_nav_snap_distance: float = 0.65
+@export var zone_id: StringName = &"camp_storage_main":
+	set(value):
+		if zone_id != value:
+			zone_id = value
+			_config_revision += 1
+@export var zone_bounds_half_extents: Vector2 = Vector2(4.0, 4.0):
+	set(value):
+		if zone_bounds_half_extents != value:
+			zone_bounds_half_extents = value
+			_config_revision += 1
+@export var slot_spacing: float = 1.2:
+	set(value):
+		if slot_spacing != value:
+			slot_spacing = value
+			_config_revision += 1
+@export var min_pile_clearance: float = 0.85:
+	set(value):
+		if min_pile_clearance != value:
+			min_pile_clearance = value
+			_config_revision += 1
+@export var max_pile_amount: int = 0:
+	set(value):
+		if max_pile_amount != value:
+			max_pile_amount = value
+			_config_revision += 1
+@export var decay_multiplier: float = 1.0:
+	set(value):
+		if decay_multiplier != value:
+			decay_multiplier = value
+			_config_revision += 1
+@export var max_nav_snap_distance: float = 0.65:
+	set(value):
+		if max_nav_snap_distance != value:
+			max_nav_snap_distance = value
+			_config_revision += 1
 @export var show_camp_badge: bool = true:
 	set(value):
 		show_camp_badge = value
@@ -17,12 +45,20 @@ extends Node3D
 
 var _world_navigation: WorldNavigation = null
 var _custom_position_validator: Callable = Callable()
+var _config_revision: int = 0
 
 
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
+	set_notify_local_transform(true)
+	set_notify_transform(true)
 	_sync_camp_badge()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_LOCAL_TRANSFORM_CHANGED or what == NOTIFICATION_TRANSFORM_CHANGED:
+		_config_revision += 1
 
 
 func set_camp_badge_visible(enabled: bool) -> void:
@@ -40,11 +76,17 @@ func _sync_camp_badge() -> void:
 
 
 func set_world_navigation(navigation: WorldNavigation) -> void:
-	_world_navigation = navigation
+	if _world_navigation != navigation:
+		_world_navigation = navigation
+		_config_revision += 1
 
 
 func get_world_navigation() -> WorldNavigation:
 	return _world_navigation
+
+
+func get_config_revision() -> int:
+	return _config_revision
 
 
 func set_custom_position_validator(validator: Callable) -> void:

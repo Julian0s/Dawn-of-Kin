@@ -105,6 +105,34 @@ func _apply_state_without_visual(p_amount: int, p_elapsed_exposure_sec: float, p
 	_transaction_revision += 1
 
 
+## Configures a brand-new detached pile before tree attachment so no `_enter_tree`/`_ready`
+## or visual/scene callbacks fire during pre-commit transaction stages.
+func _configure_initial_detached_for_commit(
+	p_storage_owner: Object,
+	p_pile_id: int,
+	p_definition: ResourceDefinition,
+	p_amount: int,
+	p_position: Vector3
+) -> void:
+	_storage_owner = null
+	pile_id = p_pile_id
+	definition = p_definition
+	resource_id = p_definition.resource_id if p_definition != null else &""
+	_amount = p_amount
+	_elapsed_exposure_sec = 0.0
+	_decay_accumulator_sec = 0.0
+	position = p_position
+	name = "Pile_%d_%s" % [p_pile_id, String(resource_id)]
+	_transaction_revision = 1
+	_storage_owner = weakref(p_storage_owner)
+
+
+## Rebuilds and syncs visuals for a detached pile strictly at the irreversible post-commit boundary.
+func _finalize_detached_visuals_after_commit(p_visual_cache: Dictionary) -> void:
+	_rebuild_visuals(p_visual_cache)
+	_sync_visual_committed_state()
+
+
 func is_valid() -> bool:
 	return (
 		pile_id > 0
