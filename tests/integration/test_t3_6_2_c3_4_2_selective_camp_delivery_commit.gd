@@ -1064,3 +1064,155 @@ func test_group_f_concurrency_reentrancy_in_all_signals_and_guard_release() -> v
 	assert_true(bool(r_after.get("ok", false)), str(r_after))
 	assert_eq(int(r_after.get("delivered_now", 0)), 2)
 	_assert_guards_released(fx, sites, unit)
+
+
+func test_post_commit_node_added_observer_lifecycle_and_integrity_boundaries() -> void:
+	# Audit §2.1: verify all 4 SceneTree.node_added observer behaviors on multi-pile post-commit creation:
+	# 1) Query-only observer sees valid committed pile + GROUP_GROUND_PILES membership and final visuals post-attach.
+	# 2) Reentrant transaction / storage mutation is blocked ("busy" / false).
+	# 3) CampStorageZone config mutation is blocked while transaction guards hold, then succeeds legitimately after commit.
+	# 4) Legitimate API pile removal is blocked during node_added and succeeds legitimately after commit;
+	#    hostile raw remove_child / queue_free / remove_child+free during node_added does NOT crash or abort pile #2
+	#    and is detected fail-closed ("invalid_physical_pile_collection") on the next prepare/commit.
+
+	# Subcase A: query-only + reentrant transaction + camp config lock + legitimate post-commit API removal/config change
+	var fx_a: Dictionary = await _nav_fixture(&"reg_node_added_a")
+	var zone_a: CampStorageZone = fx_a.zone
+	zone_a.max_pile_amount = 5
+	var unit_a := _nav_unit(fx_a, &"u_na_a")
+	_gather_res(fx_a, unit_a, WOOD, 7, &"op_na_ga", &"free_na_a")
+	var base_wood_a: int = fx_a.inventory.get_physical_amount(&"wood")
+	var orig_zone_id: StringName = zone_a.zone_id
+	var orig_cfg_rev: int = zone_a.get_config_revision()
+	var seen_a: Array[Dictionary] = []
+	var cb_a := func(node: Node) -> void:
+		if not (node is GroundResourcePile):
+			return
+		var pile := node as GroundResourcePile
+		var reenter_r: Dictionary = fx_a.camp_coord.execute_selective_camp_delivery(
+			fx_a.inventory, zone_a, unit_a, fx_a.region, &"op_na_reenter", []
+		)
+		var api_w: bool = fx_a.manager.withdraw(&"wood", 1)
+		fx_a.manager.cleanup()
+		zone_a.max_pile_amount = 2
+		zone_a.zone_id = &"mutated_during_node_added"
+		zone_a.set_custom_position_validator(func(_p: Vector3) -> bool: return false)
+		seen_a.append({
+			"pile_id": pile.pile_id,
+			"amount": pile.amount,
+			"valid": pile.is_valid(),
+			"in_group": pile.is_in_group(GroundResourcePile.GROUP_GROUND_PILES),
+			"reenter_reason": String(reenter_r.get("reason", "")),
+			"api_w": api_w,
+			"zone_locked": zone_a.is_transaction_locked(),
+		})
+	get_tree().node_added.connect(cb_a)
+	var res_a: Dictionary = fx_a.camp_coord.execute_selective_camp_delivery(
+		fx_a.inventory, zone_a, unit_a, fx_a.region, &"op_na_a", []
+	)
+	get_tree().node_added.disconnect(cb_a)
+	assert_true(bool(res_a.get("ok", false)), str(res_a))
+	assert_eq(seen_a.size(), 2, "Both created piles must trigger node_added")
+	for entry: Dictionary in seen_a:
+		assert_true(bool(entry["valid"]), str(entry))
+		assert_true(bool(entry["in_group"]), str(entry))
+		assert_eq(String(entry["reenter_reason"]), "busy", str(entry))
+		assert_false(bool(entry["api_w"]), str(entry))
+		assert_true(bool(entry["zone_locked"]), str(entry))
+	assert_false(zone_a.is_transaction_locked())
+	assert_eq(zone_a.max_pile_amount, 5)
+	assert_eq(zone_a.zone_id, orig_zone_id)
+	assert_eq(zone_a.get_config_revision(), orig_cfg_rev)
+	assert_false(zone_a._custom_position_validator.is_valid())
+	for pid_var: Variant in (res_a["created_pile_ids"] as Array):
+		var cp: GroundResourcePile = fx_a.manager.get_pile_by_id(int(pid_var))
+		assert_not_null(cp)
+		assert_gt(cp.get_visible_mesh_count(), 0)
+	# Replay succeeds with unchanged identity
+	var rep_a: Dictionary = fx_a.camp_coord.execute_selective_camp_delivery(
+		fx_a.inventory, zone_a, unit_a, fx_a.region, &"op_na_a", []
+	)
+	assert_true(bool(rep_a.get("ok", false)) and bool(rep_a.get("replayed", false)), str(rep_a))
+	# Legitimate post-commit config change and API removal now work cleanly and keep storage valid
+	zone_a.max_pile_amount = 8
+	assert_eq(zone_a.max_pile_amount, 8)
+	assert_gt(zone_a.get_config_revision(), orig_cfg_rev)
+	assert_true(fx_a.inventory.withdraw(&"wood", 2))
+	assert_eq(fx_a.inventory.get_physical_amount(&"wood"), base_wood_a + 5)
+	_gather_res(fx_a, unit_a, WOOD, 2, &"op_na_ga2", &"free_na_a2")
+	var post_ok: Dictionary = fx_a.camp_coord.execute_selective_camp_delivery(
+		fx_a.inventory, zone_a, unit_a, fx_a.region, &"op_na_a2", []
+	)
+	assert_true(bool(post_ok.get("ok", false)), str(post_ok))
+	assert_eq(fx_a.inventory.get_physical_amount(&"wood"), base_wood_a + 7)
+
+	# Subcase B: hostile remove_child + free() on pile #1 during node_added must NOT crash or abort pile #2,
+	# and subsequent preparation must detect storage corruption fail-closed.
+	var fx_b: Dictionary = await _nav_fixture(&"reg_node_added_b")
+	var zone_b: CampStorageZone = fx_b.zone
+	zone_b.max_pile_amount = 5
+	var unit_b := _nav_unit(fx_b, &"u_na_b")
+	_gather_res(fx_b, unit_b, WOOD, 7, &"op_na_gb", &"free_na_b")
+	var seen_b_ids: Array[int] = []
+	var cb_b := func(node: Node) -> void:
+		if not (node is GroundResourcePile):
+			return
+		var pile := node as GroundResourcePile
+		seen_b_ids.append(pile.pile_id)
+		if seen_b_ids.size() == 1:
+			if pile.get_parent() != null:
+				pile.get_parent().remove_child(pile)
+			pile.free()
+	get_tree().node_added.connect(cb_b)
+	var res_b: Dictionary = fx_b.camp_coord.execute_selective_camp_delivery(
+		fx_b.inventory, zone_b, unit_b, fx_b.region, &"op_na_b", []
+	)
+	get_tree().node_added.disconnect(cb_b)
+	assert_true(bool(res_b.get("ok", false)), str(res_b))
+	assert_eq(seen_b_ids.size(), 2, "Pile #2 must still attach cleanly even if observer freed pile #1")
+	var pile_2: GroundResourcePile = fx_b.manager.get_pile_by_id(seen_b_ids[1])
+	assert_not_null(pile_2)
+	assert_true(pile_2.is_inside_tree())
+	assert_gt(pile_2.get_visible_mesh_count(), 0)
+	assert_false(zone_b.is_transaction_locked())
+	_gather_res(fx_b, unit_b, WOOD, 1, &"op_na_gb2", &"free_na_b2")
+	var prep_corrupt_b: Dictionary = SelectiveCampDeliveryPlanner.prepare_selective_camp_delivery(
+		fx_b.inventory, zone_b, unit_b, fx_b.region, &"op_na_b_next", []
+	)
+	assert_false(bool(prep_corrupt_b.get("ok", true)))
+	assert_eq(String(prep_corrupt_b.get("reason", "")), "invalid_physical_pile_collection")
+
+	# Subcase C: hostile queue_free() and remove_child() without free() detected fail-closed
+	var fx_c: Dictionary = await _nav_fixture(&"reg_node_added_c")
+	var zone_c: CampStorageZone = fx_c.zone
+	zone_c.max_pile_amount = 5
+	var unit_c := _nav_unit(fx_c, &"u_na_c")
+	_gather_res(fx_c, unit_c, WOOD, 7, &"op_na_gc", &"free_na_c")
+	var seen_c: Array[int] = []
+	var detached_for_cleanup: Array[GroundResourcePile] = []
+	var cb_c := func(node: Node) -> void:
+		if not (node is GroundResourcePile):
+			return
+		var pile := node as GroundResourcePile
+		seen_c.append(pile.pile_id)
+		if seen_c.size() == 1:
+			pile.queue_free()
+		elif seen_c.size() == 2 and pile.get_parent() != null:
+			pile.get_parent().remove_child(pile)
+			detached_for_cleanup.append(pile)
+	get_tree().node_added.connect(cb_c)
+	var res_c: Dictionary = fx_c.camp_coord.execute_selective_camp_delivery(
+		fx_c.inventory, zone_c, unit_c, fx_c.region, &"op_na_c", []
+	)
+	get_tree().node_added.disconnect(cb_c)
+	assert_true(bool(res_c.get("ok", false)), str(res_c))
+	assert_eq(seen_c.size(), 2)
+	_gather_res(fx_c, unit_c, WOOD, 1, &"op_na_gc2", &"free_na_c2")
+	var prep_corrupt_c: Dictionary = SelectiveCampDeliveryPlanner.prepare_selective_camp_delivery(
+		fx_c.inventory, zone_c, unit_c, fx_c.region, &"op_na_c_next", []
+	)
+	assert_false(bool(prep_corrupt_c.get("ok", true)))
+	assert_eq(String(prep_corrupt_c.get("reason", "")), "invalid_physical_pile_collection")
+	for dp: GroundResourcePile in detached_for_cleanup:
+		if is_instance_valid(dp) and dp.get_parent() == null:
+			dp.free()
