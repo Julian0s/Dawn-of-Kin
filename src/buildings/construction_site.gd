@@ -690,7 +690,15 @@ func can_authorize_manual_complement(
 ) -> Dictionary:
 	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
 		return {"ok": false, "complemented": {}, "remaining_missing": {}, "reason": "site_not_active"}
-	return _plan_manual_complement(requested_amounts, allow_partial)
+	var pre: Dictionary = ReservedWithdrawalCoordinator._inspect_manual_complement_preconditions_readonly(self)
+	if not bool(pre.get("ok", false)):
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": String(pre.get("reason", "busy"))}
+	return _plan_manual_complement_internal(requested_amounts, allow_partial, null)
+
+
+func _finish_manual_complement_guards(scope: ReservedWithdrawalCoordinator.ManualComplementScope) -> void:
+	_is_complementing = false
+	ReservedWithdrawalCoordinator._release_manual_complement_scope(scope)
 
 
 func authorize_manual_complement(
@@ -701,22 +709,35 @@ func authorize_manual_complement(
 	if intent == null or not is_instance_valid(intent) or not intent.is_structurally_valid_for(self):
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "unauthorized_or_missing_intent"}
 
-	if _is_preparing_or_transacting:
+	if _is_complementing or _is_preparing_or_transacting:
+		intent.consumed = true
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
 
 	# One-shot consumption occurs immediately after structural intent validation,
-	# including when downstream preconditions or free stock validation fail.
+	# including when downstream preconditions, regional busyness, or free stock validation fail.
 	intent.consumed = true
-	_transaction_revision += 1
 
-	if _is_complementing:
-		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "reentrant_complement_blocked"}
+	if _work_transaction_in_progress:
+		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "busy"}
 
 	if not is_valid() or _site_state != SiteState.ACTIVE or _inventory == null:
 		return {"ok": false, "complemented": {}, "remaining_missing": get_complementable_missing_amounts(), "reason": "site_not_active"}
 
-	var plan: Dictionary = _plan_manual_complement(requested_amounts, allow_partial)
+	var scope_res: Dictionary = ReservedWithdrawalCoordinator._acquire_manual_complement_scope(self)
+	if not bool(scope_res.get("ok", false)):
+		return {
+			"ok": false,
+			"complemented": {},
+			"remaining_missing": get_complementable_missing_amounts(),
+			"reason": String(scope_res.get("reason", "busy")),
+		}
+
+	var scope: ReservedWithdrawalCoordinator.ManualComplementScope = scope_res["scope"] as ReservedWithdrawalCoordinator.ManualComplementScope
+	_is_complementing = true
+
+	var plan: Dictionary = _plan_manual_complement_internal(requested_amounts, allow_partial, scope)
 	if not (plan["ok"] as bool):
+		_finish_manual_complement_guards(scope)
 		return {
 			"ok": false,
 			"complemented": {},
@@ -726,6 +747,7 @@ func authorize_manual_complement(
 
 	var target_batch: Dictionary = plan["target_batch"] as Dictionary
 	if target_batch.is_empty():
+		_finish_manual_complement_guards(scope)
 		return {
 			"ok": true,
 			"complemented": {},
@@ -733,16 +755,21 @@ func authorize_manual_complement(
 			"reason": String(plan.get("reason", "nothing_missing")),
 		}
 
-	_is_complementing = true
-	var committed: bool = _inventory.complement_reservation(reservation_id, target_batch)
-	if committed:
-		_transaction_revision += 1
-	var should_emit_direct: bool = committed and not _signals_bound
-	if should_emit_direct:
-		state_changed.emit(self)
-	_is_complementing = false
+	var committed: bool = false
+	var checkpoint: Dictionary = {}
+	if scope.storage != null:
+		var entries: Array[Dictionary] = plan.get("entries", []) as Array[Dictionary]
+		var applied_gpm: Dictionary = scope.storage._apply_prepared_manual_complement_silent(reservation_id, entries, scope)
+		committed = bool(applied_gpm.get("ok", false))
+		checkpoint = applied_gpm.get("checkpoint", {}) as Dictionary
+	elif scope.storage_source is InMemoryStorageSource:
+		var mem_src: InMemoryStorageSource = scope.storage_source as InMemoryStorageSource
+		var applied_mem: Dictionary = mem_src._apply_manual_complement_silent(reservation_id, target_batch, scope)
+		committed = bool(applied_mem.get("ok", false))
+		checkpoint = applied_mem.get("checkpoint", {}) as Dictionary
 
 	if not committed:
+		_finish_manual_complement_guards(scope)
 		return {
 			"ok": false,
 			"complemented": {},
@@ -750,6 +777,30 @@ func authorize_manual_complement(
 			"reason": "insufficient_free_stock",
 		}
 
+	if not verify_accounting_invariant() or not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope):
+		if scope.storage != null:
+			scope.storage._restore_manual_complement_checkpoint_silent(checkpoint, scope)
+		elif scope.storage_source is InMemoryStorageSource:
+			(scope.storage_source as InMemoryStorageSource)._restore_manual_complement_checkpoint_silent(checkpoint, scope)
+		_finish_manual_complement_guards(scope)
+		return {
+			"ok": false,
+			"complemented": {},
+			"remaining_missing": get_complementable_missing_amounts(),
+			"reason": "accounting_invariant_failed",
+		}
+
+	_transaction_revision += 1
+	_inventory._transaction_revision += 1
+
+	if scope.storage != null:
+		scope.storage._publish_manual_complement_committed(scope)
+	elif scope.storage_source is InMemoryStorageSource:
+		(scope.storage_source as InMemoryStorageSource)._publish_manual_complement_committed(scope)
+	if not _signals_bound:
+		state_changed.emit(self)
+
+	_finish_manual_complement_guards(scope)
 	return {
 		"ok": true,
 		"complemented": target_batch.duplicate(),
@@ -758,7 +809,11 @@ func authorize_manual_complement(
 	}
 
 
-func _plan_manual_complement(requested_amounts: Dictionary, allow_partial: bool) -> Dictionary:
+func _plan_manual_complement_internal(
+	requested_amounts: Dictionary,
+	allow_partial: bool,
+	scope: ReservedWithdrawalCoordinator.ManualComplementScope
+) -> Dictionary:
 	var missing: Dictionary = get_complementable_missing_amounts()
 	if missing.is_empty():
 		return {
@@ -789,8 +844,6 @@ func _plan_manual_complement(requested_amounts: Dictionary, allow_partial: bool)
 
 	var target_batch: Dictionary = {}
 	if not allow_partial:
-		if not _inventory.can_complement_reservation(reservation_id, normalized):
-			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "insufficient_free_stock"}
 		target_batch = normalized
 	else:
 		for res_id: StringName in _get_sorted_required_keys():
@@ -801,8 +854,31 @@ func _plan_manual_complement(requested_amounts: Dictionary, allow_partial: bool)
 			var take: int = mini(want, avail)
 			if take > 0:
 				target_batch[res_id] = take
-		if target_batch.is_empty() or not _inventory.can_complement_reservation(reservation_id, target_batch):
+		if target_batch.is_empty():
 			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "insufficient_free_stock"}
+
+	var entries: Array[Dictionary] = []
+	if scope == null:
+		if not _inventory.can_complement_reservation(reservation_id, target_batch):
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "insufficient_free_stock"}
+	elif scope.storage != null:
+		var prep_gpm: Dictionary = scope.storage._prepare_manual_complement_under_guard(reservation_id, target_batch, scope)
+		if not bool(prep_gpm.get("ok", false)):
+			var gpm_reason: String = String(prep_gpm.get("reason", "insufficient_free_stock"))
+			if gpm_reason == "insufficient_resources":
+				gpm_reason = "insufficient_free_stock"
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": gpm_reason}
+		entries = prep_gpm["entries"] as Array[Dictionary]
+	elif scope.storage_source is InMemoryStorageSource:
+		var mem_src: InMemoryStorageSource = scope.storage_source as InMemoryStorageSource
+		var prep_mem: Dictionary = mem_src._prepare_manual_complement_under_guard(reservation_id, target_batch, scope)
+		if not bool(prep_mem.get("ok", false)):
+			var mem_reason: String = String(prep_mem.get("reason", "insufficient_free_stock"))
+			if mem_reason == "insufficient_resources":
+				mem_reason = "insufficient_free_stock"
+			return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": mem_reason}
+	else:
+		return {"ok": false, "target_batch": {}, "remaining_missing": missing, "reason": "unsupported_storage_source"}
 
 	var projected_remaining: Dictionary = missing.duplicate()
 	for res_key: Variant in target_batch.keys():
@@ -816,6 +892,7 @@ func _plan_manual_complement(requested_amounts: Dictionary, allow_partial: bool)
 	return {
 		"ok": true,
 		"target_batch": target_batch,
+		"entries": entries,
 		"remaining_missing": projected_remaining,
 		"reason": "",
 	}

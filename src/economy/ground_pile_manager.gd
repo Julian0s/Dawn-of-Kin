@@ -1574,29 +1574,24 @@ func _finalize_camp_delivery_after_commit_silent(checkpoint: Dictionary) -> void
 			new_pile._finalize_detached_visuals_after_commit(_visual_cache)
 
 
-func _prepare_site_reservation_under_guard(
+func _prepare_reserve_plan_under_guard_internal(
 	reservation_id: StringName,
 	amounts: Dictionary,
-	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+	allow_existing: bool
 ) -> Dictionary:
-	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
-		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
 	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
 		return {"ok": false, "reason": "busy", "entries": []}
-	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, false)
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, allow_existing)
 	if not bool(plan.get("ok", false)):
 		return {"ok": false, "reason": "insufficient_resources", "entries": []}
 	return {"ok": true, "reason": "", "entries": plan["entries"]}
 
 
-func _apply_prepared_site_reservation_silent(
+func _apply_prepared_entries_silent_internal(
 	reservation_id: StringName,
-	entries: Array[Dictionary],
-	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+	entries: Array[Dictionary]
 ) -> Dictionary:
-	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
-		return {"ok": false, "checkpoint": {}}
-	if scope._reservation_applied or not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
 		return {"ok": false, "checkpoint": {}}
 	var checkpoint: Dictionary = {
 		"ledger_snapshot": _ledger.snapshot_state(),
@@ -1624,8 +1619,51 @@ func _apply_prepared_site_reservation_silent(
 		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
 	_transaction_revision += 1
 	_is_mutating = false
-	scope._reservation_applied = true
 	return {"ok": true, "checkpoint": checkpoint}
+
+
+func _restore_silent_checkpoint_internal(checkpoint: Dictionary) -> void:
+	if checkpoint.is_empty():
+		return
+	_is_mutating = true
+	_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+	_ledger._transaction_revision = int(checkpoint["ledger_revision"])
+	_transaction_revision = int(checkpoint["storage_revision"])
+	_is_mutating = false
+
+
+func _publish_silent_reservation_events() -> void:
+	if is_batch_active():
+		_reservation_batch_dirty = true
+		_batch_dirty = true
+		return
+	_dispatch_reservations_changed()
+	_dispatch_storage_changed()
+
+
+func _prepare_site_reservation_under_guard(
+	reservation_id: StringName,
+	amounts: Dictionary,
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
+	return _prepare_reserve_plan_under_guard_internal(reservation_id, amounts, false)
+
+
+func _apply_prepared_site_reservation_silent(
+	reservation_id: StringName,
+	entries: Array[Dictionary],
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return {"ok": false, "checkpoint": {}}
+	if scope._reservation_applied:
+		return {"ok": false, "checkpoint": {}}
+	var res: Dictionary = _apply_prepared_entries_silent_internal(reservation_id, entries)
+	if bool(res.get("ok", false)):
+		scope._reservation_applied = true
+	return res
 
 
 func _restore_site_reservation_checkpoint_silent(
@@ -1634,13 +1672,7 @@ func _restore_site_reservation_checkpoint_silent(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
 		return
-	if checkpoint.is_empty():
-		return
-	_is_mutating = true
-	_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
-	_ledger._transaction_revision = int(checkpoint["ledger_revision"])
-	_transaction_revision = int(checkpoint["storage_revision"])
-	_is_mutating = false
+	_restore_silent_checkpoint_internal(checkpoint)
 
 
 func _publish_site_reservation_committed(
@@ -1651,9 +1683,49 @@ func _publish_site_reservation_committed(
 	if not scope._reservation_applied or scope._published:
 		return
 	scope._published = true
-	if is_batch_active():
-		_reservation_batch_dirty = true
-		_batch_dirty = true
+	_publish_silent_reservation_events()
+
+
+func _prepare_manual_complement_under_guard(
+	reservation_id: StringName,
+	extra_amounts: Dictionary,
+	scope: ReservedWithdrawalCoordinator.ManualComplementScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage != self:
+		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
+	return _prepare_reserve_plan_under_guard_internal(reservation_id, extra_amounts, true)
+
+
+func _apply_prepared_manual_complement_silent(
+	reservation_id: StringName,
+	entries: Array[Dictionary],
+	scope: ReservedWithdrawalCoordinator.ManualComplementScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage != self:
+		return {"ok": false, "checkpoint": {}}
+	if scope._complement_applied:
+		return {"ok": false, "checkpoint": {}}
+	var res: Dictionary = _apply_prepared_entries_silent_internal(reservation_id, entries)
+	if bool(res.get("ok", false)):
+		scope._complement_applied = true
+	return res
+
+
+func _restore_manual_complement_checkpoint_silent(
+	checkpoint: Dictionary,
+	scope: ReservedWithdrawalCoordinator.ManualComplementScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage != self:
 		return
-	_dispatch_reservations_changed()
-	_dispatch_storage_changed()
+	_restore_silent_checkpoint_internal(checkpoint)
+
+
+func _publish_manual_complement_committed(
+	scope: ReservedWithdrawalCoordinator.ManualComplementScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage != self:
+		return
+	if not scope._complement_applied or scope._published:
+		return
+	scope._published = true
+	_publish_silent_reservation_events()

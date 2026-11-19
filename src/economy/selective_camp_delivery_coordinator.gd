@@ -147,7 +147,12 @@ func _execute(
 		return _failure("unsafe_pile_creator_override", "storage")
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _failure("provenance_disabled", "carry_load")
-	if ReservedWithdrawalCoordinator._has_active_site_creation_in_domain(world, region) or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(inventory, storage):
+	if (
+		ReservedWithdrawalCoordinator._has_active_site_creation_in_domain(world, region)
+		or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(inventory, storage)
+		or ReservedWithdrawalCoordinator._has_active_manual_complement_in_domain(world, region)
+		or ReservedWithdrawalCoordinator._has_active_manual_complement_for_storage(inventory, storage)
+	):
 		return _failure("busy", "coordinator")
 
 	var auth_res: Dictionary = _domain._resolve_camp_authority(world, region, inventory, storage, tree)

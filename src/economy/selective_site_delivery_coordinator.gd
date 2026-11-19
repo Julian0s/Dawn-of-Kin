@@ -64,7 +64,12 @@ func _execute(
 	var storage := (inventory.get_storage_source() as GroundPileManager) if inventory != null else null
 	if storage == null or not CarryProvenanceLedger._id(site.region_id):
 		return _failure("invalid_domain", "authorization")
-	if ReservedWithdrawalCoordinator._has_active_site_creation_in_domain(world, site.region_id) or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(inventory, storage):
+	if (
+		ReservedWithdrawalCoordinator._has_active_site_creation_in_domain(world, site.region_id)
+		or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(inventory, storage)
+		or ReservedWithdrawalCoordinator._has_active_manual_complement_in_domain(world, site.region_id)
+		or ReservedWithdrawalCoordinator._has_active_manual_complement_for_storage(inventory, storage)
+	):
 		return _failure("busy", "coordinator")
 	var authority := _domain._resolve_authority(site, world, storage)
 	if authority == null:
