@@ -241,6 +241,19 @@ func _execute_locked(
 				)
 			_operation_id = alloc["operation_id"] as StringName
 			_lot_id = alloc["lot_id"] as StringName
+		else:
+			var world: World3D = unit.get_world_3d()
+			if ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region):
+				return _failure("busy", "coordinator")
+			var storage: GroundPileManager = inventory.get_storage_source() as GroundPileManager
+			var domain_probe: Dictionary = ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation(
+				world, region, inventory, storage, _operation_id, unit.get_tree()
+			)
+			if not bool(domain_probe.get("ok", false)):
+				return _failure(
+					String(domain_probe.get("reason", "invalid_domain")),
+					String(domain_probe.get("dependency", "coordinator"))
+				)
 	elif not _receipt_matches_session(existing_receipt, source, load):
 		return _failure("operation_conflict", "receipt")
 

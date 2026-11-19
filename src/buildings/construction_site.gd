@@ -1483,14 +1483,13 @@ func _clear_all_transit_listeners() -> void:
 func _on_unit_carry_load_changed(uid: int) -> void:
 	if _suppress_coordinator_signal_echo:
 		return
-	_clamp_unit_transit_claim(uid)
-	_transaction_revision += 1
-	state_changed.emit(self)
+	if _clamp_unit_transit_claim(uid):
+		state_changed.emit(self)
 
 
-func _clamp_unit_transit_claim(uid: int) -> void:
+func _clamp_unit_transit_claim(uid: int) -> bool:
 	if not _transit_claims.has(uid):
-		return
+		return false
 	var claim: Dictionary = _transit_claims[uid] as Dictionary
 	var unit: Unit = claim.get("unit") as Unit
 	var carry_load: UnitCarryLoad = claim.get("carry_load") as UnitCarryLoad
@@ -1501,7 +1500,7 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 				carry_load.load_changed.disconnect(cb)
 		_transit_claims.erase(uid)
 		_transaction_revision += 1
-		return
+		return true
 
 	var amounts: Dictionary = claim["amounts"] as Dictionary
 	var to_erase: Array[StringName] = []
@@ -1527,6 +1526,7 @@ func _clamp_unit_transit_claim(uid: int) -> void:
 		mutated = true
 	if mutated:
 		_transaction_revision += 1
+	return mutated
 
 
 func _prune_stale_state() -> void:
