@@ -373,15 +373,24 @@ func _validate_single_worker(
 			return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: %s possui identidade de proveniência inválida." % worker.name)
 		if not carry.validate_provenance():
 			return _cannot_remove("unreconciled_carry_load", "Remoção bloqueada: mochila de %s possui ledger não reconciliado." % worker.name)
-		for node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
-			var other_unit: Unit = node as Unit
-			if other_unit == null or other_unit == worker or not is_instance_valid(other_unit) or not other_unit.is_inside_tree() or other_unit.is_queued_for_deletion():
-				continue
-			if other_unit.get_world_3d() != world:
-				continue
-			var other_carry: UnitCarryLoad = other_unit.get_carry_load()
-			if other_carry != null and other_carry.is_provenance_enabled() and other_carry.get_provenance_unit_id() == prov_uid:
-				return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: identidade econômica duplicada (%s) no World3D." % String(prov_uid))
+		if not resolved_region.is_empty():
+			var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+				world, resolved_region, worker, carry, tree
+			)
+			if not bool(id_check.get("ok", false)):
+				return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: identidade econômica ambígua ou conflitante (%s)." % String(prov_uid))
+		else:
+			for node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
+				var other_unit: Unit = node as Unit
+				if other_unit == null or other_unit == worker or not is_instance_valid(other_unit) or not other_unit.is_inside_tree() or other_unit.is_queued_for_deletion():
+					continue
+				var other_carry: UnitCarryLoad = other_unit.get_carry_load()
+				if other_carry == carry:
+					return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: mochila compartilhada entre unidades distintas.")
+				if other_unit.get_world_3d() != world:
+					continue
+				if other_carry != null and other_carry.is_provenance_enabled() and other_carry.get_provenance_unit_id() == prov_uid:
+					return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: identidade econômica duplicada (%s) no World3D." % String(prov_uid))
 
 	# Domain-wide ConstructionSite scan via GROUP_CONSTRUCTION_SITES (read-only).
 	var uid: int = worker.get_instance_id()

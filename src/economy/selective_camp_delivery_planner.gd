@@ -574,6 +574,12 @@ static func _scan_sites_pure(
 			else:
 				reservation_owner_by_id[site.reservation_id] = site.site_id
 
+	var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+		world, region, unit, load, tree
+	)
+	if not bool(id_check.get("ok", false)):
+		return _reject("ambiguous_unit_identity", "unit", op, normalized_request)
+
 	for site: ConstructionSite in domain_sites:
 		for uid_key: Variant in site._assigned_workers.keys():
 			var w: Dictionary = site._assigned_workers[uid_key] as Dictionary

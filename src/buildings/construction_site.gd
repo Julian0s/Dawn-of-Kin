@@ -1919,6 +1919,16 @@ func _collect_known_other_sites_pure() -> Array[ConstructionSite]:
 
 
 func _has_conflicting_unit_identity_pure(target_unit: Unit, target_load: UnitCarryLoad) -> bool:
+	if is_inside_tree() and get_world_3d() != null and get_tree() != null:
+		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+			get_world_3d(),
+			region_id,
+			target_unit,
+			target_load,
+			get_tree()
+		)
+		if not bool(id_check.get("ok", false)):
+			return true
 	var target_prov_id: StringName = target_load.get_provenance_unit_id()
 	var sites_to_check: Array[ConstructionSite] = [self]
 	sites_to_check.append_array(_collect_known_other_sites_pure())

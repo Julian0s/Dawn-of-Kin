@@ -381,6 +381,11 @@ static func _build_live_identity(
 	var load := unit.get_carry_load()
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _static_failure("provenance_disabled", "carry_load")
+	var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+		world, region, unit, load, unit.get_tree()
+	)
+	if not bool(id_check.get("ok", false)):
+		return _static_failure(String(id_check.get("reason", "ambiguous_unit_identity")), String(id_check.get("dependency", "unit")))
 	return {
 		"ok": true,
 		"identity": [

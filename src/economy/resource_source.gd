@@ -643,6 +643,16 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 		carry_load._provenance_busy = false
 		_is_transferring = false
 		return {"ok": false, "reason": "unavailable", "extracted": 0}
+	if is_inside_tree() and get_tree() != null:
+		var load_owners: int = 0
+		for node: Node in get_tree().get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
+			var u: Unit = node as Unit
+			if u != null and is_instance_valid(u) and u.is_inside_tree() and not u.is_queued_for_deletion() and u.get_carry_load() == carry_load:
+				load_owners += 1
+				if load_owners > 1:
+					carry_load._provenance_busy = false
+					_is_transferring = false
+					return {"ok": false, "reason": "ambiguous_unit_identity", "extracted": 0}
 	var amount: int = mini(_remaining_amount, mini(requested_amount, mini(max_extract_per_operation, carry_load.get_max_additional_units(definition))))
 	if amount <= 0:
 		carry_load._provenance_busy = false

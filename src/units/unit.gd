@@ -18,9 +18,14 @@ signal order_finished(order: UnitOrder)
 
 @export var definition: CharacterDefinition = null:
 	set(value):
+		if _is_definition_mutation_locked():
+			return
+		if value == null:
+			definition = null
+			return
+		if _carry_load != null and not _carry_load.set_base_capacity(value.base_carry_capacity):
+			return
 		definition = value
-		if definition != null and _carry_load != null:
-			_carry_load.set_base_capacity(definition.base_carry_capacity)
 		if is_node_ready():
 			_sync_definition()
 
@@ -103,15 +108,23 @@ func _exit_tree() -> void:
 
 func apply_definition(def: CharacterDefinition) -> void:
 	definition = def
-	if is_node_ready():
-		_sync_definition()
+
+
+func _is_definition_mutation_locked() -> bool:
+	if _is_reserved_withdrawal_locked():
+		return true
+	return _carry_load != null and (
+		_carry_load._coordinator_transaction_locked
+		or _carry_load._provenance_busy
+		or _carry_load._provenance_applying
+	)
 
 
 func _sync_definition() -> void:
-	if definition == null:
+	if definition == null or _is_definition_mutation_locked():
 		return
-
-	_carry_load.set_base_capacity(definition.base_carry_capacity)
+	if _carry_load != null and not _carry_load.set_base_capacity(definition.base_carry_capacity):
+		return
 
 	if _movement != null:
 		_movement.set_carry_load(_carry_load)

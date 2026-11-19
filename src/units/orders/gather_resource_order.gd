@@ -249,6 +249,12 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 		if storage.get_camp_zone() != camp_zone:
 			_finish_failed("invalid_camp_zone")
 			return
+		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+			unit_world, region_id, _unit, carry_load, _unit.get_tree()
+		)
+		if not bool(id_check.get("ok", false)):
+			_finish_failed(String(id_check.get("reason", "ambiguous_unit_identity")))
+			return
 
 	if carry_load.is_empty() and not carry_load.can_fit_one(def):
 		_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)

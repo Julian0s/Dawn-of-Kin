@@ -249,6 +249,11 @@ func _allocate_construction_transfer_ids(
 	if world == null or unit.get_world_3d() != world or storage == null or load == null \
 		or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(site.region_id):
 		return _failure("invalid_domain", "coordinator")
+	if is_region_transaction_active_readonly(world, site.region_id):
+		return _failure("busy", "coordinator")
+	var id_check := validate_unit_identity_in_domain_readonly(world, site.region_id, unit, load, site.get_tree())
+	if not bool(id_check.get("ok", false)):
+		return _failure(String(id_check.get("reason", "ambiguous_unit_identity")), String(id_check.get("dependency", "unit")))
 	var authority := _resolve_authority(site, world, storage)
 	if authority == null:
 		return _failure("ambiguous_domain", "coordinator")
@@ -315,6 +320,11 @@ func _allocate_camp_delivery_operation_id(
 	var load := unit.get_carry_load()
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _failure("provenance_disabled", "carry_load")
+	if is_region_transaction_active_readonly(world, region):
+		return _failure("busy", "coordinator")
+	var camp_id_check := validate_unit_identity_in_domain_readonly(world, region, unit, load, tree)
+	if not bool(camp_id_check.get("ok", false)):
+		return _failure(String(camp_id_check.get("reason", "ambiguous_unit_identity")), String(camp_id_check.get("dependency", "unit")))
 	var auth_res := _resolve_camp_authority(world, region, inventory, storage, tree)
 	if not bool(auth_res.get("ok", false)):
 		return auth_res
@@ -399,6 +409,11 @@ func _allocate_gather_operation_ids(
 	var load := unit.get_carry_load()
 	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
 		return _failure("provenance_disabled", "carry_load")
+	if is_region_transaction_active_readonly(world, region):
+		return _failure("busy", "coordinator")
+	var camp_id_check := validate_unit_identity_in_domain_readonly(world, region, unit, load, tree)
+	if not bool(camp_id_check.get("ok", false)):
+		return _failure(String(camp_id_check.get("reason", "ambiguous_unit_identity")), String(camp_id_check.get("dependency", "unit")))
 	var auth_res := _resolve_camp_authority(world, region, inventory, storage, tree)
 	if not bool(auth_res.get("ok", false)):
 		return auth_res
@@ -471,6 +486,190 @@ static func inspect_camp_domain_for_preparation(
 		if authority.receipts.has(operation_id):
 			return _failure("operation_conflict", "receipt")
 	return {"ok": true}
+
+
+## Pure read-only validation of a unit's economic provenance identity in (world, region_id).
+## Checks all live relevant units (not only ConstructionSite participants), detects shared
+## UnitCarryLoad instances across live units/receipts, preserves legitimate isolation of
+## distinct regions in the same World3D when regional association is proven, and fails closed
+## on empty/invalid IDs or ambiguous regional association. Never mutates state or creates authorities.
+static func validate_unit_identity_in_domain_readonly(
+	world: World3D,
+	region_id: StringName,
+	unit: Unit,
+	load: UnitCarryLoad,
+	tree: SceneTree
+) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return {"ok": false, "reason": "wrong_thread", "dependency": "thread"}
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id) or tree == null or not is_instance_valid(tree):
+		return {"ok": false, "reason": "invalid_domain", "dependency": "unit"}
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return {"ok": false, "reason": "invalid_unit", "dependency": "unit"}
+	if unit.get_world_3d() != world:
+		return {"ok": false, "reason": "unit_world_mismatch", "dependency": "unit"}
+	if load == null or unit.get_carry_load() != load:
+		return {"ok": false, "reason": "carry_load_mismatch", "dependency": "carry_load"}
+	if not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
+		return {"ok": false, "reason": "provenance_disabled", "dependency": "carry_load"}
+
+	var target_prov_id: StringName = load.get_provenance_unit_id()
+	var domains: Dictionary = {}
+	if world.has_meta(DOMAIN_META):
+		var raw_domains: Variant = world.get_meta(DOMAIN_META)
+		if raw_domains is Dictionary:
+			domains = raw_domains as Dictionary
+
+	# Collect live ConstructionSites in this World3D (read-only).
+	var world_sites: Array[ConstructionSite] = []
+	for node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		if not (node is ConstructionSite):
+			continue
+		var s: ConstructionSite = node as ConstructionSite
+		if not is_instance_valid(s) or not s.is_inside_tree() or s.is_queued_for_deletion():
+			continue
+		if s.get_world_3d() == world:
+			world_sites.append(s)
+
+	# If target unit carries explicit region_id metadata, it must be valid and match region_id.
+	if unit.has_meta(&"region_id"):
+		var raw_target_region: Variant = unit.get_meta(&"region_id")
+		if not CarryProvenanceLedger._id(raw_target_region) or StringName(raw_target_region) != region_id:
+			return {"ok": false, "reason": "ambiguous_unit_identity", "dependency": "unit"}
+
+	# Check committed receipts in this domain for a carry_load previously committed under a different unit.
+	var own_auth: RegionalAuthority = domains.get(region_id) as RegionalAuthority
+	if own_auth != null:
+		for rec_var: Variant in own_auth.receipts.values():
+			if not (rec_var is Dictionary):
+				continue
+			var rec_dict: Dictionary = rec_var as Dictionary
+			var rec_load_ref: WeakRef = rec_dict.get("load") as WeakRef
+			var rec_unit_ref: WeakRef = rec_dict.get("unit") as WeakRef
+			if rec_load_ref != null and rec_load_ref.get_ref() == load:
+				if rec_unit_ref != null and rec_unit_ref.get_ref() != null and rec_unit_ref.get_ref() != unit:
+					return {"ok": false, "reason": "ambiguous_unit_identity", "dependency": "unit"}
+
+	# Collect all live candidate units in the tree (shared-load check spans all worlds;
+	# duplicate provenance_unit_id check spans all live units in this World3D).
+	var world_other_units: Array[Unit] = []
+	var seen_world_unit_ids: Dictionary = {unit.get_instance_id(): true}
+	for node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
+		if not (node is Unit):
+			continue
+		var other_u: Unit = node as Unit
+		if other_u == unit or not is_instance_valid(other_u) or not other_u.is_inside_tree() or other_u.is_queued_for_deletion():
+			continue
+		var other_load: UnitCarryLoad = other_u.get_carry_load()
+		if other_load == load:
+			return {"ok": false, "reason": "ambiguous_unit_identity", "dependency": "unit"}
+		if other_u.get_world_3d() == world:
+			var oid: int = other_u.get_instance_id()
+			if not seen_world_unit_ids.has(oid):
+				seen_world_unit_ids[oid] = true
+				world_other_units.append(other_u)
+
+	# Also include any units referenced in world ConstructionSites even if not yet in GROUP_SELECTABLE_UNITS.
+	for s: ConstructionSite in world_sites:
+		for bucket: Dictionary in [s._assigned_workers, s._transit_claims, s._pending_pickups]:
+			for uid_key: Variant in bucket.keys():
+				var entry: Dictionary = bucket[uid_key] as Dictionary
+				var site_u: Unit = entry.get("unit") as Unit
+				if site_u == null or site_u == unit or not is_instance_valid(site_u):
+					continue
+				if site_u.get_carry_load() == load:
+					return {"ok": false, "reason": "ambiguous_unit_identity", "dependency": "unit"}
+				var suid: int = site_u.get_instance_id()
+				if not seen_world_unit_ids.has(suid):
+					seen_world_unit_ids[suid] = true
+					world_other_units.append(site_u)
+
+	# Evaluate duplicate provenance_unit_id among live units in this World3D.
+	for other_u: Unit in world_other_units:
+		var other_load: UnitCarryLoad = other_u.get_carry_load()
+		if other_load == null or not other_load.is_provenance_enabled():
+			continue
+		if other_load.get_provenance_unit_id() != target_prov_id:
+			continue
+		# Same provenance_unit_id in the same World3D: allowed ONLY when other_u is provably
+		# associated exclusively with a single distinct region (!= region_id).
+		var other_proven: Dictionary = _collect_unit_proven_regions_readonly(other_u, other_load, world, world_sites, domains)
+		var other_regions: Dictionary = other_proven["regions"] as Dictionary
+		if bool(other_proven["has_invalid"]) or other_regions.size() != 1 or other_regions.has(region_id):
+			return {"ok": false, "reason": "ambiguous_unit_identity", "dependency": "unit"}
+
+	return {"ok": true, "reason": "", "dependency": ""}
+
+
+static func _collect_unit_proven_regions_readonly(
+	u: Unit,
+	u_load: UnitCarryLoad,
+	world: World3D,
+	world_sites: Array[ConstructionSite],
+	domains: Dictionary
+) -> Dictionary:
+	var regions: Dictionary = {}
+	var has_invalid: bool = false
+
+	# 1. Explicit economic region metadata on the unit itself (never guessed from proximity or name).
+	if u.has_meta(&"region_id"):
+		var raw_meta: Variant = u.get_meta(&"region_id")
+		if CarryProvenanceLedger._id(raw_meta):
+			regions[StringName(raw_meta)] = true
+		else:
+			has_invalid = true
+
+	# 2. Active ConstructionSite participation in this World3D.
+	var uid: int = u.get_instance_id()
+	for s: ConstructionSite in world_sites:
+		var participates: bool = false
+		if s._assigned_workers.has(uid) and (s._assigned_workers[uid] as Dictionary).get("unit") == u:
+			participates = true
+		elif s._transit_claims.has(uid) and (s._transit_claims[uid] as Dictionary).get("unit") == u:
+			participates = true
+		elif s._pending_pickups.has(uid) and (s._pending_pickups[uid] as Dictionary).get("unit") == u:
+			participates = true
+		if participates:
+			if CarryProvenanceLedger._id(s.region_id):
+				regions[s.region_id] = true
+			else:
+				has_invalid = true
+
+	# 3. Active economic order pointing to an explicit region.
+	var order: UnitOrder = u.get_current_order()
+	if order != null and order.is_active():
+		if order is ConstructOrder:
+			var c_site: ConstructionSite = (order as ConstructOrder).site
+			if c_site != null and is_instance_valid(c_site) and c_site.is_inside_tree() and c_site.get_world_3d() == world:
+				if CarryProvenanceLedger._id(c_site.region_id):
+					regions[c_site.region_id] = true
+				else:
+					has_invalid = true
+		elif order is DeliverToCampOrder:
+			var d_order: DeliverToCampOrder = order as DeliverToCampOrder
+			if d_order.use_selective_provenance and CarryProvenanceLedger._id(d_order.region_id):
+				regions[d_order.region_id] = true
+		elif order is GatherResourceOrder:
+			var g_order: GatherResourceOrder = order as GatherResourceOrder
+			if g_order.use_provenance_transactions and CarryProvenanceLedger._id(g_order.region_id):
+				regions[g_order.region_id] = true
+
+	# 4. Committed receipts recorded under RegionalAuthorities in this World3D.
+	for r_key: Variant in domains.keys():
+		var auth: RegionalAuthority = domains.get(r_key) as RegionalAuthority
+		if auth == null:
+			continue
+		for rec_var: Variant in auth.receipts.values():
+			if not (rec_var is Dictionary):
+				continue
+			var rec_dict: Dictionary = rec_var as Dictionary
+			var rec_u_ref: WeakRef = rec_dict.get("unit") as WeakRef
+			var rec_l_ref: WeakRef = rec_dict.get("load") as WeakRef
+			if (rec_u_ref != null and rec_u_ref.get_ref() == u) or (u_load != null and rec_l_ref != null and rec_l_ref.get_ref() == u_load):
+				regions[StringName(r_key)] = true
+				break
+
+	return {"regions": regions, "has_invalid": has_invalid}
 
 
 ## Pure read-only check: returns true if an already-registered RegionalAuthority for
