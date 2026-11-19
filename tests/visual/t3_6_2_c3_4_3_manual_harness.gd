@@ -40,6 +40,10 @@ class HarnessController extends Node:
 				_issue_opt_in_construct_order_site_a()
 			KEY_7:
 				_print_status("MANUAL_INSPECT")
+			KEY_8:
+				_issue_opt_in_gather_nearest(ResourceDefinition.Category.WOOD)
+			KEY_9:
+				_issue_opt_in_gather_nearest(ResourceDefinition.Category.FOOD)
 
 	func _selected_unit() -> Unit:
 		var sel := main.get_node("SelectionManager") as SelectionManager
@@ -195,6 +199,43 @@ class HarnessController extends Node:
 		unit.issue_order(order)
 		print("[C3.4.3 HARNESS] ConstructOrder opt-in (Obra A) emitido: status=%d phase=%d failure=%s" % [order.status, order.get_phase(), order.failure_reason])
 
+	func _find_nearest_available_source(unit: Unit, category: int) -> ResourceSource:
+		var best: ResourceSource = null
+		var best_d2: float = INF
+		for src: ResourceSource in main.get_test_map().get_resource_sources():
+			if src == null or not is_instance_valid(src) or not src.is_available():
+				continue
+			if src.get_category() != category:
+				continue
+			var d2: float = unit.global_position.distance_squared_to(src.global_position)
+			if d2 < best_d2:
+				best_d2 = d2
+				best = src
+		return best
+
+	func _issue_opt_in_gather_nearest(category: int) -> void:
+		var unit := _selected_unit()
+		if unit == null:
+			return
+		var src: ResourceSource = _find_nearest_available_source(unit, category)
+		if src == null:
+			print("[C3.5 HARNESS] Nenhuma fonte disponivel para categoria=%d." % category)
+			return
+		var order := GatherResourceOrder.new(
+			src,
+			main.get_camp_storage_zone(),
+			main.get_settlement_inventory(),
+			-1.0,
+			-1.0,
+			true,
+			nav.get_region_id()
+		)
+		last_order = order
+		unit.issue_order(order)
+		print("[C3.5 HARNESS] GatherResourceOrder opt-in emitido: source=%s (%d rest.) status=%d phase=%d failure=%s" % [
+			String(src.source_id), src.get_remaining_amount(), order.status, order.get_phase(), order.failure_reason
+		])
+
 	func _print_status(tag: String) -> void:
 		var inv: SettlementInventory = main.get_settlement_inventory()
 		var unit := _selected_unit()
@@ -225,6 +266,14 @@ class HarnessController extends Node:
 				print("  Lotes restantes=%s" % str(load.provenance_snapshot()["ledger"]["lots"]))
 		if last_order != null:
 			print("  Ultima ordem=%s status=%d failure=%s" % [last_order.get_order_name(), last_order.status, last_order.failure_reason])
+			if last_order is GatherResourceOrder:
+				var go: GatherResourceOrder = last_order as GatherResourceOrder
+				print("  Gather opt-in=%s phase=%d extraidos=%d ciclos=%d viagens=%d src_rest=%d src_slots=%d" % [
+					str(go.is_provenance_mode()), go.get_phase(), go.get_total_extracted_units(),
+					go.get_extraction_cycles_completed(), go.get_delivered_trips(),
+					go.source.get_remaining_amount() if is_instance_valid(go.source) else -1,
+					go.source.get_active_worker_count() if is_instance_valid(go.source) else -1
+				])
 
 
 func _initialize() -> void:
@@ -266,5 +315,7 @@ func _run() -> void:
 	print("  Ctrl+5: Ordenar retorno seletivo explicito do lote Obra B")
 	print("  Ctrl+6: Ordenar ConstructOrder opt-in para Obra A")
 	print("  Ctrl+7: Imprimir diagnostico completo de estoque e lotes")
+	print("  Ctrl+8: [C3.5] Coleta opt-in na arvore de madeira mais proxima")
+	print("  Ctrl+9: [C3.5] Coleta opt-in no arbusto de alimento mais proximo")
 	print("  RMB no chao durante caminhada: testar interrupcao manual")
 	print("=================================================================")
