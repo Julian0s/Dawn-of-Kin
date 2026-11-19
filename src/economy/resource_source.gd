@@ -627,7 +627,7 @@ func _before_provenance_transfer_commit() -> bool:
 
 ## Opt-in only. `extracted` is zero on replay; `committed_amount` is historical.
 func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation_id: Variant, lot_id: Variant, requested_amount: int) -> Dictionary:
-	if _is_transferring or carry_load == null or carry_load._provenance_busy:
+	if _is_transferring or carry_load == null or carry_load.is_transaction_busy() or carry_load._coordinator_transaction_locked:
 		return {"ok": false, "reason": "busy", "extracted": 0}
 	if not CarryProvenanceLedger._id(operation_id) or not CarryProvenanceLedger._id(lot_id) or requested_amount <= 0:
 		return {"ok": false, "reason": "invalid_input", "extracted": 0}
@@ -679,10 +679,36 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 	_sync_visuals()
 	if not became_depleted:
 		_trigger_gather_feedback()
+	# Hold transaction lock across post-commit observers so listeners cannot mutate capacity,
+	# enter batch mode, or cancel/replace orders inside the same stack.
+	carry_load._coordinator_transaction_locked = true
 	carry_load._emit_load_changed()
 	amount_changed.emit(self, _remaining_amount, -amount)
 	if became_depleted:
 		depleted.emit(self)
+	carry_load._coordinator_transaction_locked = false
 	carry_load._provenance_busy = false
 	_is_transferring = false
 	return {"ok": true, "reason": "", "replayed": false, "extracted": amount, "committed_amount": amount}
+
+
+## Read-only receipt lookup for transactional gather intent reconciliation.
+func get_provenance_receipt(operation_id: Variant) -> Dictionary:
+	if not CarryProvenanceLedger._id(operation_id):
+		return {}
+	var op := StringName(operation_id)
+	if not _provenance_receipts.has(op):
+		return {}
+	var rec: Dictionary = _provenance_receipts[op] as Dictionary
+	var load_ref: WeakRef = rec.get("load") as WeakRef
+	var load_obj: UnitCarryLoad = (load_ref.get_ref() as UnitCarryLoad) if load_ref != null else null
+	return {
+		"operation_id": op,
+		"source_id": StringName(rec.get("source", &"")),
+		"resource_id": StringName(rec.get("resource", &"")),
+		"unit_weight": int(rec.get("weight", 0)),
+		"lot_id": StringName(rec.get("lot", &"")),
+		"requested_amount": int(rec.get("requested", 0)),
+		"committed_amount": int(rec.get("amount", 0)),
+		"carry_load_instance_id": load_obj.get_instance_id() if load_obj != null else 0,
+	}

@@ -319,6 +319,97 @@ func _allocate_camp_delivery_operation_id(
 	return {"ok": true, "operation_id": op}
 
 
+## Allocate unique regional operation_id and lot_id for one opt-in gather extraction cycle
+## using the shared RegionalAuthority serial counter without creating a parallel authority
+## or mixing gather receipts into construction receipts.
+func _allocate_gather_operation_ids(
+	inventory: SettlementInventory,
+	camp_zone: CampStorageZone,
+	source: ResourceSource,
+	unit: Unit,
+	region_id: Variant,
+	order_identity: int,
+	cycle_index: int
+) -> Dictionary:
+	if OS.get_thread_caller_id() != _owner_thread_id or _owner_thread_id != OS.get_main_thread_id():
+		return _failure("wrong_thread", "thread")
+	if not CarryProvenanceLedger._id(region_id):
+		return _failure("invalid_region", "coordinator")
+	if order_identity == 0:
+		return _failure("invalid_order", "coordinator")
+	if cycle_index <= 0:
+		return _failure("invalid_cycle", "coordinator")
+	var region := StringName(region_id)
+	if not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return _failure("invalid_unit", "coordinator")
+	var world := unit.get_world_3d()
+	var tree := unit.get_tree()
+	if world == null or tree == null:
+		return _failure("invalid_domain", "coordinator")
+	if (
+		source == null
+		or not is_instance_valid(source)
+		or not source.is_inside_tree()
+		or source.is_queued_for_deletion()
+	):
+		return _failure("invalid_source", "source")
+	if source.get_world_3d() != world:
+		return _failure("world_mismatch", "source")
+	var source_def: ResourceDefinition = source.get_definition()
+	if source_def == null or not source_def.is_valid() or not CarryProvenanceLedger._id(source.source_id):
+		return _failure("invalid_source", "source")
+	if inventory == null:
+		return _failure("invalid_inventory", "coordinator")
+	var storage := inventory.get_storage_source() as GroundPileManager
+	if storage == null:
+		return _failure("unsupported_storage_source", "storage")
+	if (
+		camp_zone == null
+		or not is_instance_valid(camp_zone)
+		or not camp_zone.is_inside_tree()
+		or camp_zone.is_queued_for_deletion()
+		or not camp_zone.is_valid()
+	):
+		return _failure("invalid_camp_zone", "camp_zone")
+	if camp_zone.get_world_3d() != world:
+		return _failure("world_mismatch", "camp_zone")
+	if storage.get_camp_zone() != camp_zone:
+		return _failure("invalid_camp_zone", "camp_zone")
+	var load := unit.get_carry_load()
+	if load == null or not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
+		return _failure("provenance_disabled", "carry_load")
+	var auth_res := _resolve_camp_authority(world, region, inventory, storage, tree)
+	if not bool(auth_res.get("ok", false)):
+		return auth_res
+	var authority: RegionalAuthority = auth_res["authority"] as RegionalAuthority
+	if authority.is_executing:
+		return _failure("busy", "coordinator")
+	if authority.construction_transfer_serial == CarryProvenanceLedger.MAX_INT:
+		return _failure("operation_serial_exhausted", "coordinator")
+	authority.construction_transfer_serial += 1
+	var op := StringName("gather:%d:%d:%s:%d:%s:%d:%d:%d:%d" % [
+		world.get_instance_id(),
+		authority.construction_transfer_serial,
+		region,
+		source.get_instance_id(),
+		source.source_id,
+		unit.get_instance_id(),
+		load.get_instance_id(),
+		order_identity,
+		cycle_index,
+	])
+	var lot := StringName("lot:" + String(op))
+	var ledger := load._provenance
+	if (
+		authority.receipts.has(op)
+		or authority.committed_lots.has(lot)
+		or (ledger != null and (ledger._operations.has(op) or ledger._used_lots.has(lot)))
+		or source._provenance_receipts.has(op)
+	):
+		return _failure("operation_conflict", "receipt")
+	return {"ok": true, "operation_id": op, "lot_id": lot}
+
+
 ## Preconditions: a live site with a world and a physical storage source.
 ## Reading the domain neither establishes an authority nor reserves an ID.
 static func inspect_domain_for_preparation(site: ConstructionSite, storage: GroundPileManager, operation_id: StringName) -> Dictionary:
