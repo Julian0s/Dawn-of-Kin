@@ -34,9 +34,11 @@ const MAX_APPROACH_RETRIES: int = 2
 var site: ConstructionSite = null
 var camp_zone: CampStorageZone = null
 var force_transporter: bool = false
+var return_other_site_reserved: bool = false
 var resolved_target: Vector3 = Vector3(INF, INF, INF)
 var trips_completed: int = 0
 var units_delivered_total: int = 0
+var camp_return_trips_completed: int = 0
 
 var _unit: Unit = null
 var _movement: UnitMovement = null
@@ -59,17 +61,20 @@ var _slot_navigation_pending: bool = false
 var _deliver_suborder: DeliverToCampOrder = null
 var _provenance_transfer: ConstructionTransferSession
 var _deferred_navigation_failure: bool = false
+var _last_camp_return_load_revision: int = -1
 
 
 func _init(
 	p_site: ConstructionSite = null,
 	p_camp_zone: CampStorageZone = null,
 	p_force_transporter: bool = false,
-	p_use_provenance_transactions: bool = false
+	p_use_provenance_transactions: bool = false,
+	p_return_other_site_reserved: bool = false
 ) -> void:
 	site = p_site
 	camp_zone = p_camp_zone
 	force_transporter = p_force_transporter
+	return_other_site_reserved = p_return_other_site_reserved
 	if p_use_provenance_transactions:
 		_provenance_transfer = ConstructionTransferSession.new()
 
@@ -253,7 +258,8 @@ func _carry_admission_failure() -> String:
 func _defer_transfer_replan() -> bool:
 	if _provenance_transfer == null:
 		return false
-	if not _provenance_transfer.is_executing and (not is_instance_valid(site) or not site._is_preparing_or_transacting):
+	var sub_executing: bool = _deliver_suborder != null and _deliver_suborder.is_selective_transfer_executing()
+	if not _provenance_transfer.is_executing and not sub_executing and (not is_instance_valid(site) or not site._is_preparing_or_transacting):
 		return false
 	_replan_requested = true
 	return true
@@ -286,6 +292,25 @@ func _cancel_deliver_suborder(movement: UnitMovement) -> void:
 
 
 func _return_unneeded_or_enter_builder_slot(movement: UnitMovement, carry_load: UnitCarryLoad) -> void:
+	if _provenance_transfer != null:
+		if carry_load == null or carry_load.is_empty():
+			_cancel_deliver_suborder(movement)
+			_start_moving_to_builder_slot(movement)
+			return
+		var cargo_info: Dictionary = CampDeliveryTransferSession.inspect_cargo_for_construction_site(
+			site, camp_zone, _unit, carry_load, return_other_site_reserved
+		)
+		var returnable: Array[Dictionary] = cargo_info["returnable_requests"] as Array[Dictionary]
+		if not returnable.is_empty() and carry_load.get_transaction_revision() != _last_camp_return_load_revision:
+			_start_returning_unneeded_cargo_selective(movement, returnable)
+			return
+		_cancel_deliver_suborder(movement)
+		var fatal_reason: String = String(cargo_info["preflight_fatal_reason"])
+		var block_reason: String = String(cargo_info["blocking_reason"])
+		var fail_reason: String = fatal_reason if not fatal_reason.is_empty() else (block_reason if not block_reason.is_empty() else REASON_UNNEEDED_CARGO_REJECTED)
+		_finish_failed(fail_reason)
+		return
+
 	var unneeded_cargo: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
 	if not unneeded_cargo.is_empty():
 		_start_returning_unneeded_cargo(movement)
@@ -318,8 +343,16 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
-	var site_claim: Dictionary = site.get_transit_claim_for_unit(_unit)
-	var has_usable_site_cargo: bool = _has_any_deliverable_claim(site_claim, carry_load)
+	var provenance_cargo: Dictionary = {}
+	var has_usable_site_cargo: bool = false
+	if _provenance_transfer != null:
+		provenance_cargo = CampDeliveryTransferSession.inspect_cargo_for_construction_site(
+			site, camp_zone, _unit, carry_load, return_other_site_reserved
+		)
+		has_usable_site_cargo = bool(provenance_cargo["has_usable_for_site"])
+	else:
+		var site_claim: Dictionary = site.get_transit_claim_for_unit(_unit)
+		has_usable_site_cargo = _has_any_deliverable_claim(site_claim, carry_load)
 
 	if role == ConstructionSite.WorkerRole.BUILDER:
 		_clear_pickup_target()
@@ -339,6 +372,16 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_clear_pickup_target()
 		site.release_pickup_claim(_unit)
 		if not force_transporter:
+			if _provenance_transfer != null and carry_load != null and not carry_load.is_empty() and _would_promote_to_builder(role):
+				var post_returnable: Array[Dictionary] = provenance_cargo["returnable_requests"] as Array[Dictionary]
+				if not post_returnable.is_empty() and carry_load.get_transaction_revision() != _last_camp_return_load_revision:
+					_start_returning_unneeded_cargo_selective(movement, post_returnable)
+					return
+				_cancel_deliver_suborder(movement)
+				var post_fatal: String = String(provenance_cargo["preflight_fatal_reason"])
+				var post_block: String = String(provenance_cargo["blocking_reason"])
+				_finish_failed(post_fatal if not post_fatal.is_empty() else (post_block if not post_block.is_empty() else REASON_UNNEEDED_CARGO_REJECTED))
+				return
 			var post_supply_role: ConstructionSite.WorkerRole = site.rebalance_for_assembly_on_supply_complete(_unit)
 			_last_known_role = post_supply_role
 			if post_supply_role == ConstructionSite.WorkerRole.BUILDER:
@@ -358,6 +401,31 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		_start_moving_to_site_dropoff(movement)
 		return
 
+	if _provenance_transfer != null:
+		var returnable: Array[Dictionary] = provenance_cargo["returnable_requests"] as Array[Dictionary]
+		if not returnable.is_empty() and carry_load != null and carry_load.get_transaction_revision() != _last_camp_return_load_revision:
+			_clear_pickup_target()
+			site.release_pickup_claim(_unit)
+			_start_returning_unneeded_cargo_selective(movement, returnable)
+			return
+		var fatal_reason: String = String(provenance_cargo["preflight_fatal_reason"])
+		if not fatal_reason.is_empty():
+			_cancel_deliver_suborder(movement)
+			_clear_pickup_target()
+			site.release_pickup_claim(_unit)
+			_finish_failed(fatal_reason)
+			return
+		if bool(provenance_cargo["has_non_returnable"]) and not _can_fit_any_claimable_site_resource(carry_load):
+			_cancel_deliver_suborder(movement)
+			_clear_pickup_target()
+			site.release_pickup_claim(_unit)
+			var block_reason: String = String(provenance_cargo["blocking_reason"])
+			_finish_failed(block_reason if not block_reason.is_empty() else REASON_UNNEEDED_CARGO_REJECTED)
+			return
+		_cancel_deliver_suborder(movement)
+		_select_and_approach_next_pile(movement)
+		return
+
 	var unneeded: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
 	if not unneeded.is_empty():
 		_clear_pickup_target()
@@ -367,6 +435,76 @@ func _advance_by_role(movement: UnitMovement) -> void:
 
 	_cancel_deliver_suborder(movement)
 	_select_and_approach_next_pile(movement)
+
+
+func _would_promote_to_builder(role: ConstructionSite.WorkerRole) -> bool:
+	if not _is_site_valid() or not site.is_active() or site.definition == null or force_transporter:
+		return false
+	var max_b: int = mini(2, maxi(0, site.definition.max_builders))
+	if max_b < 1:
+		return false
+	if role == ConstructionSite.WorkerRole.SOLO_SUPPLIER:
+		return true
+	if role == ConstructionSite.WorkerRole.TRANSPORTER:
+		return site._count_builders() < max_b
+	return false
+
+
+func _can_fit_any_claimable_site_resource(carry_load: UnitCarryLoad) -> bool:
+	if not _is_site_valid() or carry_load == null:
+		return false
+	var required: Dictionary = site.get_required_amounts()
+	for res_key: Variant in required.keys():
+		var res_id: StringName = res_key as StringName
+		if site.get_remaining_supply_to_claim(res_id, _unit) <= 0:
+			continue
+		if site.get_reserved_in_piles_amount(res_id) <= 0:
+			continue
+		var def: ResourceDefinition = site._resolve_resource_definition_pure(res_id)
+		if def != null and carry_load.get_max_additional_units(def) >= 1:
+			return true
+	return false
+
+
+func _start_returning_unneeded_cargo_selective(
+	movement: UnitMovement,
+	requested_lots: Array[Dictionary]
+) -> void:
+	if _phase == Phase.RETURNING_UNNEEDED_CARGO and _deliver_suborder != null and _deliver_suborder.is_active():
+		resolved_target = _deliver_suborder.get_reserved_target()
+		return
+	_cancel_deliver_suborder(movement)
+	var inventory: SettlementInventory = site.get_inventory()
+	if camp_zone == null or not is_instance_valid(camp_zone) or not camp_zone.is_valid() or inventory == null:
+		_finish_failed(REASON_UNNEEDED_CARGO_REJECTED)
+		return
+	_phase = Phase.RETURNING_UNNEEDED_CARGO
+	_deliver_suborder = DeliverToCampOrder.new(camp_zone, inventory, true, site.region_id, requested_lots)
+	_deliver_suborder.start(_unit, movement, _world_nav)
+	if _deliver_suborder.is_finished():
+		if _deliver_suborder.is_succeeded():
+			_record_selective_camp_return_completion()
+			_deliver_suborder = null
+			resolved_target = Vector3(INF, INF, INF)
+			_replan_requested = true
+		else:
+			var sub_reason: String = _deliver_suborder.failure_reason
+			_deliver_suborder = null
+			_finish_failed(sub_reason if not sub_reason.is_empty() else REASON_UNNEEDED_CARGO_REJECTED)
+		return
+	resolved_target = _deliver_suborder.get_reserved_target()
+
+
+func _record_selective_camp_return_completion() -> void:
+	if _deliver_suborder == null:
+		return
+	if _deliver_suborder.trips_completed > 0:
+		camp_return_trips_completed += _deliver_suborder.trips_completed
+	var carry_load: UnitCarryLoad = _unit.get_carry_load() if is_instance_valid(_unit) else null
+	if _deliver_suborder.last_delivered_units == 0 and carry_load != null:
+		_last_camp_return_load_revision = carry_load.get_transaction_revision()
+	else:
+		_last_camp_return_load_revision = -1
 
 
 func _has_any_deliverable_claim(site_claim: Dictionary, carry_load: UnitCarryLoad) -> bool:
@@ -415,6 +553,12 @@ func _update_returning_unneeded_cargo(movement: UnitMovement, delta: float) -> v
 	if not _deliver_suborder.is_finished():
 		return
 	if _deliver_suborder.is_succeeded():
+		if _provenance_transfer != null:
+			_record_selective_camp_return_completion()
+			_deliver_suborder = null
+			resolved_target = Vector3(INF, INF, INF)
+			_replan_requested = true
+			return
 		_deliver_suborder = null
 		_advance_by_role(movement)
 		return
@@ -446,8 +590,12 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 			return
 		# DEC-18: SOLO_SUPPLIER transitions to BUILDER only once no more deliveries are possible
 		# and consumable materials already exist in the site buffer.
+		# Never promote an opt-in worker carrying residual cargo that prevents assembly.
+		var cur_load: UnitCarryLoad = _unit.get_carry_load()
+		var can_assemble_cargo: bool = _provenance_transfer == null or cur_load == null or cur_load.is_empty()
 		if (
-			not force_transporter
+			can_assemble_cargo
+			and not force_transporter
 			and site.get_worker_role(_unit) == ConstructionSite.WorkerRole.SOLO_SUPPLIER
 			and site.has_consumable_work_available()
 			and site.try_promote_solo_to_builder(_unit)
@@ -455,6 +603,18 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 			_last_known_role = ConstructionSite.WorkerRole.BUILDER
 			_start_moving_to_builder_slot(movement)
 			return
+		if _provenance_transfer != null and cur_load != null and not cur_load.is_empty():
+			var residual_info: Dictionary = CampDeliveryTransferSession.inspect_cargo_for_construction_site(
+				site, camp_zone, _unit, cur_load, return_other_site_reserved
+			)
+			var res_fatal: String = String(residual_info["preflight_fatal_reason"])
+			var res_block: String = String(residual_info["blocking_reason"])
+			if not res_fatal.is_empty():
+				_finish_failed(res_fatal)
+				return
+			if not res_block.is_empty():
+				_finish_failed(res_block)
+				return
 		# Distinguish an active peer transporter currently supplying this site from orphaned/interrupted claims.
 		if site.has_active_peer_transport_for_site(_unit):
 			_start_waiting_for_peer_supply(movement)
@@ -1253,7 +1413,7 @@ func _is_site_valid() -> bool:
 
 
 func _finish_succeeded() -> void:
-	_deliver_suborder = null
+	_cancel_deliver_suborder(_movement)
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
@@ -1293,7 +1453,7 @@ func _finish_failed(reason: String) -> void:
 	if _slot_navigation_pending and reason == REASON_SITE_UNREACHABLE:
 		_wait_for_navigation()
 		return
-	_deliver_suborder = null
+	_cancel_deliver_suborder(_movement)
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()

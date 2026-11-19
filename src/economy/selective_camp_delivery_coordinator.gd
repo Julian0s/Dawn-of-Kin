@@ -63,6 +63,18 @@ func get_receipt(operation_id: Variant) -> Dictionary:
 	return TxHelpers.validate_camp_receipt(authority, StringName(operation_id)).duplicate(true)
 
 
+func get_receipt_in_domain(world: World3D, region_id: Variant, operation_id: Variant) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or world == null:
+		return {}
+	if not CarryProvenanceLedger._id(region_id) or not CarryProvenanceLedger._id(operation_id):
+		return {}
+	var domains: Dictionary = world.get_meta(ReservedWithdrawalCoordinator.DOMAIN_META, {})
+	var authority := domains.get(StringName(region_id)) as RegionalAuthority
+	if authority == null:
+		return {}
+	return TxHelpers.validate_camp_receipt(authority, StringName(operation_id)).duplicate(true)
+
+
 func _execute(
 	inventory: SettlementInventory,
 	camp_zone: CampStorageZone,

@@ -12,21 +12,36 @@ const CAMP_DROPOFF_REACH_TOLERANCE_XZ: float = UnitMovement.ARRIVAL_TOLERANCE_XZ
 
 
 static func check_physical_authorization(scope: CampDeliveryScope) -> Dictionary:
-	var unit := scope.unit
-	var camp_zone := scope.camp_zone
-	var storage := scope.storage
-	var world := scope.world
+	return check_physical_authorization_participants(
+		scope.unit,
+		scope.load,
+		scope.camp_zone,
+		scope.storage,
+		scope.world
+	)
 
+
+static func check_physical_authorization_participants(
+	unit: Unit,
+	load: UnitCarryLoad,
+	camp_zone: CampStorageZone,
+	storage: GroundPileManager,
+	world: World3D
+) -> Dictionary:
+	if world == null:
+		return {"ok": false, "reason": "invalid_domain", "dependency": "authorization"}
 	if not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
 		return {"ok": false, "reason": "invalid_unit", "dependency": "authorization"}
-	if unit.get_world_3d() != world or unit.get_carry_load() != scope.load:
+	if unit.get_world_3d() != world or unit.get_carry_load() != load:
 		return {"ok": false, "reason": "participant_mismatch", "dependency": "authorization"}
 	var unit_pos: Vector3 = unit.global_position
 	if not unit_pos.is_finite():
 		return {"ok": false, "reason": "invalid_unit", "dependency": "authorization"}
 
 	if (
-		not is_instance_valid(camp_zone)
+		storage == null
+		or camp_zone == null
+		or not is_instance_valid(camp_zone)
 		or not camp_zone.is_inside_tree()
 		or camp_zone.is_queued_for_deletion()
 		or not camp_zone.is_valid()
