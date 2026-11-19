@@ -226,6 +226,21 @@ func get_completion_diagnostic() -> Dictionary:
 func record_completion_failure(reason: String) -> void:
 	if _is_preparing_or_transacting:
 		return
+	_apply_completion_failure(reason)
+
+
+func _record_completion_failure_under_guard(
+	reason: String,
+	completion_scope: ReservedWithdrawalCoordinator.CompletionScope
+) -> void:
+	if completion_scope == null or completion_scope.site != self:
+		return
+	if not ReservedWithdrawalCoordinator._owns_completion_scope(completion_scope):
+		return
+	_apply_completion_failure(reason)
+
+
+func _apply_completion_failure(reason: String) -> void:
 	_transaction_revision += 1
 	_completion_retry_count += 1
 	_last_completion_error = reason
@@ -239,21 +254,37 @@ func record_completion_failure(reason: String) -> void:
 func commit_completed_building(building: BuildingInstance) -> void:
 	if _is_preparing_or_transacting:
 		return
+	_apply_completed_building(building)
+
+
+func _commit_completed_building_under_guard(
+	building: BuildingInstance,
+	completion_scope: ReservedWithdrawalCoordinator.CompletionScope
+) -> bool:
+	if completion_scope == null or completion_scope.site != self:
+		return false
+	if not ReservedWithdrawalCoordinator._owns_completion_scope(completion_scope):
+		return false
+	_apply_completed_building(building)
+	return true
+
+
+func _apply_completed_building(building: BuildingInstance) -> void:
 	_transaction_revision += 1
 	_site_state = SiteState.COMPLETED
 	_assembly_substate = AssemblySubstate.NONE
-	# Snapshot before callbacks: finishing an order unregisters it and rebalances roles.
+	# Snapshot active orders and unbind inventory/carry listeners before callbacks.
 	var orders: Array[UnitOrder] = []
 	for entry: Dictionary in _assigned_workers.values():
 		var order: UnitOrder = entry.get("order") as UnitOrder
 		if order != null and not orders.has(order):
 			orders.append(order)
+	_unbind_inventory()
+	_clear_all_transit_listeners()
 	site_completed.emit(self, building)
 	for order: UnitOrder in orders:
 		if order is ConstructOrder and order.is_active() and (order as ConstructOrder).site == self:
 			(order as ConstructOrder)._finish_succeeded()
-	_unbind_inventory()
-	_clear_all_transit_listeners()
 	_pending_pickups.clear()
 	_assigned_workers.clear()
 	_worker_order_ids.clear()

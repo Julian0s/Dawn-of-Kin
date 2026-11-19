@@ -11,6 +11,8 @@ signal site_creation_rejected(
 	world_position: Vector3
 )
 
+const BUSY_COMPLETION_RETRY_SEC: float = 0.05
+
 var _sites_root: Node3D = null
 var _inventory: SettlementInventory = null
 var _resource_defs: Dictionary = {}
@@ -26,6 +28,7 @@ var _completed_buildings: Array[BuildingInstance] = []
 var _queued_completions: Dictionary = {}
 var _completion_in_progress: bool = false
 var _retry_timers: Dictionary = {}
+var _busy_completion_timers: Dictionary = {}
 var _navigation_retry_timer: Timer = null
 
 
@@ -59,6 +62,19 @@ func _exit_tree() -> void:
 		_world_navigation.unregister_additional_source_root(_buildings_root)
 		if _world_navigation.navigation_rebake_failed.is_connected(_on_navigation_rebake_failed):
 			_world_navigation.navigation_rebake_failed.disconnect(_on_navigation_rebake_failed)
+	for timer_var: Variant in _retry_timers.values():
+		var t: Timer = timer_var as Timer
+		if is_instance_valid(t):
+			t.queue_free()
+	_retry_timers.clear()
+	for busy_var: Variant in _busy_completion_timers.values():
+		var bt: Timer = busy_var as Timer
+		if is_instance_valid(bt):
+			bt.queue_free()
+	_busy_completion_timers.clear()
+	if is_instance_valid(_navigation_retry_timer):
+		_navigation_retry_timer.queue_free()
+		_navigation_retry_timer = null
 
 
 func _on_navigation_rebake_failed(_reason: String) -> void:
@@ -153,24 +169,126 @@ func _complete_queued_site(uid: int) -> void:
 	_queued_completions.erase(uid)
 	var site: ConstructionSite = instance_from_id(uid) as ConstructionSite
 	if is_instance_valid(site):
-		complete_site_transaction(site)
+		_execute_site_completion(site, null, true)
 
 
 func _valid_completion_site(site: ConstructionSite) -> bool:
-	return is_instance_valid(site) and _sites.has(site) and site.is_inside_tree() and site.get_parent() == _sites_root and site.region_id == _region_id and not site._is_preparing_or_transacting and site.is_completion_ready()
+	return is_instance_valid(site) and _sites.has(site) and site.is_inside_tree() and site.get_parent() == _sites_root and site.region_id == _region_id and not site.is_transaction_busy() and site.is_completion_ready()
+
+
+func _has_conflicting_completed_building(site: ConstructionSite) -> bool:
+	return _has_building_id(site.site_id) or has_building_overlapping_rect(site.get_footprint_rect())
+
+
+func _world_to_buildings_local_transform(target_global: Transform3D) -> Transform3D:
+	if is_instance_valid(_buildings_root) and _buildings_root.is_inside_tree():
+		return _buildings_root.global_transform.affine_inverse() * target_global
+	return target_global
+
+
+func _validate_site_ready_for_completion_under_guard(
+	site: ConstructionSite,
+	expected_site_id: StringName,
+	expected_generation: int,
+	expected_world: World3D,
+	expected_region: StringName
+) -> bool:
+	if not is_instance_valid(site) or not _sites.has(site) or not site.is_inside_tree() or site.get_parent() != _sites_root:
+		return false
+	if site.site_id != expected_site_id or site.get_generation() != expected_generation:
+		return false
+	if site.get_world_3d() != expected_world or site.region_id != expected_region or site.region_id != _region_id:
+		return false
+	if site._work_transaction_in_progress or site._is_complementing:
+		return false
+	if site.get_site_state() != ConstructionSite.SiteState.COMPLETING or not site.is_completion_ready():
+		return false
+	return not _has_conflicting_completed_building(site)
+
+
+func _finish_completion_guards(scope: ReservedWithdrawalCoordinator.CompletionScope) -> void:
+	ReservedWithdrawalCoordinator._release_completion_scope(scope)
+	_completion_in_progress = false
+
+
+func _schedule_busy_completion_retry(site: ConstructionSite) -> void:
+	if not is_instance_valid(site) or not _sites.has(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETING:
+		return
+	var uid: int = site.get_instance_id()
+	if _busy_completion_timers.has(uid) and is_instance_valid(_busy_completion_timers[uid]):
+		return
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = BUSY_COMPLETION_RETRY_SEC
+	add_child(timer)
+	_busy_completion_timers[uid] = timer
+	timer.timeout.connect(_on_busy_completion_retry_timeout.bind(uid))
+	timer.start()
+
+
+func _on_busy_completion_retry_timeout(uid: int) -> void:
+	var timer: Timer = _busy_completion_timers.get(uid) as Timer
+	_busy_completion_timers.erase(uid)
+	if is_instance_valid(timer):
+		timer.queue_free()
+	var site: ConstructionSite = instance_from_id(uid) as ConstructionSite
+	if is_instance_valid(site) and site.get_site_state() == ConstructionSite.SiteState.COMPLETING:
+		_execute_site_completion(site, null, true)
+
+
+func _clear_completion_timers_for_site(uid: int) -> void:
+	var retry_timer: Timer = _retry_timers.get(uid) as Timer
+	_retry_timers.erase(uid)
+	if is_instance_valid(retry_timer):
+		retry_timer.queue_free()
+	var busy_timer: Timer = _busy_completion_timers.get(uid) as Timer
+	_busy_completion_timers.erase(uid)
+	if is_instance_valid(busy_timer):
+		busy_timer.queue_free()
 
 
 func complete_site_transaction(site: ConstructionSite, building_instance: BuildingInstance = null) -> bool:
-	if _completion_in_progress or not _valid_completion_site(site) or site._work_transaction_in_progress:
+	return _execute_site_completion(site, building_instance, false)
+
+
+func _execute_site_completion(
+	site: ConstructionSite,
+	building_instance: BuildingInstance,
+	from_queued_dispatch: bool
+) -> bool:
+	if _completion_in_progress or not _valid_completion_site(site):
+		if from_queued_dispatch and is_instance_valid(site) and _sites.has(site) and site.get_site_state() == ConstructionSite.SiteState.COMPLETING and (_completion_in_progress or site.is_transaction_busy()):
+			_schedule_busy_completion_retry(site)
 		return false
 	if site.get_site_state() != ConstructionSite.SiteState.COMPLETING:
 		return false
-	_completion_in_progress = true
-	if not is_instance_valid(_buildings_root) or not _buildings_root.is_inside_tree() or _buildings_root.get_world_3d() != site.get_world_3d() or StringName(_buildings_root.get_meta(&"region_id", &"")) != site.region_id:
-		site.record_completion_failure("invalid_buildings_root")
-		_schedule_retry(site)
-		_completion_in_progress = false
+	if _has_conflicting_completed_building(site):
 		return false
+
+	var expected_site_id: StringName = site.site_id
+	var expected_generation: int = site.get_generation()
+	var expected_world: World3D = site.get_world_3d()
+	var expected_region: StringName = site.region_id
+
+	var acq: Dictionary = ReservedWithdrawalCoordinator._acquire_completion_scope(self, site)
+	if not bool(acq.get("ok", false)):
+		if bool(acq.get("busy", false)):
+			if from_queued_dispatch:
+				_schedule_busy_completion_retry(site)
+			return false
+		site.record_completion_failure(String(acq.get("reason", "invalid_domain")))
+		_schedule_retry(site)
+		return false
+
+	var scope: ReservedWithdrawalCoordinator.CompletionScope = acq["scope"] as ReservedWithdrawalCoordinator.CompletionScope
+	_completion_in_progress = true
+
+	if not is_instance_valid(_buildings_root) or not _buildings_root.is_inside_tree() or _buildings_root.get_world_3d() != expected_world or StringName(_buildings_root.get_meta(&"region_id", &"")) != expected_region:
+		site._record_completion_failure_under_guard("invalid_buildings_root", scope)
+		_schedule_retry(site)
+		_finish_completion_guards(scope)
+		return false
+
 	var building: BuildingInstance = null
 	var created: Variant = building_instance
 	if created == null:
@@ -178,13 +296,37 @@ func complete_site_transaction(site: ConstructionSite, building_instance: Buildi
 	if created is BuildingInstance:
 		building = created as BuildingInstance
 	var owns_created: bool = is_instance_valid(created) and created is Node and (created as Node).get_parent() == null
-	var valid: bool = is_instance_valid(building) and owns_created
+	var valid: bool = (
+		is_instance_valid(building)
+		and owns_created
+		and _validate_site_ready_for_completion_under_guard(site, expected_site_id, expected_generation, expected_world, expected_region)
+	)
 	if valid and building_instance == null:
-		valid = building.configure(site.site_id, site.definition, site.region_id, site.get_consumed_amounts())
+		valid = building.configure(expected_site_id, site.definition, expected_region, site.get_consumed_amounts())
+	if valid:
+		# Configure transform before tree entry so child_entered_tree never observes unpositioned geometry.
+		building.transform = _world_to_buildings_local_transform(site.global_transform)
+		valid = (
+			building.is_valid()
+			and building.building_id == expected_site_id
+			and building.definition == site.definition
+			and building.region_id == expected_region
+			and building.incorporated_materials == site.get_consumed_amounts()
+			and _validate_site_ready_for_completion_under_guard(site, expected_site_id, expected_generation, expected_world, expected_region)
+		)
 	if valid:
 		_buildings_root.add_child(building)
 		building.global_transform = site.global_transform
-		valid = building.is_valid() and building.building_id == site.site_id and building.definition == site.definition and building.region_id == site.region_id and building.get_world_3d() == site.get_world_3d() and building.get_footprint_rect() == site.get_footprint_rect() and building.incorporated_materials == site.get_consumed_amounts()
+		valid = (
+			_validate_site_ready_for_completion_under_guard(site, expected_site_id, expected_generation, expected_world, expected_region)
+			and building.is_valid()
+			and building.building_id == expected_site_id
+			and building.definition == site.definition
+			and building.region_id == expected_region
+			and building.get_world_3d() == expected_world
+			and building.get_footprint_rect() == site.get_footprint_rect()
+			and building.incorporated_materials == site.get_consumed_amounts()
+		)
 	if not valid:
 		if owns_created and is_instance_valid(created) and created is Node:
 			var partial: Node = created as Node
@@ -193,21 +335,26 @@ func complete_site_transaction(site: ConstructionSite, building_instance: Buildi
 				if partial.get_parent() != null:
 					partial.get_parent().remove_child(partial)
 				partial.free()
-		site.record_completion_failure("building_instantiation_or_validation_failed")
-		_schedule_retry(site)
-		_completion_in_progress = false
+		if is_instance_valid(site):
+			site._record_completion_failure_under_guard("building_instantiation_or_validation_failed", scope)
+			_schedule_retry(site)
+		_finish_completion_guards(scope)
 		return false
+
+	_clear_completion_timers_for_site(site.get_instance_id())
 	_completed_buildings.append(building)
 	# Both footprints are registered before any completion callback can run.
 	if is_instance_valid(_world_navigation):
 		_world_navigation.notify_building_geometry_changed(building)
-	site.commit_completed_building(building)
+	site._commit_completed_building_under_guard(building, scope)
 	_sites.erase(site)
-	_sites_root.remove_child(site)
-	site.queue_free()
+	_finish_completion_guards(scope)
+	if is_instance_valid(site) and site.get_parent() == _sites_root:
+		_sites_root.remove_child(site)
+	if is_instance_valid(site):
+		site.queue_free()
 	if is_instance_valid(_world_navigation):
 		_world_navigation.request_async_active_rebake()
-	_completion_in_progress = false
 	return true
 
 
@@ -231,7 +378,12 @@ func _on_completion_retry_timeout(uid: int) -> void:
 	if is_instance_valid(timer):
 		timer.queue_free()
 	var site: ConstructionSite = instance_from_id(uid) as ConstructionSite
-	if not _valid_completion_site(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE:
+	if not is_instance_valid(site) or not _sites.has(site) or not site.is_inside_tree() or site.get_parent() != _sites_root or site.region_id != _region_id or site.get_site_state() != ConstructionSite.SiteState.COMPLETION_FAILED_RETRYABLE:
+		return
+	if site.is_transaction_busy() or ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(site.get_world_3d(), site.region_id):
+		_schedule_retry(site)
+		return
+	if not site.is_completion_ready():
 		return
 	site._retry_cooldown_remaining_sec = 0.0
 	site._completion_retry_timer = null
@@ -241,6 +393,8 @@ func _on_completion_retry_timeout(uid: int) -> void:
 
 func retry_failed_site_completion(site: ConstructionSite) -> bool:
 	if _completion_in_progress or not _valid_completion_site(site) or site.get_site_state() != ConstructionSite.SiteState.COMPLETION_BLOCKED_ERROR:
+		return false
+	if ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(site.get_world_3d(), site.region_id):
 		return false
 	site._completion_retry_count = 0
 	site._retry_cooldown_remaining_sec = 0.0

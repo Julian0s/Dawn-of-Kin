@@ -35,6 +35,18 @@ class CampDeliveryScope extends RefCounted:
 	var sites: Array[ConstructionSite] = []
 
 
+## Capability for the one active site completion in this domain.
+class CompletionScope extends RefCounted:
+	var world: World3D
+	var region_id: StringName
+	var manager: ConstructionManager
+	var site: ConstructionSite
+	var inventory: SettlementInventory
+	var storage: GroundPileManager
+	var sites: Array[ConstructionSite] = []
+	var authority: RegionalAuthority = null
+
+
 class RegionalAuthority extends RefCounted:
 	var storage: WeakRef
 	var is_executing: bool = false
@@ -42,6 +54,7 @@ class RegionalAuthority extends RefCounted:
 	var committed_lots: Dictionary = {}
 	var active_delivery: DeliveryScope
 	var active_camp_delivery: CampDeliveryScope
+	var active_completion: CompletionScope
 	var construction_transfer_serial: int = 0
 
 
@@ -146,7 +159,7 @@ static func _owns_delivery_scope(scope: DeliveryScope) -> bool:
 	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
 	var authority := domains.get(scope.site.region_id) as RegionalAuthority
 	return authority != null and authority.is_executing and authority.active_delivery == scope \
-		and authority.active_camp_delivery == null \
+		and authority.active_camp_delivery == null and authority.active_completion == null \
 		and authority.storage.get_ref() == scope.storage and scope.site.get_inventory() == scope.inventory \
 		and scope.inventory.get_storage_source() == scope.storage and scope.inventory._is_delivering \
 		and scope.storage._is_preparing_withdrawal and scope.load._coordinator_transaction_locked \
@@ -171,6 +184,7 @@ static func _owns_camp_delivery_scope(scope: CampDeliveryScope) -> bool:
 		or not authority.is_executing
 		or authority.active_camp_delivery != scope
 		or authority.active_delivery != null
+		or authority.active_completion != null
 		or authority.storage.get_ref() != scope.storage
 		or scope.inventory.get_storage_source() != scope.storage
 		or scope.storage.get_camp_zone() != scope.camp_zone
@@ -185,6 +199,136 @@ static func _owns_camp_delivery_scope(scope: CampDeliveryScope) -> bool:
 		if not is_instance_valid(site) or not site.is_inside_tree() or site.get_world_3d() != scope.world or site.region_id != scope.region_id or not site._is_preparing_or_transacting:
 			return false
 	return true
+
+
+static func _owns_completion_scope(scope: CompletionScope) -> bool:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or scope == null:
+		return false
+	if scope.world == null or not is_instance_valid(scope.world) or not CarryProvenanceLedger._id(scope.region_id):
+		return false
+	if scope.manager == null or not is_instance_valid(scope.manager):
+		return false
+	if scope.site == null or not is_instance_valid(scope.site) or not scope.site.is_inside_tree() or scope.site.get_world_3d() != scope.world or scope.site.region_id != scope.region_id:
+		return false
+	if scope.inventory == null or not scope.inventory._is_delivering or not scope.site._is_preparing_or_transacting:
+		return false
+	for s: ConstructionSite in scope.sites:
+		if not is_instance_valid(s) or not s.is_inside_tree() or s.get_world_3d() != scope.world or s.region_id != scope.region_id or not s._is_preparing_or_transacting:
+			return false
+	if scope.storage != null:
+		var domains: Dictionary = scope.world.get_meta(DOMAIN_META, {})
+		var authority := domains.get(scope.region_id) as RegionalAuthority
+		if (
+			authority == null
+			or authority != scope.authority
+			or not authority.is_executing
+			or authority.active_completion != scope
+			or authority.active_delivery != null
+			or authority.active_camp_delivery != null
+			or authority.storage == null
+			or authority.storage.get_ref() != scope.storage
+			or scope.inventory.get_storage_source() != scope.storage
+			or not scope.storage._is_preparing_withdrawal
+		):
+			return false
+	return true
+
+
+static func _acquire_completion_scope(manager: ConstructionManager, site: ConstructionSite) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return {"ok": false, "busy": false, "reason": "wrong_thread"}
+	if manager == null or not is_instance_valid(manager) or site == null or not is_instance_valid(site) or not site.is_inside_tree() or site.is_queued_for_deletion():
+		return {"ok": false, "busy": false, "reason": "invalid_site"}
+	var world: World3D = site.get_world_3d()
+	var region: StringName = site.region_id
+	var inventory: SettlementInventory = site.get_inventory()
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region) or region != manager.get_region_id():
+		return {"ok": false, "busy": false, "reason": "invalid_domain"}
+	if inventory == null or manager.get_inventory() != inventory:
+		return {"ok": false, "busy": false, "reason": "invalid_inventory"}
+	if inventory.is_transaction_busy():
+		return {"ok": false, "busy": true, "reason": "busy"}
+
+	var domain_sites: Array[ConstructionSite] = site._collect_known_other_sites_pure()
+	domain_sites.append(site)
+	domain_sites.sort_custom(func(left: ConstructionSite, right: ConstructionSite) -> bool:
+		if left.site_id == right.site_id:
+			return left.get_instance_id() < right.get_instance_id()
+		return String(left.site_id) < String(right.site_id))
+	for s: ConstructionSite in domain_sites:
+		if s.is_transaction_busy():
+			return {"ok": false, "busy": true, "reason": "busy"}
+
+	var storage_source: SettlementStorageSource = inventory.get_storage_source()
+	if storage_source == null:
+		return {"ok": false, "busy": false, "reason": "invalid_inventory"}
+
+	var scope := CompletionScope.new()
+	scope.world = world
+	scope.region_id = region
+	scope.manager = manager
+	scope.site = site
+	scope.inventory = inventory
+	scope.sites = domain_sites
+
+	if storage_source is GroundPileManager:
+		var storage: GroundPileManager = storage_source as GroundPileManager
+		var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+		var authority: RegionalAuthority = domains.get(region) as RegionalAuthority
+		if not _matches_economic_domain(site, world, storage, authority):
+			return {"ok": false, "busy": false, "reason": "ambiguous_domain"}
+		if authority != null and (
+			authority.is_executing
+			or authority.active_delivery != null
+			or authority.active_camp_delivery != null
+			or authority.active_completion != null
+		):
+			return {"ok": false, "busy": true, "reason": "busy"}
+		if storage.is_locked() or storage.is_batch_active():
+			return {"ok": false, "busy": true, "reason": "busy"}
+		var camp_zone: CampStorageZone = storage.get_camp_zone()
+		if camp_zone != null and is_instance_valid(camp_zone) and camp_zone.is_transaction_locked():
+			return {"ok": false, "busy": true, "reason": "busy"}
+		if authority == null:
+			authority = RegionalAuthority.new()
+			authority.storage = weakref(storage)
+			domains[region] = authority
+			world.set_meta(DOMAIN_META, domains)
+			storage._withdrawal_world = weakref(world)
+			storage._withdrawal_region = region
+		scope.storage = storage
+		scope.authority = authority
+		authority.is_executing = true
+		authority.active_completion = scope
+		for s: ConstructionSite in domain_sites:
+			s._is_preparing_or_transacting = true
+		inventory._is_delivering = true
+		storage._is_preparing_withdrawal = true
+		return {"ok": true, "busy": false, "scope": scope}
+
+	if is_region_transaction_active_readonly(world, region):
+		return {"ok": false, "busy": true, "reason": "busy"}
+	for s: ConstructionSite in domain_sites:
+		s._is_preparing_or_transacting = true
+	inventory._is_delivering = true
+	return {"ok": true, "busy": false, "scope": scope}
+
+
+static func _release_completion_scope(scope: CompletionScope) -> void:
+	if scope == null:
+		return
+	if scope.storage != null:
+		scope.storage._is_preparing_withdrawal = false
+	if scope.inventory != null:
+		scope.inventory._is_delivering = false
+	for idx: int in range(scope.sites.size() - 1, -1, -1):
+		var s: ConstructionSite = scope.sites[idx]
+		if is_instance_valid(s):
+			s._is_preparing_or_transacting = false
+	if scope.authority != null:
+		if scope.authority.active_completion == scope:
+			scope.authority.active_completion = null
+		scope.authority.is_executing = false
 
 
 func _resolve_camp_authority(
@@ -688,7 +832,7 @@ static func is_region_transaction_active_readonly(world: World3D, region_id: Str
 	var authority: RegionalAuthority = (domains_raw as Dictionary).get(region_id) as RegionalAuthority
 	if authority == null:
 		return false
-	return authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null
+	return authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null or authority.active_completion != null
 
 
 ## Pure read-only domain inspection for safe temporary-worker removal.
@@ -720,7 +864,7 @@ static func inspect_domain_for_worker_removal_readonly(
 				return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": region_id, "resolved_storage": null}
 			if camp_zone != null and (auth_storage == null or auth_storage.get_camp_zone() != camp_zone):
 				return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": region_id, "resolved_storage": null}
-			if auth.is_executing or auth.active_delivery != null or auth.active_camp_delivery != null:
+			if auth.is_executing or auth.active_delivery != null or auth.active_camp_delivery != null or auth.active_completion != null:
 				return {"ok": false, "reason": "regional_transaction_active", "resolved_region": region_id, "resolved_storage": auth_storage}
 			if resolved_storage == null:
 				resolved_storage = auth_storage
@@ -747,7 +891,7 @@ static func inspect_domain_for_worker_removal_readonly(
 		var cand_auth: RegionalAuthority = domains.get(key) as RegionalAuthority
 		if cand_auth == null:
 			continue
-		if cand_auth.is_executing or cand_auth.active_delivery != null or cand_auth.active_camp_delivery != null:
+		if cand_auth.is_executing or cand_auth.active_delivery != null or cand_auth.active_camp_delivery != null or cand_auth.active_completion != null:
 			any_executing = true
 		var cand_storage: GroundPileManager = cand_auth.storage.get_ref() as GroundPileManager if cand_auth.storage != null else null
 		if cand_storage == null:
@@ -766,7 +910,7 @@ static func inspect_domain_for_worker_removal_readonly(
 		return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": &"", "resolved_storage": null}
 	if matched_regions.size() == 1:
 		var only_auth: RegionalAuthority = matched_authorities[0]
-		if only_auth.is_executing or only_auth.active_delivery != null or only_auth.active_camp_delivery != null:
+		if only_auth.is_executing or only_auth.active_delivery != null or only_auth.active_camp_delivery != null or only_auth.active_completion != null:
 			return {"ok": false, "reason": "regional_transaction_active", "resolved_region": matched_regions[0], "resolved_storage": matched_storages[0]}
 		return {"ok": true, "reason": "", "resolved_region": matched_regions[0], "resolved_storage": matched_storages[0]}
 	if storage == null and camp_zone == null and any_executing:
@@ -842,7 +986,7 @@ static func release_regional_domain(
 		return _release_result(false, false, "storage_mismatch", region)
 	if bound_world != world or bound_region != region:
 		return _release_result(false, false, "domain_binding_mismatch", region)
-	if authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null:
+	if authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null or authority.active_completion != null:
 		return _release_result(false, false, "busy", region)
 
 	var shutdown_err: String = _validate_storage_shutdown_for_release(world, region, storage, tree)
