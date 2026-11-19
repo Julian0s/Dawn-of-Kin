@@ -155,6 +155,7 @@ static func _owns_camp_delivery_scope(scope: CampDeliveryScope) -> bool:
 		or scope.storage.get_camp_zone() != scope.camp_zone
 		or not scope.inventory._is_delivering
 		or not scope.storage._is_preparing_withdrawal
+		or not scope.camp_zone._coordinator_transaction_locked
 		or not scope.load._coordinator_transaction_locked
 		or not scope.load._provenance_busy
 	):

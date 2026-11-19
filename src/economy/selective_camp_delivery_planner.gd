@@ -108,7 +108,7 @@ static func _prepare(
 	if tree == null:
 		return _reject("invalid_domain", "unit", op, normalized_request)
 	if scope == null:
-		if inventory.is_transaction_busy() or storage.is_locked() or storage.is_batch_active() or load.is_transaction_busy():
+		if inventory.is_transaction_busy() or storage.is_locked() or storage.is_batch_active() or camp_zone.is_transaction_locked() or load.is_transaction_busy():
 			return _reject("busy", "participants", op, normalized_request)
 		var domain_check := ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation(
 			world, region, inventory, storage, op, tree

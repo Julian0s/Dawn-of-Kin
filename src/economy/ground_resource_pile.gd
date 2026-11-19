@@ -127,8 +127,11 @@ func _configure_initial_detached_for_commit(
 	_storage_owner = weakref(p_storage_owner)
 
 
-## Rebuilds and syncs visuals for a detached pile strictly at the irreversible post-commit boundary.
+## Rebuilds and syncs visuals for a detached pile strictly at the irreversible post-commit boundary
+## after verifying the attached node is still live inside `_piles_root`.
 func _finalize_detached_visuals_after_commit(p_visual_cache: Dictionary) -> void:
+	if not is_in_group(GROUP_GROUND_PILES):
+		add_to_group(GROUP_GROUND_PILES)
 	_rebuild_visuals(p_visual_cache)
 	_sync_visual_committed_state()
 

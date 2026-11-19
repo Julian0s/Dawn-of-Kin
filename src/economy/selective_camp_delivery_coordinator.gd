@@ -397,6 +397,7 @@ static func _acquire(authority: RegionalAuthority, scope: CampDeliveryScope) -> 
 		or scope.inventory.is_transaction_busy()
 		or scope.storage.is_locked()
 		or scope.storage.is_batch_active()
+		or scope.camp_zone.is_transaction_locked()
 		or scope.load.is_transaction_busy()
 	):
 		return false
@@ -409,6 +410,7 @@ static func _acquire(authority: RegionalAuthority, scope: CampDeliveryScope) -> 
 		site._is_preparing_or_transacting = true
 	scope.inventory._is_delivering = true
 	scope.storage._is_preparing_withdrawal = true
+	scope.camp_zone._coordinator_transaction_locked = true
 	scope.load._provenance_busy = true
 	scope.load._coordinator_transaction_locked = true
 	return true
@@ -417,6 +419,8 @@ static func _acquire(authority: RegionalAuthority, scope: CampDeliveryScope) -> 
 static func _release(authority: RegionalAuthority, scope: CampDeliveryScope) -> void:
 	scope.load._coordinator_transaction_locked = false
 	scope.load._provenance_busy = false
+	if is_instance_valid(scope.camp_zone):
+		scope.camp_zone._coordinator_transaction_locked = false
 	scope.storage._is_preparing_withdrawal = false
 	scope.inventory._is_delivering = false
 	for idx: int in range(scope.sites.size() - 1, -1, -1):

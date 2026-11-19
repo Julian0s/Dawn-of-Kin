@@ -1504,6 +1504,9 @@ func _restore_camp_delivery_checkpoint_silent(checkpoint: Dictionary) -> void:
 
 ## Attaches newly created detached piles to `_piles_root` and syncs visuals for all touched piles
 ## strictly at the irreversible post-commit boundary, after the receipt has been recorded.
+## Each new pile enters `_piles_root` childless (already tagged in `GROUP_GROUND_PILES`) and is
+## revalidated after `add_child` before building visuals so a `SceneTree.node_added` observer
+## detaching, queueing, or freeing the node cannot trigger use-after-free or abort remaining piles.
 func _finalize_camp_delivery_after_commit_silent(checkpoint: Dictionary) -> void:
 	if not _is_preparing_withdrawal or _is_mutating:
 		return
@@ -1513,7 +1516,22 @@ func _finalize_camp_delivery_after_commit_silent(checkpoint: Dictionary) -> void
 			merged_pile._sync_visual_committed_state()
 	var created_list: Array[GroundResourcePile] = checkpoint.get("created_piles", []) as Array[GroundResourcePile]
 	for new_pile: GroundResourcePile in created_list:
-		if new_pile != null and is_instance_valid(new_pile) and _piles_root != null and is_instance_valid(_piles_root):
-			if new_pile.get_parent() == null:
-				_piles_root.add_child(new_pile)
+		if (
+			new_pile == null
+			or not is_instance_valid(new_pile)
+			or new_pile.is_queued_for_deletion()
+			or _piles_root == null
+			or not is_instance_valid(_piles_root)
+		):
+			continue
+		if not new_pile.is_in_group(GroundResourcePile.GROUP_GROUND_PILES):
+			new_pile.add_to_group(GroundResourcePile.GROUP_GROUND_PILES)
+		if new_pile.get_parent() == null:
+			_piles_root.add_child(new_pile)
+		if (
+			is_instance_valid(new_pile)
+			and not new_pile.is_queued_for_deletion()
+			and new_pile.is_inside_tree()
+			and new_pile.get_parent() == _piles_root
+		):
 			new_pile._finalize_detached_visuals_after_commit(_visual_cache)
