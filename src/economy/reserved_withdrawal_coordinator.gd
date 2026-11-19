@@ -80,6 +80,27 @@ func get_receipt(operation_id: Variant) -> Dictionary:
 	return _read_receipt(authority.receipts.get(op), op, RECEIPT_WITHDRAWAL).duplicate(true)
 
 
+func get_receipt_in_domain(world: World3D, region_id: Variant, operation_id: Variant) -> Dictionary:
+	var authority := _receipt_authority_in_domain(world, region_id, operation_id)
+	if authority == null:
+		return {}
+	var op := StringName(operation_id)
+	var receipt := _read_receipt(authority.receipts.get(op), op, RECEIPT_WITHDRAWAL)
+	if receipt.is_empty() or receipt.world_instance_id != world.get_instance_id() or receipt.region_id != StringName(region_id):
+		return {}
+	return receipt.duplicate(true)
+
+
+## A receipt lookup must never resolve, bind or create an economic domain.
+static func _receipt_authority_in_domain(world: World3D, region_id: Variant, operation_id: Variant) -> RegionalAuthority:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id() or world == null:
+		return null
+	if not CarryProvenanceLedger._id(region_id) or not CarryProvenanceLedger._id(operation_id):
+		return null
+	var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+	return domains.get(StringName(region_id)) as RegionalAuthority
+
+
 ## A C2 receipt without kind is admitted only with the original C2 format.
 static func _read_receipt(record: Variant, operation: StringName, kind: StringName) -> Dictionary:
 	if not record is Dictionary or not record.get("receipt") is Dictionary:

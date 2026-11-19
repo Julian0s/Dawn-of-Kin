@@ -1,6 +1,6 @@
 class_name SelectiveSiteDeliveryCoordinator
 extends RefCounted
-## Explicit delivery of attributed cargo. Orders never invoke this coordinator.
+## Explicit delivery of attributed cargo through the construction transfer session.
 
 const Planner = preload("res://src/economy/selective_site_delivery_planner.gd")
 const DeliveryScope = ReservedWithdrawalCoordinator.DeliveryScope
@@ -31,6 +31,16 @@ func get_receipt(operation_id: Variant) -> Dictionary:
 	if authority == null:
 		return {}
 	return _delivery_receipt(authority, StringName(operation_id)).duplicate(true)
+
+
+func get_receipt_in_domain(world: World3D, region_id: Variant, operation_id: Variant) -> Dictionary:
+	var authority := ReservedWithdrawalCoordinator._receipt_authority_in_domain(world, region_id, operation_id)
+	if authority == null:
+		return {}
+	var receipt := _delivery_receipt(authority, StringName(operation_id))
+	if receipt.is_empty() or receipt.identity.world != world.get_instance_id() or receipt.identity.region_id != StringName(region_id):
+		return {}
+	return receipt.duplicate(true)
 
 
 func _execute(

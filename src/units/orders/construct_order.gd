@@ -1375,7 +1375,7 @@ func _unbind_site_signals() -> void:
 	_waiting_for_navigation = false
 	_deferred_navigation_failure = false
 	if _provenance_transfer != null:
-		_provenance_transfer.clear()
+		_provenance_transfer.cancel_intent()
 	if is_instance_valid(_world_nav) and _world_nav.navigation_ready.is_connected(_on_pending_navigation_ready):
 		_world_nav.navigation_ready.disconnect(_on_pending_navigation_ready)
 		_world_nav.navigation_rebake_degraded.disconnect(_on_pending_navigation_degraded)
