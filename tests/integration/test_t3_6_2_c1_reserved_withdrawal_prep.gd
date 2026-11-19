@@ -633,6 +633,8 @@ func test_04_site_states_capacity_weights_and_invalid_or_conflicting_ids() -> vo
 	assert_false(bool(ambig_res["ok"]))
 	assert_eq(String(ambig_res["reason"]), "ambiguous_unit_identity")
 	site._pending_pickups.erase(u_dup.get_instance_id())
+	host.remove_child(u_dup)
+	u_dup.free()
 
 	# Claim eligibility checks: pending pickup cap/pile mismatch, peer pending claim headroom, and BUILDER role
 	var u_other: Unit = _spawn_unit(host, "PeerUnit", &"peer_unit", 20)
