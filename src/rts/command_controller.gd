@@ -3,6 +3,8 @@ extends Node
 ## Translates contextual RTS PickResult commands into individual MoveOrder instances
 ## for the currently selected units using GroupMovePlanner and updates DestinationMarker.
 
+const REASON_UNIT_TRANSACTION_LOCKED: String = "unit_transaction_locked"
+
 signal command_issued(pick: PickResult, anchor_position: Vector3, unit_count: int, all_reachable: bool)
 signal command_rejected(pick: PickResult, reason: String)
 
@@ -153,11 +155,23 @@ func command_at(pick: PickResult) -> bool:
 				_last_command_reason = query.reason
 				command_rejected.emit(pick, _last_command_reason)
 				return false
+	var started_count: int = 0
+	var first_failure_reason: String = ""
 	for idx: int in range(units.size()):
 		var unit: Unit = units[idx]
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
-		unit.issue_order(MoveOrder.new(plan.targets[idx], requested_target, plan.adjusted_for_occupancy))
+		var order := MoveOrder.new(plan.targets[idx], requested_target, plan.adjusted_for_occupancy)
+		unit.issue_order(order)
+		if _is_order_accepted(unit, order):
+			started_count += 1
+		elif first_failure_reason.is_empty():
+			first_failure_reason = _resolve_order_rejection_reason(unit, order)
+
+	if started_count <= 0:
+		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else UnitOrder.REASON_UNREACHABLE
+		command_rejected.emit(pick, _last_command_reason)
+		return false
 
 	var marker_pos: Vector3 = plan.anchor_position if plan.all_slots_reachable else requested_target
 	if units.size() == 1 and plan.all_slots_reachable and plan.adjusted_for_occupancy:
@@ -165,7 +179,7 @@ func command_at(pick: PickResult) -> bool:
 	if _destination_marker != null and is_instance_valid(_destination_marker):
 		_destination_marker.show_at(marker_pos, marker_normal, plan.all_slots_reachable)
 
-	command_issued.emit(pick, marker_pos, units.size(), plan.all_slots_reachable)
+	command_issued.emit(pick, marker_pos, started_count, plan.all_slots_reachable)
 	return true
 
 
@@ -200,13 +214,14 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 
 		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory)
 		unit.issue_order(order)
-		if order.is_active():
+		if _is_order_accepted(unit, order):
 			started_count += 1
 		elif first_failure_reason.is_empty():
-			first_failure_reason = order.failure_reason
+			first_failure_reason = _resolve_order_rejection_reason(unit, order)
 
 	if started_count <= 0:
 		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else GatherResourceOrder.REASON_NO_WORKER_SLOT
+		command_rejected.emit(pick, _last_command_reason)
 		return false
 
 	var marker_pos: Vector3 = source.global_position
@@ -263,10 +278,10 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 
 		var order := ConstructOrder.new(site, _camp_storage_zone)
 		unit.issue_order(order)
-		if order.is_active() or order.is_succeeded():
+		if _is_order_accepted(unit, order):
 			started_count += 1
 		elif first_failure_reason.is_empty():
-			first_failure_reason = order.failure_reason
+			first_failure_reason = _resolve_order_rejection_reason(unit, order)
 
 	if started_count <= 0:
 		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else ConstructOrder.REASON_NO_WORKER_SLOT
@@ -279,6 +294,22 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 
 	command_issued.emit(pick, marker_pos, started_count, true)
 	return true
+
+
+func _is_order_accepted(unit: Unit, order: UnitOrder) -> bool:
+	if order == null:
+		return false
+	if order.is_succeeded():
+		return true
+	return unit != null and is_instance_valid(unit) and unit.get_current_order() == order and order.is_active()
+
+
+func _resolve_order_rejection_reason(unit: Unit, order: UnitOrder) -> String:
+	if order != null and not order.failure_reason.is_empty():
+		return order.failure_reason
+	if unit != null and is_instance_valid(unit) and (unit._is_reserved_withdrawal_locked() or (order != null and order.status == UnitOrder.Status.PENDING)):
+		return REASON_UNIT_TRANSACTION_LOCKED
+	return ""
 
 
 func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]:
