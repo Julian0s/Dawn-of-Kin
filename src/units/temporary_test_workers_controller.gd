@@ -24,6 +24,8 @@ var _world_navigation: WorldNavigation = null
 var _camp_storage_zone: CampStorageZone = null
 var _selection_manager: SelectionManager = null
 var _construction_sites_root: Node3D = null
+var _settlement_inventory: SettlementInventory = null
+var _region_id: StringName = &""
 var _spawned_workers: Array[Unit] = []
 
 
@@ -32,13 +34,17 @@ func configure(
 	world_navigation: WorldNavigation,
 	camp_storage_zone: CampStorageZone = null,
 	selection_manager: SelectionManager = null,
-	construction_sites_root: Node3D = null
+	construction_sites_root: Node3D = null,
+	settlement_inventory: SettlementInventory = null,
+	region_id: StringName = &""
 ) -> void:
 	_units_root = units_root
 	_world_navigation = world_navigation
 	_camp_storage_zone = camp_storage_zone
 	_selection_manager = selection_manager
 	_construction_sites_root = construction_sites_root
+	_settlement_inventory = settlement_inventory
+	_region_id = region_id
 
 
 func get_temporary_workers() -> Array[Unit]:
@@ -133,55 +139,12 @@ func spawn_temporary_workers() -> Dictionary:
 
 func can_remove_temporary_workers() -> Dictionary:
 	var workers: Array[Unit] = get_temporary_workers()
-	if workers.is_empty():
-		return {
-			"can_remove": false,
-			"reason": "none_present",
-			"message": "Nenhum trabalhador temporário ativo para remover.",
-		}
-
-	for worker: Unit in workers:
-		var carry: UnitCarryLoad = worker.get_carry_load()
-		if carry != null and not carry.is_empty():
-			var total_units: int = 0
-			for amt: Variant in carry.get_all_amounts().values():
-				total_units += int(amt)
-			return {
-				"can_remove": false,
-				"reason": "cargo_in_backpack",
-				"message": "Remoção bloqueada: %s possui carga na mochila (%d un). Entregue ou descarregue antes de remover." % [
-					worker.name,
-					total_units,
-				],
-			}
-
-		if _construction_sites_root != null and is_instance_valid(_construction_sites_root):
-			for child: Node in _construction_sites_root.get_children():
-				if not (child is ConstructionSite):
-					continue
-				var site: ConstructionSite = child as ConstructionSite
-				if not is_instance_valid(site) or not site.is_valid():
-					continue
-				var claim: Dictionary = site.get_transit_claim_for_unit(worker)
-				if not claim.is_empty():
-					return {
-						"can_remove": false,
-						"reason": "transit_claim_active",
-						"message": "Remoção bloqueada: %s possui reserva em trânsito no canteiro %s." % [
-							worker.name,
-							String(site.site_id),
-						],
-					}
-
-	return {
-		"can_remove": true,
-		"reason": "",
-		"message": "",
-	}
+	return _validate_workers_for_removal(workers, false)
 
 
 func remove_temporary_workers_safely() -> Dictionary:
-	var check: Dictionary = can_remove_temporary_workers()
+	var workers: Array[Unit] = get_temporary_workers()
+	var check: Dictionary = _validate_workers_for_removal(workers, false)
 	if not bool(check.get("can_remove", false)):
 		return {
 			"ok": false,
@@ -189,11 +152,63 @@ func remove_temporary_workers_safely() -> Dictionary:
 			"message": str(check.get("message", "Não foi possível remover trabalhadores temporários.")),
 		}
 
-	var workers: Array[Unit] = get_temporary_workers()
+	# Phase 2: Cancel active orders safely before touching selection or the scene tree.
 	for worker: Unit in workers:
-		if _selection_manager != null and is_instance_valid(_selection_manager):
-			_selection_manager.remove_unit(worker)
+		var active_order: UnitOrder = worker.get_current_order()
+		if active_order == null:
+			continue
+		var pre_cancel_check: Dictionary = _validate_workers_for_removal(workers, false)
+		if not bool(pre_cancel_check.get("can_remove", false)):
+			return {
+				"ok": false,
+				"reason": str(pre_cancel_check.get("reason", "transaction_in_progress")),
+				"message": str(pre_cancel_check.get("message", "Não foi possível remover trabalhadores temporários.")),
+			}
 		worker.cancel_current_order("temporary_worker_removed")
+		if worker.get_current_order() != null or not active_order.is_finished():
+			return {
+				"ok": false,
+				"reason": "order_cancel_failed",
+				"message": "Remoção bloqueada: não foi possível encerrar com segurança a ordem ativa de %s." % worker.name,
+			}
+
+	# Phase 3: Full revalidation after order cancellations, before selection/tree mutations.
+	var post_cancel_workers: Array[Unit] = get_temporary_workers()
+	if not _same_worker_set(workers, post_cancel_workers):
+		return {
+			"ok": false,
+			"reason": "worker_set_changed",
+			"message": "Remoção bloqueada: conjunto de trabalhadores temporários foi alterado durante o cancelamento.",
+		}
+	var post_cancel_check: Dictionary = _validate_workers_for_removal(workers, true)
+	if not bool(post_cancel_check.get("can_remove", false)):
+		return {
+			"ok": false,
+			"reason": str(post_cancel_check.get("reason", "")),
+			"message": str(post_cancel_check.get("message", "Não foi possível remover trabalhadores temporários.")),
+		}
+
+	# Phase 4: Unselect, then revalidate one final time before remove_child()/queue_free().
+	if _selection_manager != null and is_instance_valid(_selection_manager):
+		for worker: Unit in workers:
+			_selection_manager.remove_unit(worker)
+
+	var final_workers: Array[Unit] = get_temporary_workers()
+	if not _same_worker_set(workers, final_workers):
+		return {
+			"ok": false,
+			"reason": "worker_set_changed",
+			"message": "Remoção bloqueada: conjunto de trabalhadores temporários foi alterado antes da remoção efetiva.",
+		}
+	var final_check: Dictionary = _validate_workers_for_removal(workers, true)
+	if not bool(final_check.get("can_remove", false)):
+		return {
+			"ok": false,
+			"reason": str(final_check.get("reason", "")),
+			"message": str(final_check.get("message", "Não foi possível remover trabalhadores temporários.")),
+		}
+
+	for worker: Unit in workers:
 		if worker.get_parent() == _units_root:
 			_units_root.remove_child(worker)
 		worker.queue_free()
@@ -203,6 +218,332 @@ func remove_temporary_workers_safely() -> Dictionary:
 		"ok": true,
 		"reason": "",
 		"message": "Worker3 e Worker4 removidos com segurança.",
+	}
+
+
+func _same_worker_set(a: Array[Unit], b: Array[Unit]) -> bool:
+	if a.size() != b.size():
+		return false
+	for u: Unit in a:
+		if not b.has(u):
+			return false
+	return true
+
+
+func _validate_workers_for_removal(workers: Array[Unit], require_no_active_orders: bool) -> Dictionary:
+	if workers.is_empty():
+		return _cannot_remove("none_present", "Nenhum trabalhador temporário ativo para remover.")
+
+	if _units_root == null or not is_instance_valid(_units_root) or not _units_root.is_inside_tree():
+		return _cannot_remove("invalid_worker_state", "Remoção bloqueada: raiz de unidades indisponível na cena.")
+
+	var world: World3D = _units_root.get_world_3d()
+	var tree: SceneTree = _units_root.get_tree()
+	if world == null or tree == null:
+		return _cannot_remove("invalid_worker_state", "Remoção bloqueada: contexto de mundo/cena indisponível.")
+
+	if _camp_storage_zone != null:
+		if not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_inside_tree() or _camp_storage_zone.get_world_3d() != world:
+			return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: zona de acampamento inconsistente com o mundo atual.")
+		if _camp_storage_zone.is_transaction_locked():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: zona de acampamento está em transação ativa.")
+
+	var candidate_storage: GroundPileManager = null
+	var candidate_region: StringName = _region_id
+	if _settlement_inventory != null:
+		if _settlement_inventory.is_transaction_busy():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: inventário do assentamento está em transação ativa.")
+		candidate_storage = _settlement_inventory.get_storage_source() as GroundPileManager
+		if candidate_storage != null:
+			if candidate_storage.is_locked() or candidate_storage.is_batch_active():
+				return _cannot_remove("transaction_in_progress", "Remoção bloqueada: armazenamento físico está em transação ativa.")
+			if _camp_storage_zone != null and candidate_storage.get_camp_zone() != _camp_storage_zone:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: armazenamento físico diverge da zona de acampamento.")
+			var bound_world: World3D = candidate_storage.get_bound_withdrawal_world()
+			var bound_region: StringName = candidate_storage.get_bound_withdrawal_region()
+			if bound_world != null and bound_world != world:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: armazenamento físico vinculado a outro World3D.")
+			if not bound_region.is_empty():
+				if not candidate_region.is_empty() and candidate_region != bound_region:
+					return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: região configurada diverge da região vinculada ao armazenamento.")
+				candidate_region = bound_region
+
+	var sites_in_world: Array[ConstructionSite] = _collect_world_construction_sites(tree, world)
+
+	# Infer domain anchor from sites inside _construction_sites_root when not explicitly configured.
+	if _construction_sites_root != null and is_instance_valid(_construction_sites_root):
+		for child: Node in _construction_sites_root.get_children():
+			if not (child is ConstructionSite):
+				continue
+			var root_site: ConstructionSite = child as ConstructionSite
+			if not is_instance_valid(root_site) or not root_site.is_inside_tree() or root_site.is_queued_for_deletion():
+				continue
+			if root_site.get_world_3d() != world:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: canteiro na raiz padrão pertence a outro World3D.")
+			if not root_site.is_valid():
+				continue
+			if not CarryProvenanceLedger._id(root_site.region_id):
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: canteiro com region_id inválido.")
+			if candidate_region.is_empty():
+				candidate_region = root_site.region_id
+			elif candidate_region != root_site.region_id:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: regiões conflitantes na raiz de canteiros.")
+			var rs_inv: SettlementInventory = root_site.get_inventory()
+			var rs_storage: GroundPileManager = rs_inv.get_storage_source() as GroundPileManager if rs_inv != null else null
+			if rs_storage != null:
+				if candidate_storage == null:
+					candidate_storage = rs_storage
+				elif candidate_storage != rs_storage:
+					return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: armazenamentos conflitantes na raiz de canteiros.")
+
+	# Read-only regional authority check (never creates a RegionalAuthority).
+	var domain_probe: Dictionary = ReservedWithdrawalCoordinator.inspect_domain_for_worker_removal_readonly(
+		world,
+		candidate_region,
+		candidate_storage,
+		_camp_storage_zone
+	)
+	if not bool(domain_probe.get("ok", false)):
+		var probe_reason: String = str(domain_probe.get("reason", "ambiguous_economic_domain"))
+		var probe_msg: String = "Remoção bloqueada: transação regional ativa no domínio econômico." if probe_reason == "regional_transaction_active" else "Remoção bloqueada: identidade do domínio econômico ambígua."
+		return _cannot_remove(probe_reason, probe_msg)
+
+	var resolved_region: StringName = domain_probe.get("resolved_region", candidate_region) as StringName
+	var resolved_storage: GroundPileManager = domain_probe.get("resolved_storage", candidate_storage) as GroundPileManager
+	if resolved_storage != null and (resolved_storage.is_locked() or resolved_storage.is_batch_active()):
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: armazenamento regional em transação ativa.")
+
+	for worker: Unit in workers:
+		var w_check: Dictionary = _validate_single_worker(
+			worker,
+			world,
+			tree,
+			resolved_region,
+			resolved_storage,
+			sites_in_world,
+			require_no_active_orders
+		)
+		if not bool(w_check.get("can_remove", false)):
+			return w_check
+
+	return {
+		"can_remove": true,
+		"reason": "",
+		"message": "",
+	}
+
+
+func _validate_single_worker(
+	worker: Unit,
+	world: World3D,
+	tree: SceneTree,
+	resolved_region: StringName,
+	resolved_storage: GroundPileManager,
+	sites_in_world: Array[ConstructionSite],
+	require_no_active_orders: bool
+) -> Dictionary:
+	if worker == null or not is_instance_valid(worker) or not worker.is_inside_tree() or worker.is_queued_for_deletion():
+		return _cannot_remove("invalid_worker_state", "Remoção bloqueada: estado de trabalhador inválido.")
+	if worker.get_world_3d() != world:
+		return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: %s está em outro World3D." % worker.name)
+
+	var carry: UnitCarryLoad = worker.get_carry_load()
+	if carry == null:
+		return _cannot_remove("invalid_worker_state", "Remoção bloqueada: %s sem estrutura de mochila válida." % worker.name)
+
+	# Transactional locks on unit and carry load (including post-commit signal windows).
+	if worker._is_reserved_withdrawal_locked():
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: %s está sob trava de transação econômica." % worker.name)
+	if carry.is_transaction_busy() or carry._coordinator_transaction_locked:
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: mochila de %s está sob transação ativa." % worker.name)
+
+	# Active order transactional / cancellability inspection.
+	var order: UnitOrder = worker.get_current_order()
+	if require_no_active_orders and order != null:
+		return _cannot_remove("order_cancel_failed", "Remoção bloqueada: ordem ativa de %s não foi encerrada." % worker.name)
+	if order != null and order.is_active():
+		var order_check: Dictionary = _validate_active_order_for_removal(worker, order, world)
+		if not bool(order_check.get("can_remove", false)):
+			return order_check
+
+	# Provenance unit identity and ledger reconciliation check.
+	if carry.is_provenance_enabled():
+		var prov_uid: StringName = carry.get_provenance_unit_id()
+		if not CarryProvenanceLedger._id(prov_uid):
+			return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: %s possui identidade de proveniência inválida." % worker.name)
+		if not carry.validate_provenance():
+			return _cannot_remove("unreconciled_carry_load", "Remoção bloqueada: mochila de %s possui ledger não reconciliado." % worker.name)
+		for node: Node in tree.get_nodes_in_group(Unit.GROUP_SELECTABLE_UNITS):
+			var other_unit: Unit = node as Unit
+			if other_unit == null or other_unit == worker or not is_instance_valid(other_unit) or not other_unit.is_inside_tree() or other_unit.is_queued_for_deletion():
+				continue
+			if other_unit.get_world_3d() != world:
+				continue
+			var other_carry: UnitCarryLoad = other_unit.get_carry_load()
+			if other_carry != null and other_carry.is_provenance_enabled() and other_carry.get_provenance_unit_id() == prov_uid:
+				return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: identidade econômica duplicada (%s) no World3D." % String(prov_uid))
+
+	# Domain-wide ConstructionSite scan via GROUP_CONSTRUCTION_SITES (read-only).
+	var uid: int = worker.get_instance_id()
+	for site: ConstructionSite in sites_in_world:
+		var site_inv: SettlementInventory = site.get_inventory()
+		var site_storage: GroundPileManager = site_inv.get_storage_source() as GroundPileManager if site_inv != null else null
+		var site_has_valid_region: bool = CarryProvenanceLedger._id(site.region_id)
+		var same_region: bool = not resolved_region.is_empty() and site_has_valid_region and site.region_id == resolved_region
+		var same_storage: bool = resolved_storage != null and site_storage == resolved_storage
+		var same_camp: bool = _camp_storage_zone != null and site_storage != null and site_storage.get_camp_zone() == _camp_storage_zone
+		var in_our_root: bool = _construction_sites_root != null and is_instance_valid(_construction_sites_root) and site.get_parent() == _construction_sites_root
+		var belongs_to_our_domain: bool = same_region or same_storage or same_camp or in_our_root
+
+		var claim: Dictionary = site._read_transit_claim_for_unit_pure(uid)
+		var has_claim: bool = not claim.is_empty()
+		if has_claim:
+			var raw_entry: Dictionary = site._transit_claims.get(uid, {}) as Dictionary
+			if raw_entry.get("unit") != worker:
+				return _cannot_remove("ambiguous_unit_identity", "Remoção bloqueada: identidade ambígua de claim no canteiro %s." % String(site.site_id))
+
+		if belongs_to_our_domain:
+			if not site_has_valid_region:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: canteiro %s possui region_id inválido." % String(site.site_id))
+			if not resolved_region.is_empty() and site.region_id != resolved_region:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: conflito de região no canteiro %s." % String(site.site_id))
+			if resolved_storage != null and site_storage != null and site_storage != resolved_storage:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: armazenamento conflitante no canteiro %s." % String(site.site_id))
+			if site.is_transaction_busy():
+				return _cannot_remove("transaction_in_progress", "Remoção bloqueada: canteiro %s está em transação ativa." % String(site.site_id))
+			if has_claim:
+				return _cannot_remove(
+					"transit_claim_active",
+					"Remoção bloqueada: %s possui reserva em trânsito no canteiro %s." % [
+						worker.name,
+						String(site.site_id),
+					]
+				)
+			if require_no_active_orders and site._pending_pickups.has(uid):
+				return _cannot_remove(
+					"transit_claim_active",
+					"Remoção bloqueada: %s ainda possui coleta pendente no canteiro %s." % [
+						worker.name,
+						String(site.site_id),
+					]
+				)
+		else:
+			if has_claim:
+				if resolved_region.is_empty():
+					return _cannot_remove(
+						"transit_claim_active",
+						"Remoção bloqueada: %s possui reserva em trânsito no canteiro %s." % [
+							worker.name,
+							String(site.site_id),
+						]
+					)
+				return _cannot_remove(
+					"ambiguous_economic_domain",
+					"Remoção bloqueada: %s possui claim em canteiro (%s) de outra região." % [
+						worker.name,
+						String(site.site_id),
+					]
+				)
+			if (site._pending_pickups.has(uid) or site._assigned_workers.has(uid)) and site.is_transaction_busy():
+				return _cannot_remove("transaction_in_progress", "Remoção bloqueada: canteiro %s referenciando %s está em transação ativa." % [String(site.site_id), worker.name])
+
+	# Physical cargo in backpack (aggregate amounts, weight, or provenance lots).
+	var has_provenance_lots: bool = carry.is_provenance_enabled() and not carry._provenance.snapshot().is_empty()
+	if not carry.is_empty() or carry.get_current_weight() > 0 or has_provenance_lots:
+		var total_units: int = 0
+		for amt: Variant in carry.get_all_amounts().values():
+			total_units += int(amt)
+		return _cannot_remove(
+			"cargo_in_backpack",
+			"Remoção bloqueada: %s possui carga na mochila (%d un). Entregue ou descarregue antes de remover." % [
+				worker.name,
+				total_units,
+			]
+		)
+
+	return {
+		"can_remove": true,
+		"reason": "",
+		"message": "",
+	}
+
+
+func _validate_active_order_for_removal(worker: Unit, order: UnitOrder, world: World3D) -> Dictionary:
+	if order.has_method("is_provenance_transfer_executing") and bool(order.call("is_provenance_transfer_executing")):
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: %s executa transferência de coleta." % worker.name)
+	if order.has_method("is_selective_transfer_executing") and bool(order.call("is_selective_transfer_executing")):
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: %s executa entrega seletiva." % worker.name)
+	if order.has_method("_defer_transfer_replan") and bool(order.call("_defer_transfer_replan")):
+		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: %s executa transferência de obra." % worker.name)
+
+	if order is ConstructOrder:
+		var c_order: ConstructOrder = order as ConstructOrder
+		if c_order.site != null and is_instance_valid(c_order.site):
+			if c_order.site.is_inside_tree() and c_order.site.get_world_3d() != world:
+				return _cannot_remove("ambiguous_economic_domain", "Remoção bloqueada: ordem de construção de %s aponta para outro World3D." % worker.name)
+			if c_order.site.is_transaction_busy():
+				return _cannot_remove("transaction_in_progress", "Remoção bloqueada: canteiro da ordem de %s está em transação ativa." % worker.name)
+			if CarryProvenanceLedger._id(c_order.site.region_id) and ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, c_order.site.region_id):
+				return _cannot_remove("regional_transaction_active", "Remoção bloqueada: transação regional ativa na região da ordem de %s." % worker.name)
+	elif order is GatherResourceOrder:
+		var g_order: GatherResourceOrder = order as GatherResourceOrder
+		if g_order.source != null and is_instance_valid(g_order.source) and g_order.source._is_transferring:
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: fonte da ordem de coleta de %s está transferindo." % worker.name)
+		if g_order.inventory != null and g_order.inventory.is_transaction_busy():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: inventário da ordem de coleta de %s está em transação ativa." % worker.name)
+		if g_order.camp_zone != null and is_instance_valid(g_order.camp_zone) and g_order.camp_zone.is_transaction_locked():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: acampamento da ordem de coleta de %s está em transação ativa." % worker.name)
+		if g_order.use_provenance_transactions and CarryProvenanceLedger._id(g_order.region_id) and ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, g_order.region_id):
+			return _cannot_remove("regional_transaction_active", "Remoção bloqueada: transação regional ativa na ordem de coleta de %s." % worker.name)
+	elif order is DeliverToCampOrder:
+		var d_order: DeliverToCampOrder = order as DeliverToCampOrder
+		if d_order.inventory != null and d_order.inventory.is_transaction_busy():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: inventário da ordem de entrega de %s está em transação ativa." % worker.name)
+		if d_order.camp_zone != null and is_instance_valid(d_order.camp_zone) and d_order.camp_zone.is_transaction_locked():
+			return _cannot_remove("transaction_in_progress", "Remoção bloqueada: acampamento da ordem de entrega de %s está em transação ativa." % worker.name)
+		if d_order.use_selective_provenance and CarryProvenanceLedger._id(d_order.region_id) and ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, d_order.region_id):
+			return _cannot_remove("regional_transaction_active", "Remoção bloqueada: transação regional ativa na ordem de entrega de %s." % worker.name)
+
+	return {"can_remove": true, "reason": "", "message": ""}
+
+
+func _collect_world_construction_sites(tree: SceneTree, world: World3D) -> Array[ConstructionSite]:
+	var sites: Array[ConstructionSite] = []
+	for node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		if not (node is ConstructionSite):
+			continue
+		var site: ConstructionSite = node as ConstructionSite
+		if not is_instance_valid(site) or not site.is_inside_tree() or site.is_queued_for_deletion():
+			continue
+		if not site.is_valid():
+			continue
+		if site.get_world_3d() != world:
+			continue
+		if not sites.has(site):
+			sites.append(site)
+
+	if _construction_sites_root != null and is_instance_valid(_construction_sites_root):
+		for child: Node in _construction_sites_root.get_children():
+			if not (child is ConstructionSite):
+				continue
+			var root_site: ConstructionSite = child as ConstructionSite
+			if not is_instance_valid(root_site) or not root_site.is_inside_tree() or root_site.is_queued_for_deletion():
+				continue
+			if not root_site.is_valid():
+				continue
+			if root_site.get_world_3d() != world:
+				continue
+			if not sites.has(root_site):
+				sites.append(root_site)
+
+	return sites
+
+
+func _cannot_remove(reason: String, message: String) -> Dictionary:
+	return {
+		"can_remove": false,
+		"reason": reason,
+		"message": message,
 	}
 
 

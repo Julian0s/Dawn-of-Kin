@@ -29,6 +29,10 @@ var _settlement_inventory: SettlementInventory = null
 var _construction_sites_root: Node3D = null
 var _construction_manager: ConstructionManager = null
 var _test_workers_controller: TemporaryTestWorkersController = null
+var _economy_domain_owner_token: RefCounted = null
+var _economy_world_ref: WeakRef = null
+var _economy_region_id: StringName = &"default"
+var _last_domain_release_result: Dictionary = {}
 
 
 func _ready() -> void:
@@ -96,7 +100,9 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			world_nav,
 			_camp_storage_zone,
 			_selection_manager,
-			_construction_sites_root
+			_construction_sites_root,
+			_settlement_inventory,
+			_economy_region_id
 		)
 		_placement_test_overlay.configure_test_workers(_test_workers_controller)
 		_placement_test_overlay.use_game_catalog()
@@ -136,7 +142,7 @@ func _setup_construction(world_nav: WorldNavigation) -> void:
 		defs,
 		_camp_storage_zone,
 		world_nav,
-		&"default"
+		_economy_region_id
 	)
 
 
@@ -156,8 +162,56 @@ func _exit_tree() -> void:
 	if _resource_hud != null:
 		_resource_hud.unbind()
 	if _ground_pile_manager != null:
-		_ground_pile_manager.cleanup()
+		var world: World3D = get_world_3d()
+		if world == null and _economy_world_ref != null:
+			world = _economy_world_ref.get_ref() as World3D
+		var release_region: StringName = _ground_pile_manager.get_bound_withdrawal_region()
+		if release_region.is_empty():
+			release_region = _economy_region_id
+		var domain_busy: bool = (
+			(world != null and ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, release_region))
+			or _ground_pile_manager.is_locked()
+			or _ground_pile_manager.is_batch_active()
+			or (_settlement_inventory != null and _settlement_inventory.is_transaction_busy())
+		)
+		if domain_busy:
+			if world != null and get_tree() != null and _economy_domain_owner_token != null:
+				_last_domain_release_result = ReservedWithdrawalCoordinator.release_regional_domain(
+					world,
+					release_region,
+					_ground_pile_manager,
+					_economy_domain_owner_token,
+					get_tree(),
+					_settlement_inventory
+				)
+			else:
+				_last_domain_release_result = {
+					"ok": false,
+					"released": false,
+					"reason": "busy",
+					"region_id": release_region,
+				}
+		else:
+			_ground_pile_manager.cleanup()
+			if world != null and get_tree() != null and _economy_domain_owner_token != null:
+				_last_domain_release_result = ReservedWithdrawalCoordinator.release_regional_domain(
+					world,
+					release_region,
+					_ground_pile_manager,
+					_economy_domain_owner_token,
+					get_tree(),
+					_settlement_inventory
+				)
+			else:
+				_last_domain_release_result = {
+					"ok": false,
+					"released": false,
+					"reason": "missing_world_or_tree",
+					"region_id": release_region,
+				}
 		_ground_pile_manager = null
+	_economy_domain_owner_token = null
+	_economy_world_ref = null
 	_construction_manager = null
 	_construction_sites_root = null
 	_test_workers_controller = null
@@ -186,6 +240,11 @@ func _setup_economy(world_nav: WorldNavigation) -> void:
 		camp_piles_root,
 		_time_provider
 	)
+	_economy_domain_owner_token = RefCounted.new()
+	_ground_pile_manager.bind_domain_owner(_economy_domain_owner_token)
+	var world: World3D = get_world_3d()
+	_economy_world_ref = weakref(world) if world != null else null
+	_last_domain_release_result = {}
 	_settlement_inventory = SettlementInventory.new(_ground_pile_manager)
 
 	if _economy_clock == null:
@@ -267,3 +326,7 @@ func get_construction_manager() -> ConstructionManager:
 
 func get_construction_sites_root() -> Node3D:
 	return _construction_sites_root
+
+
+func get_last_domain_release_result() -> Dictionary:
+	return _last_domain_release_result.duplicate(true)

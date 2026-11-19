@@ -271,6 +271,10 @@ func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
 	var cancelled_order: UnitOrder = _current_order
 	_current_order = null
 	cancelled_order.cancel(_movement, reason)
+	if not cancelled_order.is_finished():
+		if _current_order == null:
+			_current_order = cancelled_order
+		return
 	_set_state(State.IDLE)
 	reset_work_visuals()
 	order_finished.emit(cancelled_order)

@@ -25,6 +25,8 @@ var _is_notifying: bool = false
 var _is_preparing_withdrawal: bool = false
 var _withdrawal_world: WeakRef
 var _withdrawal_region: StringName
+var _domain_owner_token: RefCounted = null
+var _is_shut_down: bool = false
 var _visual_cache: Dictionary = {"meshes": {}, "materials": {}}
 var _ledger: PileReservationLedger = PileReservationLedger.new()
 var _pending_decay_reservation_losses: Array[Dictionary] = []
@@ -105,6 +107,41 @@ func is_locked() -> bool:
 	return _is_mutating or _is_notifying or _is_preparing_withdrawal
 
 
+func bind_domain_owner(owner_token: RefCounted) -> bool:
+	if (
+		owner_token == null
+		or _domain_owner_token != null
+		or _withdrawal_world != null
+		or not _withdrawal_region.is_empty()
+		or _is_shut_down
+		or is_locked()
+		or is_batch_active()
+	):
+		return false
+	_domain_owner_token = owner_token
+	return true
+
+
+func verify_domain_owner(owner_token: RefCounted) -> bool:
+	return owner_token != null and _domain_owner_token != null and _domain_owner_token == owner_token
+
+
+func has_domain_owner() -> bool:
+	return _domain_owner_token != null
+
+
+func is_shut_down() -> bool:
+	return _is_shut_down
+
+
+func get_bound_withdrawal_region() -> StringName:
+	return _withdrawal_region
+
+
+func get_bound_withdrawal_world() -> World3D:
+	return _withdrawal_world.get_ref() as World3D if _withdrawal_world != null else null
+
+
 func begin_batch() -> void:
 	if not _is_preparing_withdrawal:
 		super.begin_batch()
@@ -129,7 +166,7 @@ func get_resource_definition_pure(resource_id: StringName) -> ResourceDefinition
 
 
 func cleanup() -> void:
-	if _is_preparing_withdrawal:
+	if is_locked() or is_batch_active():
 		return
 	for pile: GroundResourcePile in _piles:
 		if is_instance_valid(pile):

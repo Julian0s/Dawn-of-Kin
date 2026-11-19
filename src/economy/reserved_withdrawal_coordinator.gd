@@ -452,6 +452,228 @@ static func inspect_camp_domain_for_preparation(
 	return {"ok": true}
 
 
+## Pure read-only check: returns true if an already-registered RegionalAuthority for
+## (world, region_id) is currently executing a transaction or holds an active delivery scope.
+## Never creates a RegionalAuthority or writes world metadata.
+static func is_region_transaction_active_readonly(world: World3D, region_id: StringName) -> bool:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return true
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id):
+		return false
+	if not world.has_meta(DOMAIN_META):
+		return false
+	var domains_raw: Variant = world.get_meta(DOMAIN_META)
+	if not (domains_raw is Dictionary):
+		return false
+	var authority: RegionalAuthority = (domains_raw as Dictionary).get(region_id) as RegionalAuthority
+	if authority == null:
+		return false
+	return authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null
+
+
+## Pure read-only domain inspection for safe temporary-worker removal.
+## Resolves the responsible regional domain without ever creating a RegionalAuthority
+## or mutating world metadata, and fails closed on active transactions or domain ambiguity.
+static func inspect_domain_for_worker_removal_readonly(
+	world: World3D,
+	region_id: StringName,
+	storage: GroundPileManager,
+	camp_zone: CampStorageZone
+) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return {"ok": false, "reason": "wrong_thread", "resolved_region": &"", "resolved_storage": null}
+	if world == null or not is_instance_valid(world):
+		return {"ok": false, "reason": "invalid_domain", "resolved_region": &"", "resolved_storage": null}
+	if not world.has_meta(DOMAIN_META):
+		return {"ok": true, "reason": "", "resolved_region": region_id, "resolved_storage": storage}
+	var domains_raw: Variant = world.get_meta(DOMAIN_META)
+	if not (domains_raw is Dictionary):
+		return {"ok": true, "reason": "", "resolved_region": region_id, "resolved_storage": storage}
+	var domains: Dictionary = domains_raw as Dictionary
+
+	if CarryProvenanceLedger._id(region_id):
+		var auth: RegionalAuthority = domains.get(region_id) as RegionalAuthority
+		var resolved_storage: GroundPileManager = storage
+		if auth != null:
+			var auth_storage: GroundPileManager = auth.storage.get_ref() as GroundPileManager if auth.storage != null else null
+			if storage != null and auth_storage != storage:
+				return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": region_id, "resolved_storage": null}
+			if camp_zone != null and (auth_storage == null or auth_storage.get_camp_zone() != camp_zone):
+				return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": region_id, "resolved_storage": null}
+			if auth.is_executing or auth.active_delivery != null or auth.active_camp_delivery != null:
+				return {"ok": false, "reason": "regional_transaction_active", "resolved_region": region_id, "resolved_storage": auth_storage}
+			if resolved_storage == null:
+				resolved_storage = auth_storage
+		for other_key: Variant in domains.keys():
+			var other_region: StringName = StringName(other_key)
+			if other_region == region_id:
+				continue
+			var other_auth: RegionalAuthority = domains.get(other_key) as RegionalAuthority
+			if other_auth == null or other_auth.storage == null:
+				continue
+			var other_storage: GroundPileManager = other_auth.storage.get_ref() as GroundPileManager
+			if other_storage == null:
+				continue
+			if (resolved_storage != null and other_storage == resolved_storage) or (camp_zone != null and other_storage.get_camp_zone() == camp_zone):
+				return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": region_id, "resolved_storage": null}
+		return {"ok": true, "reason": "", "resolved_region": region_id, "resolved_storage": resolved_storage}
+
+	var matched_regions: Array[StringName] = []
+	var matched_authorities: Array[RegionalAuthority] = []
+	var matched_storages: Array[GroundPileManager] = []
+	var any_executing: bool = false
+	for key: Variant in domains.keys():
+		var cand_region: StringName = StringName(key)
+		var cand_auth: RegionalAuthority = domains.get(key) as RegionalAuthority
+		if cand_auth == null:
+			continue
+		if cand_auth.is_executing or cand_auth.active_delivery != null or cand_auth.active_camp_delivery != null:
+			any_executing = true
+		var cand_storage: GroundPileManager = cand_auth.storage.get_ref() as GroundPileManager if cand_auth.storage != null else null
+		if cand_storage == null:
+			continue
+		var matches: bool = false
+		if storage != null:
+			matches = cand_storage == storage
+		elif camp_zone != null:
+			matches = cand_storage.get_camp_zone() == camp_zone
+		if matches:
+			matched_regions.append(cand_region)
+			matched_authorities.append(cand_auth)
+			matched_storages.append(cand_storage)
+
+	if matched_regions.size() > 1:
+		return {"ok": false, "reason": "ambiguous_economic_domain", "resolved_region": &"", "resolved_storage": null}
+	if matched_regions.size() == 1:
+		var only_auth: RegionalAuthority = matched_authorities[0]
+		if only_auth.is_executing or only_auth.active_delivery != null or only_auth.active_camp_delivery != null:
+			return {"ok": false, "reason": "regional_transaction_active", "resolved_region": matched_regions[0], "resolved_storage": matched_storages[0]}
+		return {"ok": true, "reason": "", "resolved_region": matched_regions[0], "resolved_storage": matched_storages[0]}
+	if storage == null and camp_zone == null and any_executing:
+		return {"ok": false, "reason": "regional_transaction_active", "resolved_region": &"", "resolved_storage": null}
+	return {"ok": true, "reason": "", "resolved_region": &"", "resolved_storage": storage}
+
+
+## Controlled release of a RegionalAuthority binding when its owning economic session ends.
+## Requires the legitimate storage owner capability token, exact (World3D, region_id, storage)
+## correspondence, no active transaction/scope, and verified session shutdown.
+## Never creates a RegionalAuthority or modifies unrelated regions or storages.
+static func release_regional_domain(
+	world: World3D,
+	region_id: Variant,
+	storage: GroundPileManager,
+	owner_token: RefCounted,
+	tree: SceneTree,
+	inventory: SettlementInventory = null
+) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return _release_result(false, false, "wrong_thread", &"")
+	if world == null or not is_instance_valid(world):
+		return _release_result(false, false, "invalid_world", &"")
+	if not CarryProvenanceLedger._id(region_id):
+		return _release_result(false, false, "invalid_region", &"")
+	var region: StringName = StringName(region_id)
+	if storage == null:
+		return _release_result(false, false, "invalid_storage", region)
+	if tree == null or not is_instance_valid(tree):
+		return _release_result(false, false, "invalid_tree", region)
+	if owner_token == null or not storage.verify_domain_owner(owner_token):
+		return _release_result(false, false, "unauthorized_owner", region)
+	if storage.is_locked() or storage.is_batch_active() or (inventory != null and inventory.is_transaction_busy()):
+		return _release_result(false, false, "busy", region)
+
+	var bound_world: World3D = storage.get_bound_withdrawal_world()
+	var bound_region: StringName = storage.get_bound_withdrawal_region()
+	if bound_world != null and bound_world != world:
+		return _release_result(false, false, "world_mismatch", region)
+	if bound_world == null and not bound_region.is_empty():
+		return _release_result(false, false, "world_mismatch", region)
+	if not bound_region.is_empty() and bound_region != region:
+		return _release_result(false, false, "region_mismatch", region)
+
+	var domains_raw: Variant = world.get_meta(DOMAIN_META) if world.has_meta(DOMAIN_META) else null
+	if not (domains_raw is Dictionary):
+		if bound_world == world and bound_region == region:
+			var partial_err: String = _validate_storage_shutdown_for_release(world, region, storage, tree)
+			if not partial_err.is_empty():
+				return _release_result(false, false, partial_err, region)
+			storage._withdrawal_world = null
+			storage._withdrawal_region = &""
+			storage._is_shut_down = true
+		return _release_result(true, false, "not_bound", region)
+
+	var domains: Dictionary = domains_raw as Dictionary
+	var authority: RegionalAuthority = domains.get(region) as RegionalAuthority
+	if authority == null:
+		for other_key: Variant in domains.keys():
+			var other_auth: RegionalAuthority = domains.get(other_key) as RegionalAuthority
+			if other_auth != null and other_auth.storage != null and other_auth.storage.get_ref() == storage:
+				return _release_result(false, false, "region_mismatch", region)
+		if bound_world == world and bound_region == region:
+			var partial_err: String = _validate_storage_shutdown_for_release(world, region, storage, tree)
+			if not partial_err.is_empty():
+				return _release_result(false, false, partial_err, region)
+			storage._withdrawal_world = null
+			storage._withdrawal_region = &""
+			storage._is_shut_down = true
+		return _release_result(true, false, "not_bound", region)
+
+	if authority.storage == null or authority.storage.get_ref() != storage:
+		return _release_result(false, false, "storage_mismatch", region)
+	if bound_world != world or bound_region != region:
+		return _release_result(false, false, "domain_binding_mismatch", region)
+	if authority.is_executing or authority.active_delivery != null or authority.active_camp_delivery != null:
+		return _release_result(false, false, "busy", region)
+
+	var shutdown_err: String = _validate_storage_shutdown_for_release(world, region, storage, tree)
+	if not shutdown_err.is_empty():
+		return _release_result(false, false, shutdown_err, region)
+
+	domains.erase(region)
+	if domains.is_empty():
+		world.remove_meta(DOMAIN_META)
+	else:
+		world.set_meta(DOMAIN_META, domains)
+	storage._withdrawal_world = null
+	storage._withdrawal_region = &""
+	storage._is_shut_down = true
+	return _release_result(true, true, "", region)
+
+
+static func _validate_storage_shutdown_for_release(
+	world: World3D,
+	region: StringName,
+	storage: GroundPileManager,
+	tree: SceneTree
+) -> String:
+	if is_instance_valid(storage._piles_root) and storage._piles_root.is_inside_tree():
+		return "session_still_active"
+	var camp_zone: CampStorageZone = storage.get_camp_zone()
+	if camp_zone != null and is_instance_valid(camp_zone) and camp_zone.is_inside_tree():
+		return "session_still_active"
+	if not storage.get_piles().is_empty() or not storage.get_all_reservation_ids().is_empty():
+		return "storage_not_cleaned_up"
+	for node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		var peer: ConstructionSite = node as ConstructionSite
+		if peer == null or not is_instance_valid(peer) or not peer.is_inside_tree():
+			continue
+		var peer_inv: SettlementInventory = peer.get_inventory()
+		var peer_storage: SettlementStorageSource = peer_inv.get_storage_source() if peer_inv != null else null
+		var same_domain: bool = peer.get_world_3d() == world and peer.region_id == region
+		if peer_storage == storage or (same_domain and peer.is_valid()):
+			return "active_sites_present"
+	return ""
+
+
+static func _release_result(ok: bool, released: bool, reason: String, region: StringName) -> Dictionary:
+	return {
+		"ok": ok,
+		"released": released,
+		"reason": reason,
+		"region_id": region,
+	}
+
+
 static func _inspect_camp_economic_domain(
 	world: World3D,
 	region: StringName,
@@ -461,6 +683,8 @@ static func _inspect_camp_economic_domain(
 	domains: Dictionary,
 	tree: SceneTree
 ) -> Dictionary:
+	if storage.is_shut_down():
+		return _failure("storage_shut_down", "storage")
 	if authority != null and authority.storage.get_ref() != storage:
 		return _failure("ambiguous_domain", "coordinator")
 	var bound_world: World3D = storage._withdrawal_world.get_ref() as World3D if storage._withdrawal_world != null else null
@@ -499,6 +723,8 @@ static func _inspect_camp_economic_domain(
 
 
 static func _matches_economic_domain(site: ConstructionSite, world: World3D, storage: GroundPileManager, authority: RegionalAuthority) -> bool:
+	if storage.is_shut_down():
+		return false
 	var region := site.region_id
 	if authority != null and authority.storage.get_ref() != storage:
 		return false
