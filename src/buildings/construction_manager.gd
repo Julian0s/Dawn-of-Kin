@@ -472,7 +472,11 @@ func try_create_site_from_placement(
 	var acq: Dictionary = ReservedWithdrawalCoordinator._acquire_site_creation_scope(self)
 	if not bool(acq.get("ok", false)):
 		var acq_reason: String = String(acq.get("reason", "busy" if bool(acq.get("busy", false)) else "invalid_domain"))
-		var acq_msg: String = "Região econômica ocupada por outra transação." if bool(acq.get("busy", false)) else "Domínio econômico inválido ou ambíguo para criar canteiro."
+		var acq_msg: String = "Domínio econômico inválido ou ambíguo para criar canteiro."
+		if bool(acq.get("busy", false)):
+			acq_msg = "Região econômica ocupada por outra transação."
+		elif acq_reason == "unsupported_storage_source":
+			acq_msg = "Armazenamento não suportado para criação transacional de canteiro."
 		return _reject(acq_reason, acq_msg, definition, world_position)
 
 	var scope: ReservedWithdrawalCoordinator.SiteCreationScope = acq["scope"] as ReservedWithdrawalCoordinator.SiteCreationScope
@@ -488,7 +492,6 @@ func try_create_site_from_placement(
 	var reservation_checkpoint: Dictionary = {}
 	var reserved_via_silent_pile: bool = false
 	var reserved_via_silent_memory: bool = false
-	var reserved_via_fallback: bool = false
 
 	if storage_source is GroundPileManager:
 		var gpm: GroundPileManager = storage_source as GroundPileManager
@@ -524,17 +527,9 @@ func try_create_site_from_placement(
 		reservation_checkpoint = applied_mem["checkpoint"] as Dictionary
 		reserved_via_silent_memory = true
 	else:
-		if not storage_source.can_reserve_batch(new_res_id, costs):
-			_next_site_seq = saved_next_site_seq
-			_finish_site_creation_guards(scope)
-			return _reject("insufficient_resources", _format_insufficient_message(definition, costs), definition, world_position)
-		storage_source.begin_batch()
-		if not storage_source.reserve_batch(new_res_id, costs):
-			storage_source.end_batch(true)
-			_next_site_seq = saved_next_site_seq
-			_finish_site_creation_guards(scope)
-			return _reject("reservation_failed", _format_insufficient_message(definition, costs), definition, world_position)
-		reserved_via_fallback = true
+		_next_site_seq = saved_next_site_seq
+		_finish_site_creation_guards(scope)
+		return _reject("unsupported_storage_source", "Armazenamento não suportado para criação transacional de canteiro.", definition, world_position)
 
 	var site: ConstructionSite = null
 	if site_creator_override.is_valid():
@@ -600,9 +595,6 @@ func try_create_site_from_placement(
 			(storage_source as GroundPileManager)._restore_site_reservation_checkpoint_silent(reservation_checkpoint, scope)
 		elif reserved_via_silent_memory:
 			(storage_source as InMemoryStorageSource)._restore_site_reservation_checkpoint_silent(reservation_checkpoint, scope)
-		elif reserved_via_fallback:
-			storage_source.release_batch(new_res_id)
-			storage_source.end_batch(true)
 		_next_site_seq = saved_next_site_seq
 		if owns_site and is_instance_valid(site):
 			site._unbind_inventory()
@@ -629,8 +621,6 @@ func try_create_site_from_placement(
 		(storage_source as GroundPileManager)._publish_site_reservation_committed(scope)
 	elif reserved_via_silent_memory:
 		(storage_source as InMemoryStorageSource)._publish_site_reservation_committed(scope)
-	elif reserved_via_fallback:
-		storage_source.end_batch(false)
 	if is_instance_valid(site):
 		site._suppress_coordinator_signal_echo = false
 

@@ -8,6 +8,23 @@ var _decayed: Dictionary = {}
 var _reservations: Dictionary = {}
 var _reservation_order: Dictionary = {}
 var _next_reservation_seq: int = 1
+var _is_preparing_withdrawal: bool = false
+
+
+func is_locked() -> bool:
+	return _is_preparing_withdrawal or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(null, self)
+
+
+func begin_batch() -> void:
+	if is_locked():
+		return
+	super.begin_batch()
+
+
+func end_batch(discard_dirty: bool = false) -> void:
+	if is_locked():
+		return
+	super.end_batch(discard_dirty)
 
 
 func get_physical_amount(resource_id: StringName) -> int:
@@ -78,15 +95,21 @@ func get_all_reservation_ids() -> Array[StringName]:
 
 
 func deposit(resource_id: StringName, amount: int) -> bool:
-	if resource_id.is_empty() or amount <= 0:
+	if is_locked() or resource_id.is_empty() or amount <= 0:
 		return false
 	_amounts[resource_id] = get_physical_amount(resource_id) + amount
 	_emit_storage_changed()
 	return true
 
 
+func deposit_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	return super.deposit_batch(amounts)
+
+
 func withdraw(resource_id: StringName, amount: int) -> bool:
-	if resource_id.is_empty() or amount <= 0:
+	if is_locked() or resource_id.is_empty() or amount <= 0:
 		return false
 	if get_available_amount(resource_id) < amount:
 		return false
@@ -100,8 +123,20 @@ func withdraw(resource_id: StringName, amount: int) -> bool:
 	return true
 
 
+func withdraw_batch(amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	return super.withdraw_batch(amounts)
+
+
+func can_reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	return super.can_reserve_batch(reservation_id, amounts)
+
+
 func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
-	if not can_reserve_batch(reservation_id, amounts):
+	if is_locked() or not super.can_reserve_batch(reservation_id, amounts):
 		return false
 	var parsed: Dictionary = parse_positive_batch(amounts)
 	var items: Dictionary = parsed["items"] as Dictionary
@@ -114,7 +149,7 @@ func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 
 
 func can_complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
-	if reservation_id.is_empty():
+	if is_locked() or reservation_id.is_empty():
 		return false
 	var parsed: Dictionary = parse_positive_batch(extra_amounts)
 	if not (parsed["ok"] as bool):
@@ -128,7 +163,7 @@ func can_complement_reservation(reservation_id: StringName, extra_amounts: Dicti
 
 
 func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
-	if not can_complement_reservation(reservation_id, extra_amounts):
+	if is_locked() or not can_complement_reservation(reservation_id, extra_amounts):
 		return false
 	var parsed: Dictionary = parse_positive_batch(extra_amounts)
 	if not (parsed["ok"] as bool):
@@ -158,7 +193,7 @@ func complement_reservation(reservation_id: StringName, extra_amounts: Dictionar
 
 
 func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool:
-	if not has_reservation(reservation_id):
+	if is_locked() or not has_reservation(reservation_id):
 		return false
 	var bucket: Dictionary = _reservations[reservation_id] as Dictionary
 	if amounts.is_empty():
@@ -191,7 +226,7 @@ func release_batch(reservation_id: StringName, amounts: Dictionary = {}) -> bool
 
 
 func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amount: int) -> bool:
-	if reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
+	if is_locked() or reservation_id.is_empty() or resource_id.is_empty() or amount <= 0:
 		return false
 	if not has_reservation(reservation_id):
 		return false
@@ -222,6 +257,12 @@ func withdraw_reserved(reservation_id: StringName, resource_id: StringName, amou
 	return true
 
 
+func withdraw_reserved_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
+	if is_locked():
+		return false
+	return super.withdraw_reserved_batch(reservation_id, amounts)
+
+
 func _create_rollback_snapshot() -> Variant:
 	var res_copy: Dictionary = {}
 	for key: Variant in _reservations.keys():
@@ -248,7 +289,7 @@ func _restore_rollback_snapshot(snapshot: Variant) -> void:
 
 
 func record_intentional_decay(resource_id: StringName, amount: int) -> int:
-	if resource_id.is_empty() or amount <= 0:
+	if is_locked() or resource_id.is_empty() or amount <= 0:
 		return 0
 	var current: int = get_physical_amount(resource_id)
 	if current <= 0:
@@ -336,7 +377,9 @@ func _apply_site_reservation_silent(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
-	if not can_reserve_batch(reservation_id, amounts):
+	if scope._reservation_applied or is_batch_active() or not _is_preparing_withdrawal:
+		return {"ok": false, "reason": "busy", "checkpoint": {}}
+	if not super.can_reserve_batch(reservation_id, amounts):
 		return {"ok": false, "reason": "insufficient_resources", "checkpoint": {}}
 	var parsed: Dictionary = parse_positive_batch(amounts)
 	if not bool(parsed.get("ok", false)):
@@ -350,6 +393,7 @@ func _apply_site_reservation_silent(
 	_reservation_order[reservation_id] = _next_reservation_seq
 	_next_reservation_seq += 1
 	_transaction_revision += 1
+	scope._reservation_applied = true
 	return {"ok": true, "reason": "", "checkpoint": checkpoint}
 
 
@@ -370,6 +414,9 @@ func _publish_site_reservation_committed(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return
+	if not scope._reservation_applied or scope._published:
+		return
+	scope._published = true
 	if is_batch_active():
 		_reservation_batch_dirty = true
 		_batch_dirty = true

@@ -1596,7 +1596,7 @@ func _apply_prepared_site_reservation_silent(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
 		return {"ok": false, "checkpoint": {}}
-	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
+	if scope._reservation_applied or not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
 		return {"ok": false, "checkpoint": {}}
 	var checkpoint: Dictionary = {
 		"ledger_snapshot": _ledger.snapshot_state(),
@@ -1624,6 +1624,7 @@ func _apply_prepared_site_reservation_silent(
 		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
 	_transaction_revision += 1
 	_is_mutating = false
+	scope._reservation_applied = true
 	return {"ok": true, "checkpoint": checkpoint}
 
 
@@ -1647,6 +1648,9 @@ func _publish_site_reservation_committed(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
 		return
+	if not scope._reservation_applied or scope._published:
+		return
+	scope._published = true
 	if is_batch_active():
 		_reservation_batch_dirty = true
 		_batch_dirty = true

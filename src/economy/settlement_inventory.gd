@@ -30,11 +30,13 @@ func is_transaction_busy() -> bool:
 			return true
 		if _storage_source is GroundPileManager and (_storage_source as GroundPileManager).is_locked():
 			return true
+		if _storage_source is InMemoryStorageSource and (_storage_source as InMemoryStorageSource).is_locked():
+			return true
 	return false
 
 
 func set_storage_source(storage_source: SettlementStorageSource) -> void:
-	if _is_coordinator_storage(_storage_source) or _is_coordinator_storage(storage_source):
+	if _is_delivering or _is_coordinator_storage(_storage_source) or _is_coordinator_storage(storage_source):
 		return
 	if _storage_source == storage_source:
 		return
@@ -346,7 +348,11 @@ func get_all_decayed() -> Dictionary:
 
 
 static func _is_coordinator_storage(source: SettlementStorageSource) -> bool:
-	return source is GroundPileManager and (source as GroundPileManager)._is_preparing_withdrawal
+	if source is GroundPileManager:
+		return (source as GroundPileManager)._is_preparing_withdrawal
+	if source is InMemoryStorageSource:
+		return (source as InMemoryStorageSource).is_locked()
+	return false
 
 
 func _on_source_storage_changed() -> void:

@@ -59,6 +59,8 @@ class SiteCreationScope extends RefCounted:
 	var sites: Array[ConstructionSite] = []
 	var new_site: ConstructionSite = null
 	var authority: RegionalAuthority = null
+	var _reservation_applied: bool = false
+	var _published: bool = false
 
 
 class RegionalAuthority extends RefCounted:
@@ -398,6 +400,9 @@ static func _owns_site_creation_scope(scope: SiteCreationScope) -> bool:
 	if scope.storage != null:
 		if not scope.storage._is_preparing_withdrawal:
 			return false
+	elif scope.storage_source is InMemoryStorageSource:
+		if not (scope.storage_source as InMemoryStorageSource)._is_preparing_withdrawal:
+			return false
 	if scope.authority != null:
 		var domains: Dictionary = scope.world.get_meta(DOMAIN_META, {})
 		var authority := domains.get(scope.region_id) as RegionalAuthority
@@ -435,6 +440,8 @@ static func _acquire_site_creation_scope(manager: ConstructionManager) -> Dictio
 	var storage_source: SettlementStorageSource = inventory.get_storage_source()
 	if storage_source == null:
 		return {"ok": false, "busy": false, "reason": "invalid_inventory"}
+	if not (storage_source is GroundPileManager) and not (storage_source is InMemoryStorageSource):
+		return {"ok": false, "busy": false, "reason": "unsupported_storage_source"}
 
 	if inventory.is_transaction_busy() or storage_source.is_batch_active():
 		return {"ok": false, "busy": true, "reason": "busy"}
@@ -515,6 +522,11 @@ static func _acquire_site_creation_scope(manager: ConstructionManager) -> Dictio
 					return {"ok": false, "busy": false, "reason": "ambiguous_domain"}
 		camp_zone = storage.get_camp_zone()
 	else:
+		var mem_storage: InMemoryStorageSource = storage_source as InMemoryStorageSource
+		if mem_storage == null:
+			return {"ok": false, "busy": false, "reason": "unsupported_storage_source"}
+		if mem_storage.is_locked() or mem_storage.is_batch_active():
+			return {"ok": false, "busy": true, "reason": "busy"}
 		camp_zone = manager.get_camp_zone()
 
 	if camp_zone != null and is_instance_valid(camp_zone) and camp_zone.is_transaction_locked():
@@ -543,6 +555,8 @@ static func _acquire_site_creation_scope(manager: ConstructionManager) -> Dictio
 	inventory._is_delivering = true
 	if storage != null:
 		storage._is_preparing_withdrawal = true
+	elif storage_source is InMemoryStorageSource:
+		(storage_source as InMemoryStorageSource)._is_preparing_withdrawal = true
 	if scope.camp_zone != null:
 		scope.camp_zone._coordinator_transaction_locked = true
 	return {"ok": true, "busy": false, "scope": scope}
@@ -555,6 +569,8 @@ static func _release_site_creation_scope(scope: SiteCreationScope) -> void:
 		scope.camp_zone._coordinator_transaction_locked = false
 	if scope.storage != null:
 		scope.storage._is_preparing_withdrawal = false
+	elif scope.storage_source is InMemoryStorageSource:
+		(scope.storage_source as InMemoryStorageSource)._is_preparing_withdrawal = false
 	if scope.inventory != null:
 		scope.inventory._is_delivering = false
 	if scope.new_site != null and is_instance_valid(scope.new_site):
