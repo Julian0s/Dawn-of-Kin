@@ -27,6 +27,7 @@ var _buildings_root: Node3D = null
 var _completed_buildings: Array[BuildingInstance] = []
 var _queued_completions: Dictionary = {}
 var _completion_in_progress: bool = false
+var _creation_in_progress: bool = false
 var _retry_timers: Dictionary = {}
 var _busy_completion_timers: Dictionary = {}
 var _navigation_retry_timer: Timer = null
@@ -256,8 +257,8 @@ func _execute_site_completion(
 	building_instance: BuildingInstance,
 	from_queued_dispatch: bool
 ) -> bool:
-	if _completion_in_progress or not _valid_completion_site(site):
-		if from_queued_dispatch and is_instance_valid(site) and _sites.has(site) and site.get_site_state() == ConstructionSite.SiteState.COMPLETING and (_completion_in_progress or site.is_transaction_busy()):
+	if _completion_in_progress or _creation_in_progress or not _valid_completion_site(site):
+		if from_queued_dispatch and is_instance_valid(site) and _sites.has(site) and site.get_site_state() == ConstructionSite.SiteState.COMPLETING and (_completion_in_progress or _creation_in_progress or site.is_transaction_busy()):
 			_schedule_busy_completion_retry(site)
 		return false
 	if site.get_site_state() != ConstructionSite.SiteState.COMPLETING:
@@ -404,11 +405,32 @@ func retry_failed_site_completion(site: ConstructionSite) -> bool:
 	return true
 
 
+func _finish_site_creation_guards(scope: ReservedWithdrawalCoordinator.SiteCreationScope) -> void:
+	ReservedWithdrawalCoordinator._release_site_creation_scope(scope)
+	_creation_in_progress = false
+
+
+func _has_live_domain_site_id(candidate_site_id: StringName) -> bool:
+	if not is_instance_valid(_sites_root) or not _sites_root.is_inside_tree():
+		return false
+	var tree: SceneTree = _sites_root.get_tree()
+	var world: World3D = _sites_root.get_world_3d()
+	if tree == null or world == null:
+		return false
+	for node: Node in tree.get_nodes_in_group(ConstructionSite.GROUP_CONSTRUCTION_SITES):
+		var peer := node as ConstructionSite
+		if peer != null and is_instance_valid(peer) and peer.is_inside_tree() and peer.get_world_3d() == world and peer.region_id == _region_id and peer.site_id == candidate_site_id:
+			return true
+	return false
+
+
 func try_create_site_from_placement(
 	definition: BuildingDefinition,
 	world_position: Vector3
 ) -> Dictionary:
-	if _sites_root == null or not is_instance_valid(_sites_root):
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return _reject("wrong_thread", "Operação de criação deve executar na thread principal.", definition, world_position)
+	if _sites_root == null or not is_instance_valid(_sites_root) or not _sites_root.is_inside_tree() or _sites_root.get_world_3d() == null:
 		return _reject("invalid_sites_root", "Canteiro inválido: raiz de construções indisponível.", definition, world_position)
 	if _inventory == null or _inventory.get_storage_source() == null:
 		return _reject("invalid_inventory", "Estoque do assentamento indisponível para reservar obra.", definition, world_position)
@@ -444,17 +466,75 @@ func try_create_site_from_placement(
 				world_position
 			)
 
+	if _creation_in_progress or _completion_in_progress:
+		return _reject("busy", "Região econômica ocupada por outra transação.", definition, world_position)
+
+	var acq: Dictionary = ReservedWithdrawalCoordinator._acquire_site_creation_scope(self)
+	if not bool(acq.get("ok", false)):
+		var acq_reason: String = String(acq.get("reason", "busy" if bool(acq.get("busy", false)) else "invalid_domain"))
+		var acq_msg: String = "Região econômica ocupada por outra transação." if bool(acq.get("busy", false)) else "Domínio econômico inválido ou ambíguo para criar canteiro."
+		return _reject(acq_reason, acq_msg, definition, world_position)
+
+	var scope: ReservedWithdrawalCoordinator.SiteCreationScope = acq["scope"] as ReservedWithdrawalCoordinator.SiteCreationScope
+	_creation_in_progress = true
+	var expected_world: World3D = scope.world
+	var storage_source: SettlementStorageSource = scope.storage_source
+	var saved_next_site_seq: int = _next_site_seq
+
 	var ids: Dictionary = _allocate_unique_ids()
 	var new_site_id: StringName = ids["site_id"] as StringName
 	var new_res_id: StringName = ids["reservation_id"] as StringName
 
-	if not _inventory.can_reserve_batch(new_res_id, costs):
-		var msg: String = _format_insufficient_message(definition, costs)
-		return _reject("insufficient_resources", msg, definition, world_position)
+	var reservation_checkpoint: Dictionary = {}
+	var reserved_via_silent_pile: bool = false
+	var reserved_via_silent_memory: bool = false
+	var reserved_via_fallback: bool = false
 
-	if not _inventory.reserve_batch(new_res_id, costs):
-		var msg_fail: String = _format_insufficient_message(definition, costs)
-		return _reject("reservation_failed", msg_fail, definition, world_position)
+	if storage_source is GroundPileManager:
+		var gpm: GroundPileManager = storage_source as GroundPileManager
+		var prep: Dictionary = gpm._prepare_site_reservation_under_guard(new_res_id, costs, scope)
+		if not bool(prep.get("ok", false)):
+			_next_site_seq = saved_next_site_seq
+			_finish_site_creation_guards(scope)
+			var prep_reason: String = String(prep.get("reason", "insufficient_resources"))
+			if prep_reason == "insufficient_resources":
+				return _reject("insufficient_resources", _format_insufficient_message(definition, costs), definition, world_position)
+			return _reject(prep_reason, "Não foi possível reservar os recursos da obra.", definition, world_position)
+		var applied: Dictionary = gpm._apply_prepared_site_reservation_silent(
+			new_res_id,
+			prep["entries"] as Array[Dictionary],
+			scope
+		)
+		if not bool(applied.get("ok", false)):
+			_next_site_seq = saved_next_site_seq
+			_finish_site_creation_guards(scope)
+			return _reject("reservation_failed", _format_insufficient_message(definition, costs), definition, world_position)
+		reservation_checkpoint = applied["checkpoint"] as Dictionary
+		reserved_via_silent_pile = true
+	elif storage_source is InMemoryStorageSource:
+		var mem_src: InMemoryStorageSource = storage_source as InMemoryStorageSource
+		var applied_mem: Dictionary = mem_src._apply_site_reservation_silent(new_res_id, costs, scope)
+		if not bool(applied_mem.get("ok", false)):
+			_next_site_seq = saved_next_site_seq
+			_finish_site_creation_guards(scope)
+			var mem_reason: String = String(applied_mem.get("reason", "insufficient_resources"))
+			if mem_reason == "insufficient_resources":
+				return _reject("insufficient_resources", _format_insufficient_message(definition, costs), definition, world_position)
+			return _reject("reservation_failed", _format_insufficient_message(definition, costs), definition, world_position)
+		reservation_checkpoint = applied_mem["checkpoint"] as Dictionary
+		reserved_via_silent_memory = true
+	else:
+		if not storage_source.can_reserve_batch(new_res_id, costs):
+			_next_site_seq = saved_next_site_seq
+			_finish_site_creation_guards(scope)
+			return _reject("insufficient_resources", _format_insufficient_message(definition, costs), definition, world_position)
+		storage_source.begin_batch()
+		if not storage_source.reserve_batch(new_res_id, costs):
+			storage_source.end_batch(true)
+			_next_site_seq = saved_next_site_seq
+			_finish_site_creation_guards(scope)
+			return _reject("reservation_failed", _format_insufficient_message(definition, costs), definition, world_position)
+		reserved_via_fallback = true
 
 	var site: ConstructionSite = null
 	if site_creator_override.is_valid():
@@ -464,12 +544,18 @@ func try_create_site_from_placement(
 	else:
 		site = ConstructionSite.new()
 
-	var configured: bool = false
-	if site != null and is_instance_valid(site):
+	var owns_site: bool = (
+		site != null
+		and is_instance_valid(site)
+		and site.get_parent() == null
+		and not _sites.has(site)
+		and not site.is_valid()
+	)
+	var valid: bool = owns_site
+	if valid:
+		# Configure and position before tree entry so child_entered_tree never observes an invalid site.
 		site.position = _world_to_sites_local(world_position)
-		if site.get_parent() == null:
-			_sites_root.add_child(site)
-		configured = site.configure(
+		valid = site.configure(
 			new_site_id,
 			new_res_id,
 			definition,
@@ -477,12 +563,54 @@ func try_create_site_from_placement(
 			_resource_defs,
 			_region_id
 		)
-	if not configured or site == null or not is_instance_valid(site) or not site.is_valid():
-		_inventory.release_batch(new_res_id)
-		if site != null and is_instance_valid(site):
+		if valid and is_instance_valid(site):
+			site._is_preparing_or_transacting = true
+			scope.new_site = site
+		valid = (
+			valid
+			and is_instance_valid(site)
+			and site.is_valid()
+			and site.site_id == new_site_id
+			and site.reservation_id == new_res_id
+			and site.region_id == _region_id
+			and site.definition == definition
+			and site.get_inventory() == _inventory
+			and site.get_site_state() == ConstructionSite.SiteState.ACTIVE
+		)
+	if valid:
+		_sites_root.add_child(site)
+		valid = (
+			is_instance_valid(site)
+			and site.is_inside_tree()
+			and site.get_parent() == _sites_root
+			and site.get_world_3d() == expected_world
+			and site.is_valid()
+			and site.site_id == new_site_id
+			and site.reservation_id == new_res_id
+			and site.region_id == _region_id
+			and site.definition == definition
+			and site.get_inventory() == _inventory
+			and site.get_site_state() == ConstructionSite.SiteState.ACTIVE
+			and not has_footprint_overlapping_rect(site.get_footprint_rect())
+			and _inventory.get_reservation_amounts(new_res_id) == costs
+		)
+
+	if not valid:
+		if reserved_via_silent_pile:
+			(storage_source as GroundPileManager)._restore_site_reservation_checkpoint_silent(reservation_checkpoint, scope)
+		elif reserved_via_silent_memory:
+			(storage_source as InMemoryStorageSource)._restore_site_reservation_checkpoint_silent(reservation_checkpoint, scope)
+		elif reserved_via_fallback:
+			storage_source.release_batch(new_res_id)
+			storage_source.end_batch(true)
+		_next_site_seq = saved_next_site_seq
+		if owns_site and is_instance_valid(site):
+			site._unbind_inventory()
 			if site.get_parent() != null:
 				site.get_parent().remove_child(site)
 			site.free()
+		scope.new_site = null
+		_finish_site_creation_guards(scope)
 		return _reject(
 			"site_instantiation_failed",
 			"Falha ao criar o canteiro de obra; reserva liberada.",
@@ -490,9 +618,24 @@ func try_create_site_from_placement(
 			world_position
 		)
 
+	# Irreversible commit point: site and reservation are both valid and registered before any signal fires.
 	_sites.append(site)
 	site.state_changed.connect(_on_site_state_changed)
+	if reserved_via_silent_pile:
+		_inventory._transaction_revision += 1
+
+	site._suppress_coordinator_signal_echo = true
+	if reserved_via_silent_pile:
+		(storage_source as GroundPileManager)._publish_site_reservation_committed(scope)
+	elif reserved_via_silent_memory:
+		(storage_source as InMemoryStorageSource)._publish_site_reservation_committed(scope)
+	elif reserved_via_fallback:
+		storage_source.end_batch(false)
+	if is_instance_valid(site):
+		site._suppress_coordinator_signal_echo = false
+
 	site_created.emit(site)
+	_finish_site_creation_guards(scope)
 	var display_name: String = definition.display_name if not definition.display_name.is_empty() else String(definition.definition_id)
 	return {
 		"ok": true,
@@ -510,7 +653,7 @@ func _allocate_unique_ids() -> Dictionary:
 		var candidate_res_id := StringName("res_site_" + suffix)
 		if _inventory != null and _inventory.has_reservation(candidate_res_id):
 			continue
-		if get_site_by_id(candidate_site_id) != null or _has_building_id(candidate_site_id):
+		if get_site_by_id(candidate_site_id) != null or _has_building_id(candidate_site_id) or _has_live_domain_site_id(candidate_site_id):
 			continue
 		return {
 			"site_id": candidate_site_id,

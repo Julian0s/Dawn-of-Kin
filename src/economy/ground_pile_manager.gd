@@ -1572,3 +1572,84 @@ func _finalize_camp_delivery_after_commit_silent(checkpoint: Dictionary) -> void
 			and new_pile.get_parent() == _piles_root
 		):
 			new_pile._finalize_detached_visuals_after_commit(_visual_cache)
+
+
+func _prepare_site_reservation_under_guard(
+	reservation_id: StringName,
+	amounts: Dictionary,
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy", "entries": []}
+	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, false)
+	if not bool(plan.get("ok", false)):
+		return {"ok": false, "reason": "insufficient_resources", "entries": []}
+	return {"ok": true, "reason": "", "entries": plan["entries"]}
+
+
+func _apply_prepared_site_reservation_silent(
+	reservation_id: StringName,
+	entries: Array[Dictionary],
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return {"ok": false, "checkpoint": {}}
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
+		return {"ok": false, "checkpoint": {}}
+	var checkpoint: Dictionary = {
+		"ledger_snapshot": _ledger.snapshot_state(),
+		"ledger_revision": _ledger._transaction_revision,
+		"storage_revision": _transaction_revision,
+	}
+	_is_mutating = true
+	for entry: Dictionary in entries:
+		var pile: GroundResourcePile = entry["pile"] as GroundResourcePile
+		var res_id: StringName = entry["resource_id"] as StringName
+		var allocate_amt: int = entry["amount"] as int
+		if pile == null or not is_instance_valid(pile) or allocate_amt <= 0:
+			_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+			_ledger._transaction_revision = int(checkpoint["ledger_revision"])
+			_transaction_revision = int(checkpoint["storage_revision"])
+			_is_mutating = false
+			return {"ok": false, "checkpoint": {}}
+		var pile_free: int = maxi(0, pile.amount - _ledger.get_pile_reserved_amount(pile.pile_id))
+		if pile_free < allocate_amt:
+			_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+			_ledger._transaction_revision = int(checkpoint["ledger_revision"])
+			_transaction_revision = int(checkpoint["storage_revision"])
+			_is_mutating = false
+			return {"ok": false, "checkpoint": {}}
+		_ledger.allocate_on_pile(pile.pile_id, res_id, reservation_id, allocate_amt)
+	_transaction_revision += 1
+	_is_mutating = false
+	return {"ok": true, "checkpoint": checkpoint}
+
+
+func _restore_site_reservation_checkpoint_silent(
+	checkpoint: Dictionary,
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return
+	if checkpoint.is_empty():
+		return
+	_is_mutating = true
+	_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+	_ledger._transaction_revision = int(checkpoint["ledger_revision"])
+	_transaction_revision = int(checkpoint["storage_revision"])
+	_is_mutating = false
+
+
+func _publish_site_reservation_committed(
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage != self:
+		return
+	if is_batch_active():
+		_reservation_batch_dirty = true
+		_batch_dirty = true
+		return
+	_dispatch_reservations_changed()
+	_dispatch_storage_changed()

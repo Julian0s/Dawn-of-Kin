@@ -327,3 +327,52 @@ func get_total_decayed(resource_id: StringName) -> int:
 
 func get_all_decayed() -> Dictionary:
 	return _decayed.duplicate()
+
+
+func _apply_site_reservation_silent(
+	reservation_id: StringName,
+	amounts: Dictionary,
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> Dictionary:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
+		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
+	if not can_reserve_batch(reservation_id, amounts):
+		return {"ok": false, "reason": "insufficient_resources", "checkpoint": {}}
+	var parsed: Dictionary = parse_positive_batch(amounts)
+	if not bool(parsed.get("ok", false)):
+		return {"ok": false, "reason": "insufficient_resources", "checkpoint": {}}
+	var checkpoint: Dictionary = {
+		"snap": _create_rollback_snapshot(),
+		"storage_revision": _transaction_revision,
+	}
+	var items: Dictionary = parsed["items"] as Dictionary
+	_reservations[reservation_id] = items.duplicate()
+	_reservation_order[reservation_id] = _next_reservation_seq
+	_next_reservation_seq += 1
+	_transaction_revision += 1
+	return {"ok": true, "reason": "", "checkpoint": checkpoint}
+
+
+func _restore_site_reservation_checkpoint_silent(
+	checkpoint: Dictionary,
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
+		return
+	if checkpoint.is_empty():
+		return
+	_restore_rollback_snapshot(checkpoint.get("snap"))
+	_transaction_revision = int(checkpoint.get("storage_revision", _transaction_revision))
+
+
+func _publish_site_reservation_committed(
+	scope: ReservedWithdrawalCoordinator.SiteCreationScope
+) -> void:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
+		return
+	if is_batch_active():
+		_reservation_batch_dirty = true
+		_batch_dirty = true
+		return
+	_dispatch_reservations_changed()
+	_dispatch_storage_changed()
