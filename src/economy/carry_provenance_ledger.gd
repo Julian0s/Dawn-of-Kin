@@ -4,6 +4,9 @@ class_name CarryProvenanceLedger
 const MAX_INT: int = 9223372036854775807
 const FREE_GATHERED := &"FREE_GATHERED"
 const SITE_RESERVED := &"SITE_RESERVED"
+const CANCEL_TRANSIT := &"CANCEL_TRANSIT"
+const CANCEL_BUFFER := &"CANCEL_BUFFER"
+const CANCEL_INCORPORATED := &"CANCEL_INCORPORATED"
 var _lots: Dictionary = {}
 var _operations: Dictionary = {}
 var _used_lots: Dictionary = {}
@@ -37,6 +40,9 @@ func register_lot(op: Variant, lot: Variant) -> Dictionary:
 	elif lot.origin == SITE_RESERVED:
 		if not _id(lot.site_id):
 			return {"ok": false, "reason": "invalid_origin"}
+	elif lot.origin == CANCEL_BUFFER or lot.origin == CANCEL_INCORPORATED:
+		if not _id(lot.site_id) or lot.generation <= 0:
+			return {"ok": false, "reason": "invalid_origin"}
 	else:
 		return {"ok": false, "reason": "invalid_origin"}
 	var canonical := {"lot_id": StringName(lot.lot_id), "unit_id": StringName(lot.unit_id), "resource_id": StringName(lot.resource_id), "quantity": lot.quantity, "origin": StringName(lot.origin), "site_id": StringName(lot.site_id), "generation": lot.generation}
@@ -66,9 +72,44 @@ func _sum(unit: StringName, resource: StringName) -> Dictionary:
 func query(unit: Variant, resource: Variant, origin: Variant, site: Variant = &"") -> Array:
 	var result: Array = []
 	for lot: Dictionary in _lots.values():
-		if lot.unit_id == unit and lot.resource_id == resource and lot.origin == origin and (origin != SITE_RESERVED or lot.site_id == site):
+		if lot.unit_id == unit and lot.resource_id == resource and lot.origin == origin and (origin == FREE_GATHERED or lot.site_id == site):
 			result.append(lot.duplicate(true))
 	return result
+
+func reclassify_lot(
+	op: Variant,
+	lot_id: Variant,
+	new_origin: Variant,
+	expected_site_id: Variant,
+	expected_generation: Variant
+) -> Dictionary:
+	if not _id(lot_id) or not _id(new_origin) or not _id(expected_site_id) or typeof(expected_generation) != TYPE_INT or expected_generation <= 0:
+		return {"ok": false, "reason": "invalid_input"}
+	var canonical_origin := StringName(new_origin)
+	if canonical_origin != CANCEL_TRANSIT:
+		return {"ok": false, "reason": "invalid_origin"}
+	var canonical_lot := StringName(lot_id)
+	var canonical_site := StringName(expected_site_id)
+	var payload := {
+		"kind": "reclassify",
+		"lot_id": canonical_lot,
+		"new_origin": canonical_origin,
+		"site_id": canonical_site,
+		"generation": expected_generation,
+	}
+	var previous := _prior(op, payload)
+	if not previous.ok or previous.replayed:
+		return previous
+	if not _lots.has(canonical_lot):
+		return {"ok": false, "reason": "lot_not_found"}
+	var existing: Dictionary = _lots[canonical_lot] as Dictionary
+	if existing.origin != SITE_RESERVED:
+		return {"ok": false, "reason": "invalid_origin_transition"}
+	if existing.site_id != canonical_site or int(existing.generation) != expected_generation:
+		return {"ok": false, "reason": "site_identity_mismatch"}
+	existing.origin = canonical_origin
+	_operations[StringName(op)] = payload.duplicate(true)
+	return {"ok": true, "replayed": false}
 
 func split_lot(op: Variant, lot_id: Variant, child_id: Variant, amount: Variant) -> Dictionary:
 	if not _id(lot_id) or not _id(child_id) or typeof(amount) != TYPE_INT or amount <= 0:
@@ -157,6 +198,10 @@ func restore_transaction_state(state: Variant) -> bool:
 				if item.size() != 3 or not item.has("lot_id") or not item.has("amount"):
 					return false
 				outcome = candidate.withdraw(op, item.lot_id, item.amount)
+			"reclassify":
+				if item.size() != 5 or not item.has("lot_id") or not item.has("new_origin") or not item.has("site_id") or not item.has("generation"):
+					return false
+				outcome = candidate.reclassify_lot(op, item.lot_id, item.new_origin, item.site_id, item.generation)
 			_:
 				return false
 		if not outcome.ok or outcome.replayed:

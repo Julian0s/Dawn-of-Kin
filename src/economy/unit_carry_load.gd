@@ -316,6 +316,8 @@ func validate_provenance() -> bool:
 func _prepare_provenance_add(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
 	if _provenance == null:
 		return {"ok": false, "reason": "unavailable"}
+	if origin != CarryProvenanceLedger.FREE_GATHERED and origin != CarryProvenanceLedger.SITE_RESERVED:
+		return {"ok": false, "reason": "invalid_origin"}
 	if resource_id.is_empty() or unit_weight <= 0 or amount <= 0 or not _is_weight_consistent(resource_id, unit_weight):
 		return {"ok": false, "reason": "invalid_resource"}
 	if not validate_provenance():

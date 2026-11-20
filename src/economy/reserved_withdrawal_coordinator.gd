@@ -11,6 +11,7 @@ const DOMAIN_META := &"_reserved_withdrawal_domains"
 const RECEIPT_WITHDRAWAL := &"reserved_withdrawal"
 const RECEIPT_DELIVERY := &"selective_site_delivery"
 const RECEIPT_CAMP_DELIVERY := &"selective_camp_delivery"
+const RECEIPT_SITE_CANCELLATION := &"site_cancellation"
 
 
 ## Capability for the one active selective delivery in this domain.
@@ -97,6 +98,110 @@ class WorkScope extends RefCounted:
 	var had_domain_metadata: bool
 
 
+## Capability for the one active site cancellation transaction in this domain.
+class CancellationScope extends RefCounted:
+	var world: World3D
+	var region_id: StringName
+	var cancel_id: StringName
+	var operation_id: StringName
+	var site_id: StringName
+	var reservation_id: StringName
+	var generation: int = 0
+	var site: ConstructionSite = null
+	var inventory: SettlementInventory
+	var storage_source: SettlementStorageSource
+	var storage: GroundPileManager
+	var camp_zone: CampStorageZone
+	var sites: Array[ConstructionSite] = []
+	var authority: RegionalAuthority = null
+	var _expected_release_amounts: Dictionary = {}
+	var _release_noop: bool = false
+	var _release_applied: bool = false
+	var _commit_authorized: bool = false
+	var _rollback_authorized: bool = false
+	var _published: bool = false
+	var _rolled_back: bool = false
+	var _bound_checkpoint: Dictionary = {}
+
+
+## In-memory regional custody record tracking D3 obligations (Q = L + A + H + E + D + M).
+## Belongs strictly to the active in-memory session (disk persistence is T3.8).
+class CancellationCustodyRecord extends RefCounted:
+	var cancel_id: StringName
+	var operation_id: StringName
+	var site_id: StringName
+	var reservation_id: StringName
+	var generation: int = 0
+	var region_id: StringName
+	var world_instance_id: int = 0
+	var work_progress_usec: int = 0
+	var total_work_usec: int = 1
+	var required_amounts: Dictionary = {}
+	var released_on_piles: Dictionary = {}
+	var local_buffer_remaining: Dictionary = {}
+	var local_incorporated_remaining: Dictionary = {}
+	var in_transit_remaining: Dictionary = {}
+	var delivered_to_camp: Dictionary = {}
+	var demolition_loss: Dictionary = {}
+	var missing_deficit: Dictionary = {}
+	var state: int = ConstructionCancellationMath.State.RECOVERY_PENDING
+	var revision: int = 1
+	var diagnostic_reason: String = ""
+
+	func get_local_custody_total() -> int:
+		var total: int = 0
+		for key: Variant in required_amounts.keys():
+			total += int(local_buffer_remaining.get(key, 0)) + int(local_incorporated_remaining.get(key, 0))
+		return total
+
+	func get_in_transit_custody_total() -> int:
+		var total: int = 0
+		for key: Variant in required_amounts.keys():
+			total += int(in_transit_remaining.get(key, 0))
+		return total
+
+	func has_unsettled_custody() -> bool:
+		return get_local_custody_total() > 0 or get_in_transit_custody_total() > 0
+
+	## D-CANC-02/A: terrain footprint remains occupied while local physical custody A > 0
+	## or a local pickup is actively in progress; once A == 0, terrain is releasable even if H > 0.
+	func requires_local_footprint_occupation(local_pickup_in_progress: bool = false) -> bool:
+		return get_local_custody_total() > 0 or local_pickup_in_progress
+
+	## Distinguishes settled, blocked, and pending obligations for future controlled lifecycle/teardown preflights.
+	func get_obligation_status() -> StringName:
+		if state == ConstructionCancellationMath.State.SETTLED and not has_unsettled_custody():
+			return &"settled"
+		if state == ConstructionCancellationMath.State.RETURN_BLOCKED:
+			return &"blocked"
+		return &"pending"
+
+	func to_snapshot_dict() -> Dictionary:
+		return {
+			"cancel_id": cancel_id,
+			"operation_id": operation_id,
+			"site_id": site_id,
+			"reservation_id": reservation_id,
+			"generation": generation,
+			"region_id": region_id,
+			"world_instance_id": world_instance_id,
+			"work_progress_usec": work_progress_usec,
+			"total_work_usec": total_work_usec,
+			"state": state,
+			"revision": revision,
+			"diagnostic_reason": diagnostic_reason,
+			"obligation_status": get_obligation_status(),
+			"required_amounts": required_amounts.duplicate(true),
+			"released_on_piles": released_on_piles.duplicate(true),
+			"local_buffer_remaining": local_buffer_remaining.duplicate(true),
+			"local_incorporated_remaining": local_incorporated_remaining.duplicate(true),
+			"in_transit_remaining": in_transit_remaining.duplicate(true),
+			"delivered_to_camp": delivered_to_camp.duplicate(true),
+			"demolition_loss": demolition_loss.duplicate(true),
+			"missing_deficit": missing_deficit.duplicate(true),
+		}
+
+
 class RegionalAuthority extends RefCounted:
 	var storage: WeakRef
 	var is_executing: bool = false
@@ -108,6 +213,10 @@ class RegionalAuthority extends RefCounted:
 	var active_site_creation: SiteCreationScope
 	var active_manual_complement: ManualComplementScope
 	var active_work: WorkScope
+	var active_cancellation: CancellationScope
+	var cancellation_custodies: Dictionary = {}
+	var cancellation_id_by_site_gen: Dictionary = {}
+	var cancellation_operation_ids: Dictionary = {}
 	var construction_transfer_serial: int = 0
 
 	func has_active_operation() -> bool:
@@ -119,11 +228,13 @@ class RegionalAuthority extends RefCounted:
 			or active_site_creation != null
 			or active_manual_complement != null
 			or active_work != null
+			or active_cancellation != null
 		)
 
 
 static var _active_site_creation_scopes: Array[SiteCreationScope] = []
 static var _active_manual_complement_scopes: Array[ManualComplementScope] = []
+static var _active_cancellation_scopes: Array[CancellationScope] = []
 
 
 var _owner_thread_id: int = OS.get_thread_caller_id()
@@ -1555,7 +1666,7 @@ static func is_region_transaction_active_readonly(world: World3D, region_id: Str
 		return true
 	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id):
 		return false
-	if _has_active_site_creation_in_domain(world, region_id) or _has_active_manual_complement_in_domain(world, region_id):
+	if _has_active_site_creation_in_domain(world, region_id) or _has_active_manual_complement_in_domain(world, region_id) or _has_active_cancellation_in_domain(world, region_id):
 		return true
 	if not world.has_meta(DOMAIN_META):
 		return false
@@ -1581,7 +1692,7 @@ static func inspect_domain_for_worker_removal_readonly(
 		return {"ok": false, "reason": "wrong_thread", "resolved_region": &"", "resolved_storage": null}
 	if world == null or not is_instance_valid(world):
 		return {"ok": false, "reason": "invalid_domain", "resolved_region": &"", "resolved_storage": null}
-	if CarryProvenanceLedger._id(region_id) and (_has_active_site_creation_in_domain(world, region_id) or _has_active_manual_complement_in_domain(world, region_id)):
+	if CarryProvenanceLedger._id(region_id) and (_has_active_site_creation_in_domain(world, region_id) or _has_active_manual_complement_in_domain(world, region_id) or _has_active_cancellation_in_domain(world, region_id)):
 		return {"ok": false, "reason": "regional_transaction_active", "resolved_region": region_id, "resolved_storage": storage}
 	for active_sc: SiteCreationScope in _active_site_creation_scopes:
 		if active_sc == null or active_sc.world != world:
@@ -1601,6 +1712,15 @@ static func inspect_domain_for_worker_removal_readonly(
 			or (storage == null and camp_zone == null and not CarryProvenanceLedger._id(region_id))
 		):
 			return {"ok": false, "reason": "regional_transaction_active", "resolved_region": active_mc.region_id, "resolved_storage": active_mc.storage}
+	for active_cc: CancellationScope in _active_cancellation_scopes:
+		if active_cc == null or active_cc.world != world:
+			continue
+		if (
+			(storage != null and active_cc.storage == storage)
+			or (camp_zone != null and active_cc.camp_zone == camp_zone)
+			or (storage == null and camp_zone == null and not CarryProvenanceLedger._id(region_id))
+		):
+			return {"ok": false, "reason": "regional_transaction_active", "resolved_region": active_cc.region_id, "resolved_storage": active_cc.storage}
 	if not world.has_meta(DOMAIN_META):
 		return {"ok": true, "reason": "", "resolved_region": region_id, "resolved_storage": storage}
 	var domains_raw: Variant = world.get_meta(DOMAIN_META)
@@ -1704,6 +1824,8 @@ static func release_regional_domain(
 		or _has_active_site_creation_for_storage(inventory, storage)
 		or _has_active_manual_complement_in_domain(world, region)
 		or _has_active_manual_complement_for_storage(inventory, storage)
+		or _has_active_cancellation_in_domain(world, region)
+		or _has_active_cancellation_for_storage(inventory, storage)
 	):
 		return _release_result(false, false, "busy", region)
 
@@ -2493,3 +2615,463 @@ static func _failure(reason: String, dependency: String = "") -> Dictionary:
 
 static func _prep_to_failure(prep: Dictionary) -> Dictionary:
 	return _failure(String(prep.get("reason", "rejected")), String(prep.get("dependency", "")))
+
+
+## ---------------------------------------------------------------------------
+## T3.6.3-B1.1 — Regional Cancellation Scope & Custody Primitives (No D3 Gameplay Commit)
+## ---------------------------------------------------------------------------
+
+## Operational D3 cancellation remains strictly gated until B1.2+ authorization.
+static func execute_site_cancellation(_site: Variant, _operation_id: Variant = &"") -> Dictionary:
+	return {
+		"ok": false,
+		"reason": "d3_cancellation_not_implemented",
+		"dependency": "cancellation_d3",
+	}
+
+
+static func _owns_cancellation_scope(scope: CancellationScope) -> bool:
+	if scope == null or OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return false
+	if not _active_cancellation_scopes.has(scope):
+		return false
+	if scope.world == null or not is_instance_valid(scope.world) or not CarryProvenanceLedger._id(scope.region_id):
+		return false
+	if scope.inventory == null or not scope.inventory._is_delivering or scope.storage_source == null:
+		return false
+	if scope.inventory.get_storage_source() != scope.storage_source:
+		return false
+	if scope.storage_source is GroundPileManager:
+		var gpm := scope.storage_source as GroundPileManager
+		if scope.storage != gpm or not gpm._is_preparing_withdrawal:
+			return false
+	elif scope.storage_source is InMemoryStorageSource:
+		var mem := scope.storage_source as InMemoryStorageSource
+		if not mem._is_preparing_withdrawal:
+			return false
+	else:
+		return false
+	if scope.authority != null:
+		if not scope.authority.is_executing or scope.authority.active_cancellation != scope:
+			return false
+	return true
+
+
+static func _has_active_cancellation_in_domain(world: World3D, region_id: StringName) -> bool:
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id):
+		return false
+	for scope: CancellationScope in _active_cancellation_scopes:
+		if scope != null and scope.world == world and scope.region_id == region_id:
+			return true
+	return false
+
+
+static func _has_active_cancellation_for_storage(
+	inventory: SettlementInventory,
+	storage_source: SettlementStorageSource
+) -> bool:
+	for scope: CancellationScope in _active_cancellation_scopes:
+		if scope == null:
+			continue
+		if inventory != null and scope.inventory == inventory:
+			return true
+		if storage_source != null and scope.storage_source == storage_source:
+			return true
+	return false
+
+
+static func _acquire_cancellation_scope_for_primitives(
+	world: World3D,
+	region_id: Variant,
+	inventory: SettlementInventory,
+	cancel_id: Variant,
+	operation_id: Variant,
+	site_id: Variant,
+	reservation_id: Variant,
+	generation: int,
+	expected_release_amounts: Dictionary,
+	release_noop: bool
+) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return {"ok": false, "busy": false, "reason": "wrong_thread"}
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id):
+		return {"ok": false, "busy": false, "reason": "invalid_domain"}
+	if (
+		not CarryProvenanceLedger._id(cancel_id)
+		or not CarryProvenanceLedger._id(operation_id)
+		or not CarryProvenanceLedger._id(site_id)
+		or not CarryProvenanceLedger._id(reservation_id)
+		or generation <= 0
+	):
+		return {"ok": false, "busy": false, "reason": "invalid_identity"}
+	if inventory == null:
+		return {"ok": false, "busy": false, "reason": "invalid_inventory"}
+	var storage_source: SettlementStorageSource = inventory.get_storage_source()
+	if storage_source == null or (not (storage_source is GroundPileManager) and not (storage_source is InMemoryStorageSource)):
+		return {"ok": false, "busy": false, "reason": "unsupported_storage_source"}
+
+	var region := StringName(region_id)
+	if (
+		is_region_transaction_active_readonly(world, region)
+		or _has_active_site_creation_for_storage(inventory, storage_source)
+		or _has_active_manual_complement_for_storage(inventory, storage_source)
+		or _has_active_cancellation_for_storage(inventory, storage_source)
+		or inventory.is_transaction_busy()
+		or storage_source.is_batch_active()
+	):
+		return {"ok": false, "busy": true, "reason": "busy"}
+
+	var expected_clean: Dictionary = {}
+	var expected_total: int = 0
+	for k: Variant in expected_release_amounts.keys():
+		if not CarryProvenanceLedger._id(k):
+			return {"ok": false, "busy": false, "reason": "invalid_expected_amounts"}
+		var v: Variant = expected_release_amounts[k]
+		if typeof(v) != TYPE_INT or int(v) < 0:
+			return {"ok": false, "busy": false, "reason": "invalid_expected_amounts"}
+		var amt: int = int(v)
+		if expected_total > ConstructionCancellationMath.MAX_INT - amt:
+			return {"ok": false, "busy": false, "reason": "overflow"}
+		expected_total += amt
+		expected_clean[StringName(k)] = amt
+	if release_noop != (expected_total == 0):
+		return {"ok": false, "busy": false, "reason": "invalid_noop_expectation"}
+
+	var domains_raw: Variant = world.get_meta(DOMAIN_META, {}) if world.has_meta(DOMAIN_META) else {}
+	var domains: Dictionary = domains_raw as Dictionary if domains_raw is Dictionary else {}
+	var authority: RegionalAuthority = domains.get(region) as RegionalAuthority
+	var gpm: GroundPileManager = storage_source as GroundPileManager if storage_source is GroundPileManager else null
+	var camp_zone: CampStorageZone = null
+
+	if gpm != null:
+		if gpm.is_shut_down() or gpm.is_locked():
+			return {"ok": false, "busy": gpm.is_locked(), "reason": "busy" if gpm.is_locked() else "storage_shut_down"}
+		if not is_instance_valid(gpm._piles_root) or not gpm._piles_root.is_inside_tree() or gpm._piles_root.get_world_3d() != world:
+			return {"ok": false, "busy": false, "reason": "invalid_piles_root"}
+		var bound_world: World3D = gpm.get_bound_withdrawal_world()
+		var bound_region: StringName = gpm.get_bound_withdrawal_region()
+		if bound_world != null and (bound_world != world or bound_region != region):
+			return {"ok": false, "busy": false, "reason": "ambiguous_domain"}
+		if authority != null:
+			if authority.storage == null or authority.storage.get_ref() != gpm:
+				return {"ok": false, "busy": false, "reason": "ambiguous_domain"}
+			if authority.has_active_operation():
+				return {"ok": false, "busy": true, "reason": "busy"}
+		else:
+			for other_key: Variant in domains.keys():
+				var other_auth: RegionalAuthority = domains.get(other_key) as RegionalAuthority
+				if other_auth != null and other_auth.storage != null and other_auth.storage.get_ref() == gpm:
+					return {"ok": false, "busy": false, "reason": "ambiguous_domain"}
+			authority = RegionalAuthority.new()
+			authority.storage = weakref(gpm)
+			domains[region] = authority
+			world.set_meta(DOMAIN_META, domains)
+			gpm._withdrawal_world = weakref(world)
+			gpm._withdrawal_region = region
+		camp_zone = gpm.get_camp_zone()
+		if camp_zone != null and is_instance_valid(camp_zone) and camp_zone.is_transaction_locked():
+			return {"ok": false, "busy": true, "reason": "busy"}
+	else:
+		var mem := storage_source as InMemoryStorageSource
+		if mem.is_locked():
+			return {"ok": false, "busy": true, "reason": "busy"}
+		if authority != null and authority.has_active_operation():
+			return {"ok": false, "busy": true, "reason": "busy"}
+
+	var scope := CancellationScope.new()
+	scope.world = world
+	scope.region_id = region
+	scope.cancel_id = StringName(cancel_id)
+	scope.operation_id = StringName(operation_id)
+	scope.site_id = StringName(site_id)
+	scope.reservation_id = StringName(reservation_id)
+	scope.generation = generation
+	scope.inventory = inventory
+	scope.storage_source = storage_source
+	scope.storage = gpm
+	scope.camp_zone = camp_zone
+	scope.authority = authority
+	scope._expected_release_amounts = expected_clean
+	scope._release_noop = release_noop
+
+	if authority != null:
+		authority.is_executing = true
+		authority.active_cancellation = scope
+	inventory._is_delivering = true
+	if gpm != null:
+		gpm._is_preparing_withdrawal = true
+	else:
+		(storage_source as InMemoryStorageSource)._is_preparing_withdrawal = true
+	_active_cancellation_scopes.append(scope)
+	return {"ok": true, "busy": false, "scope": scope}
+
+
+static func _authorize_cancellation_release_commit(scope: CancellationScope) -> bool:
+	if not _owns_cancellation_scope(scope):
+		return false
+	if scope._published or scope._rolled_back or scope._rollback_authorized:
+		return false
+	scope._commit_authorized = true
+	return true
+
+
+static func _authorize_cancellation_release_rollback(scope: CancellationScope) -> bool:
+	if not _owns_cancellation_scope(scope):
+		return false
+	if not scope._release_applied or scope._published or scope._rolled_back or scope._commit_authorized:
+		return false
+	scope._rollback_authorized = true
+	return true
+
+
+static func _release_cancellation_scope(scope: CancellationScope) -> void:
+	if scope == null:
+		return
+	_active_cancellation_scopes.erase(scope)
+	if scope.storage != null:
+		scope.storage._is_preparing_withdrawal = false
+	elif scope.storage_source is InMemoryStorageSource:
+		(scope.storage_source as InMemoryStorageSource)._is_preparing_withdrawal = false
+	if scope.inventory != null:
+		scope.inventory._is_delivering = false
+	if scope.authority != null:
+		if scope.authority.active_cancellation == scope:
+			scope.authority.active_cancellation = null
+		scope.authority.is_executing = false
+
+
+static func validate_custody_accounting_pure(record_or_dict: Variant) -> Dictionary:
+	var data: Dictionary = {}
+	if record_or_dict is CancellationCustodyRecord:
+		data = (record_or_dict as CancellationCustodyRecord).to_snapshot_dict()
+	elif record_or_dict is Dictionary:
+		data = record_or_dict as Dictionary
+	else:
+		return {"ok": false, "reason": "invalid_custody_record"}
+
+	for id_field: String in ["cancel_id", "operation_id", "site_id", "reservation_id", "region_id"]:
+		if not data.has(id_field) or not CarryProvenanceLedger._id(data[id_field]):
+			return {"ok": false, "reason": "invalid_identity", "field": id_field}
+	if typeof(data.get("generation")) != TYPE_INT or int(data["generation"]) <= 0:
+		return {"ok": false, "reason": "invalid_generation"}
+	if typeof(data.get("world_instance_id")) != TYPE_INT or int(data["world_instance_id"]) == 0:
+		return {"ok": false, "reason": "invalid_world"}
+	if typeof(data.get("work_progress_usec")) != TYPE_INT or typeof(data.get("total_work_usec")) != TYPE_INT:
+		return {"ok": false, "reason": "invalid_work_progress"}
+	var progress_usec: int = int(data["work_progress_usec"])
+	var total_usec: int = int(data["total_work_usec"])
+	if total_usec <= 0 or progress_usec < 0 or progress_usec > total_usec:
+		return {"ok": false, "reason": "invalid_work_progress"}
+
+	var st_var: Variant = data.get("state")
+	if typeof(st_var) != TYPE_INT:
+		return {"ok": false, "reason": "invalid_state"}
+	var st: int = int(st_var)
+	if (
+		st != ConstructionCancellationMath.State.RECOVERY_PENDING
+		and st != ConstructionCancellationMath.State.RETURNING
+		and st != ConstructionCancellationMath.State.RETURN_BLOCKED
+		and st != ConstructionCancellationMath.State.SETTLED
+	):
+		return {"ok": false, "reason": "invalid_state"}
+
+	var required_var: Variant = data.get("required_amounts")
+	if not (required_var is Dictionary) or (required_var as Dictionary).is_empty():
+		return {"ok": false, "reason": "invalid_required_amounts"}
+	var required: Dictionary = required_var as Dictionary
+
+	var map_names: Array[String] = [
+		"released_on_piles",
+		"local_buffer_remaining",
+		"local_incorporated_remaining",
+		"in_transit_remaining",
+		"delivered_to_camp",
+		"demolition_loss",
+		"missing_deficit",
+	]
+	var maps: Dictionary = {}
+	for m_name: String in map_names:
+		var m_var: Variant = data.get(m_name)
+		if not (m_var is Dictionary):
+			return {"ok": false, "reason": "invalid_accounting_map", "field": m_name}
+		maps[m_name] = m_var as Dictionary
+
+	var canonical_keys: Dictionary = {}
+	for raw_key: Variant in required.keys():
+		if not CarryProvenanceLedger._id(raw_key):
+			return {"ok": false, "reason": "invalid_resource"}
+		var key := StringName(raw_key)
+		if canonical_keys.has(key):
+			return {"ok": false, "reason": "duplicate_resource"}
+		var q_var: Variant = required[raw_key]
+		if typeof(q_var) != TYPE_INT or int(q_var) <= 0:
+			return {"ok": false, "reason": "invalid_quantity"}
+		canonical_keys[key] = int(q_var)
+
+	for m_name: String in map_names:
+		var m_dict: Dictionary = maps[m_name] as Dictionary
+		for raw_k: Variant in m_dict.keys():
+			if not CarryProvenanceLedger._id(raw_k) or not canonical_keys.has(StringName(raw_k)):
+				return {"ok": false, "reason": "unknown_resource_in_map", "field": m_name}
+
+	var total_local: int = 0
+	var total_transit: int = 0
+	for res_id: StringName in canonical_keys.keys():
+		var q_amt: int = int(canonical_keys[res_id])
+		var sum: int = 0
+		for m_name: String in map_names:
+			var m_dict: Dictionary = maps[m_name] as Dictionary
+			var v_var: Variant = m_dict.get(res_id, 0)
+			if typeof(v_var) != TYPE_INT or int(v_var) < 0:
+				return {"ok": false, "reason": "invalid_quantity", "field": m_name, "resource_id": res_id}
+			var v_amt: int = int(v_var)
+			if sum > ConstructionCancellationMath.MAX_INT - v_amt:
+				return {"ok": false, "reason": "overflow", "resource_id": res_id}
+			sum += v_amt
+		if sum != q_amt:
+			return {"ok": false, "reason": "accounting_mismatch", "resource_id": res_id}
+		var local_res: int = int((maps["local_buffer_remaining"] as Dictionary).get(res_id, 0)) + int((maps["local_incorporated_remaining"] as Dictionary).get(res_id, 0))
+		var transit_res: int = int((maps["in_transit_remaining"] as Dictionary).get(res_id, 0))
+		if total_local > ConstructionCancellationMath.MAX_INT - local_res or total_transit > ConstructionCancellationMath.MAX_INT - transit_res:
+			return {"ok": false, "reason": "overflow", "resource_id": res_id}
+		total_local += local_res
+		total_transit += transit_res
+
+	if st == ConstructionCancellationMath.State.SETTLED and (total_local > 0 or total_transit > 0):
+		return {"ok": false, "reason": "unsettled_custody_remaining"}
+
+	return {
+		"ok": true,
+		"total_local_custody": total_local,
+		"total_in_transit_custody": total_transit,
+	}
+
+
+## Validates compatibility with T3.6.1 ConstructionCancellationMath.plan_transition().
+## Zero-custody liquidation strictly chains FREEZING -> RECOVERY_PENDING -> SETTLED
+## rather than bypassing the approved state machine with an unauthorized FREEZING -> SETTLED edge.
+static func plan_custody_state_sequence_pure(has_pending_custody: bool) -> Dictionary:
+	var sequence: Array[int] = [
+		ConstructionCancellationMath.State.ACTIVE,
+		ConstructionCancellationMath.State.REQUESTED,
+		ConstructionCancellationMath.State.PREVALIDATING,
+		ConstructionCancellationMath.State.FREEZING,
+		ConstructionCancellationMath.State.RECOVERY_PENDING,
+	]
+	if not has_pending_custody:
+		sequence.append(ConstructionCancellationMath.State.SETTLED)
+	for i: int in range(sequence.size() - 1):
+		var step: Dictionary = ConstructionCancellationMath.plan_transition(sequence[i], sequence[i + 1])
+		if not bool(step.get("ok", false)) or not bool(step.get("changed", false)):
+			return {"ok": false, "reason": String(step.get("reason", "invalid_transition")), "states": []}
+	return {"ok": true, "states": sequence}
+
+
+static func transition_custody_record(
+	record: CancellationCustodyRecord,
+	to_state: int,
+	diagnostic_reason: String = ""
+) -> Dictionary:
+	if record == null:
+		return {"ok": false, "reason": "invalid_custody_record"}
+	var step: Dictionary = ConstructionCancellationMath.plan_transition(record.state, to_state)
+	if not bool(step.get("ok", false)):
+		return step
+	if to_state == ConstructionCancellationMath.State.SETTLED and record.has_unsettled_custody():
+		return {"ok": false, "reason": "unsettled_custody_remaining"}
+	if bool(step.get("changed", false)):
+		record.state = to_state
+		record.revision += 1
+	if not diagnostic_reason.is_empty():
+		record.diagnostic_reason = diagnostic_reason
+	elif to_state == ConstructionCancellationMath.State.SETTLED:
+		record.diagnostic_reason = ""
+	return {"ok": true, "state": record.state, "revision": record.revision, "obligation_status": record.get_obligation_status()}
+
+
+static func _register_cancellation_custody_under_scope(
+	scope: CancellationScope,
+	spec: Dictionary
+) -> Dictionary:
+	if not _owns_cancellation_scope(scope) or not scope._commit_authorized or scope._rollback_authorized:
+		return {"ok": false, "reason": "unauthorized_scope"}
+	if scope.authority == null:
+		return {"ok": false, "reason": "missing_regional_authority"}
+	var check: Dictionary = validate_custody_accounting_pure(spec)
+	if not bool(check.get("ok", false)):
+		return check
+	var cid := StringName(spec["cancel_id"])
+	var op_id := StringName(spec["operation_id"])
+	var sid := StringName(spec["site_id"])
+	var rid := StringName(spec["reservation_id"])
+	var gen := int(spec["generation"])
+	var reg := StringName(spec["region_id"])
+	var w_id := int(spec["world_instance_id"])
+	if (
+		cid != scope.cancel_id
+		or op_id != scope.operation_id
+		or sid != scope.site_id
+		or rid != scope.reservation_id
+		or gen != scope.generation
+		or reg != scope.region_id
+		or w_id != scope.world.get_instance_id()
+	):
+		return {"ok": false, "reason": "scope_identity_mismatch"}
+	var site_gen_key := StringName("%s:%d" % [String(sid), gen])
+	if (
+		scope.authority.cancellation_custodies.has(cid)
+		or scope.authority.cancellation_id_by_site_gen.has(site_gen_key)
+		or scope.authority.cancellation_operation_ids.has(op_id)
+		or scope.authority.receipts.has(op_id)
+	):
+		return {"ok": false, "reason": "duplicate_custody_registration"}
+
+	var record := CancellationCustodyRecord.new()
+	record.cancel_id = cid
+	record.operation_id = op_id
+	record.site_id = sid
+	record.reservation_id = rid
+	record.generation = gen
+	record.region_id = reg
+	record.world_instance_id = w_id
+	record.work_progress_usec = int(spec["work_progress_usec"])
+	record.total_work_usec = int(spec["total_work_usec"])
+	record.required_amounts = (spec["required_amounts"] as Dictionary).duplicate(true)
+	record.released_on_piles = (spec["released_on_piles"] as Dictionary).duplicate(true)
+	record.local_buffer_remaining = (spec["local_buffer_remaining"] as Dictionary).duplicate(true)
+	record.local_incorporated_remaining = (spec["local_incorporated_remaining"] as Dictionary).duplicate(true)
+	record.in_transit_remaining = (spec["in_transit_remaining"] as Dictionary).duplicate(true)
+	record.delivered_to_camp = (spec["delivered_to_camp"] as Dictionary).duplicate(true)
+	record.demolition_loss = (spec["demolition_loss"] as Dictionary).duplicate(true)
+	record.missing_deficit = (spec["missing_deficit"] as Dictionary).duplicate(true)
+	record.state = int(spec["state"])
+	record.diagnostic_reason = String(spec.get("diagnostic_reason", ""))
+	record.revision = 1
+
+	scope.authority.cancellation_custodies[cid] = record
+	scope.authority.cancellation_id_by_site_gen[site_gen_key] = cid
+	scope.authority.cancellation_operation_ids[op_id] = cid
+	return {"ok": true, "record": record, "snapshot": record.to_snapshot_dict()}
+
+
+static func get_cancellation_custody_readonly(
+	world: World3D,
+	region_id: Variant,
+	cancel_id: Variant
+) -> Dictionary:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return {"ok": false, "reason": "wrong_thread"}
+	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id) or not CarryProvenanceLedger._id(cancel_id):
+		return {"ok": false, "reason": "invalid_query"}
+	if not world.has_meta(DOMAIN_META):
+		return {"ok": false, "reason": "not_found"}
+	var domains_raw: Variant = world.get_meta(DOMAIN_META)
+	if not (domains_raw is Dictionary):
+		return {"ok": false, "reason": "not_found"}
+	var authority: RegionalAuthority = (domains_raw as Dictionary).get(StringName(region_id)) as RegionalAuthority
+	if authority == null:
+		return {"ok": false, "reason": "not_found"}
+	var rec: CancellationCustodyRecord = authority.cancellation_custodies.get(StringName(cancel_id)) as CancellationCustodyRecord
+	if rec == null:
+		return {"ok": false, "reason": "not_found"}
+	return {"ok": true, "snapshot": rec.to_snapshot_dict()}

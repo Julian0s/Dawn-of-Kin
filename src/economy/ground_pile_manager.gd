@@ -1805,3 +1805,231 @@ func _publish_manual_complement_committed(
 	scope: ReservedWithdrawalCoordinator.ManualComplementScope
 ) -> void:
 	_publish_silent_reservation_events(scope, true)
+
+
+## ---------------------------------------------------------------------------
+## T3.6.3-B1.1 — Scoped Silent Reservation Release Primitives (D3)
+## Revision Rollback Contract (Audit Adjustment 1):
+## Rollback restores exact reservation allocations, pile indices, and reservation
+## ordering via _ledger.restore_state(), while advancing _ledger._transaction_revision
+## and _transaction_revision strictly monotonically so no pre-rollback plan can ever
+## pass stale_revision validation again. Emits zero signals on rollback.
+## ---------------------------------------------------------------------------
+
+func _is_authorized_cancellation_scope(
+	scope: Variant,
+	require_applied: bool = false,
+	require_unpublished: bool = true
+) -> bool:
+	if not (scope is ReservedWithdrawalCoordinator.CancellationScope):
+		return false
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not ReservedWithdrawalCoordinator._owns_cancellation_scope(cc) or cc.storage != self or cc._rolled_back:
+		return false
+	if require_applied and not cc._release_applied:
+		return false
+	if require_unpublished and cc._published:
+		return false
+	return true
+
+
+func _prepare_cancel_release_under_guard(
+	reservation_id: StringName,
+	expected_amounts: Dictionary,
+	scope: Variant = null
+) -> Dictionary:
+	if not _is_authorized_cancellation_scope(scope, false, true):
+		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if cc._release_applied or cc._commit_authorized or cc._rollback_authorized:
+		return {"ok": false, "reason": "busy", "entries": []}
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy", "entries": []}
+	if not CarryProvenanceLedger._id(reservation_id) or reservation_id != cc.reservation_id:
+		return {"ok": false, "reason": "reservation_identity_mismatch", "entries": []}
+
+	var normalized_expected: Dictionary = {}
+	var positive_expected: Dictionary = {}
+	var total_expected: int = 0
+	for k: Variant in expected_amounts.keys():
+		if not CarryProvenanceLedger._id(k):
+			return {"ok": false, "reason": "invalid_expected_amounts", "entries": []}
+		var v: Variant = expected_amounts[k]
+		if typeof(v) != TYPE_INT or int(v) < 0:
+			return {"ok": false, "reason": "invalid_expected_amounts", "entries": []}
+		var amt: int = int(v)
+		if total_expected > CarryProvenanceLedger.MAX_INT - amt:
+			return {"ok": false, "reason": "overflow", "entries": []}
+		var res_key := StringName(k)
+		normalized_expected[res_key] = amt
+		total_expected += amt
+		if amt > 0:
+			positive_expected[res_key] = amt
+	if normalized_expected != cc._expected_release_amounts:
+		return {"ok": false, "reason": "expected_amounts_mismatch", "entries": []}
+	if cc._release_noop != (total_expected == 0):
+		return {"ok": false, "reason": "noop_expectation_mismatch", "entries": []}
+
+	var actual_reserved: Dictionary = _ledger.get_reservation_amounts(reservation_id)
+	if total_expected == 0:
+		if _ledger.has_reservation(reservation_id) or not actual_reserved.is_empty():
+			return {"ok": false, "reason": "reservation_amount_mismatch", "entries": []}
+		return {
+			"ok": true,
+			"reason": "",
+			"noop": true,
+			"reservation_id": reservation_id,
+			"released_amounts": {},
+			"entries": [] as Array[Dictionary],
+			"revisions": {
+				"storage_revision": _transaction_revision,
+				"pile_ledger_revision": _ledger.get_transaction_revision(),
+			},
+		}
+
+	if not _ledger.has_reservation(reservation_id):
+		return {"ok": false, "reason": "missing_reservation", "entries": []}
+	if actual_reserved != positive_expected:
+		return {"ok": false, "reason": "reservation_amount_mismatch", "entries": []}
+
+	var plan: Dictionary = _build_release_plan(reservation_id, positive_expected)
+	if not bool(plan.get("ok", false)):
+		return {"ok": false, "reason": "release_plan_failed", "entries": []}
+	var entries: Array[Dictionary] = plan["entries"] as Array[Dictionary]
+	for entry: Dictionary in entries:
+		var pid: int = int(entry.get("pile_id", 0))
+		var amt: int = int(entry.get("amount", 0))
+		var pile: GroundResourcePile = get_pile_by_id(pid)
+		if pile == null or not is_instance_valid(pile) or amt <= 0 or pile.amount < _ledger.get_pile_reserved_amount(pid):
+			return {"ok": false, "reason": "invalid_or_inconsistent_pile", "entries": []}
+
+	return {
+		"ok": true,
+		"reason": "",
+		"noop": false,
+		"reservation_id": reservation_id,
+		"released_amounts": positive_expected.duplicate(),
+		"entries": entries,
+		"revisions": {
+			"storage_revision": _transaction_revision,
+			"pile_ledger_revision": _ledger.get_transaction_revision(),
+		},
+	}
+
+
+func _apply_prepared_cancel_release_silent(
+	plan: Dictionary,
+	scope: Variant = null
+) -> Dictionary:
+	if not _is_authorized_cancellation_scope(scope, false, true):
+		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if cc._release_applied or cc._commit_authorized or cc._rollback_authorized:
+		return {"ok": false, "reason": "busy", "checkpoint": {}}
+	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
+		return {"ok": false, "reason": "busy", "checkpoint": {}}
+	if not bool(plan.get("ok", false)) or StringName(plan.get("reservation_id", &"")) != cc.reservation_id:
+		return {"ok": false, "reason": "invalid_plan", "checkpoint": {}}
+
+	var plan_revs_var: Variant = plan.get("revisions")
+	if not (plan_revs_var is Dictionary):
+		return {"ok": false, "reason": "invalid_plan", "checkpoint": {}}
+	var plan_revs: Dictionary = plan_revs_var as Dictionary
+	if (
+		int(plan_revs.get("storage_revision", -1)) != _transaction_revision
+		or int(plan_revs.get("pile_ledger_revision", -1)) != _ledger.get_transaction_revision()
+	):
+		return {"ok": false, "reason": "stale_revision", "checkpoint": {}}
+
+	var recomputed: Dictionary = _prepare_cancel_release_under_guard(cc.reservation_id, cc._expected_release_amounts, cc)
+	if not bool(recomputed.get("ok", false)) or recomputed != plan:
+		return {"ok": false, "reason": String(recomputed.get("reason", "stale_plan")), "checkpoint": {}}
+
+	var is_noop: bool = bool(plan.get("noop", false))
+	var checkpoint: Dictionary = {
+		"reservation_id": cc.reservation_id,
+		"noop": is_noop,
+		"mutated": not is_noop,
+		"ledger_snapshot": _ledger.snapshot_state(),
+		"pre_ledger_revision": _ledger.get_transaction_revision(),
+		"pre_storage_revision": _transaction_revision,
+	}
+
+	_is_mutating = true
+	if not is_noop:
+		var entries: Array[Dictionary] = plan["entries"] as Array[Dictionary]
+		for entry: Dictionary in entries:
+			var pile_id: int = int(entry["pile_id"])
+			var amt: int = int(entry["amount"])
+			var deducted: int = _ledger.deduct_from_pile(pile_id, cc.reservation_id, amt)
+			if deducted != amt:
+				_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+				_transaction_revision += 1
+				_is_mutating = false
+				return {"ok": false, "reason": "ledger_deduction_mismatch", "checkpoint": {}}
+		if _ledger.has_reservation(cc.reservation_id):
+			_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
+			_transaction_revision += 1
+			_is_mutating = false
+			return {"ok": false, "reason": "residual_reservation_after_release", "checkpoint": {}}
+	else:
+		_ledger._transaction_revision += 1
+	_transaction_revision += 1
+	_is_mutating = false
+
+	checkpoint["applied_ledger_revision"] = _ledger.get_transaction_revision()
+	checkpoint["applied_storage_revision"] = _transaction_revision
+	cc._release_applied = true
+	cc._bound_checkpoint = checkpoint.duplicate(true)
+	return {"ok": true, "reason": "", "noop": is_noop, "checkpoint": checkpoint}
+
+
+func _restore_cancel_release_checkpoint_silent(
+	checkpoint: Dictionary,
+	scope: Variant = null
+) -> bool:
+	if not _is_authorized_cancellation_scope(scope, true, true):
+		return false
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if (
+		not cc._rollback_authorized
+		or cc._commit_authorized
+		or checkpoint.is_empty()
+		or cc._bound_checkpoint.is_empty()
+		or checkpoint != cc._bound_checkpoint
+	):
+		return false
+	var bound_ckpt: Dictionary = cc._bound_checkpoint
+	_is_mutating = true
+	# PileReservationLedger.restore_state() restores exact by_pile, reservation_order, and next_seq
+	# while monotonically advancing _ledger._transaction_revision so no stale plan can be reused.
+	_ledger.restore_state(bound_ckpt["ledger_snapshot"] as Dictionary)
+	_transaction_revision += 1
+	_is_mutating = false
+	cc._release_applied = false
+	cc._rollback_authorized = false
+	cc._rolled_back = true
+	cc._bound_checkpoint = {}
+	return true
+
+
+func _publish_cancel_release_committed(
+	scope: Variant = null
+) -> bool:
+	if not _is_authorized_cancellation_scope(scope, true, true):
+		return false
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not cc._commit_authorized or cc._rollback_authorized:
+		return false
+	cc._published = true
+	cc._commit_authorized = false
+	cc._bound_checkpoint = {}
+	if cc._release_noop:
+		return true
+	if is_batch_active():
+		_reservation_batch_dirty = true
+		_batch_dirty = true
+		return true
+	_dispatch_reservations_changed()
+	_dispatch_storage_changed()
+	return true

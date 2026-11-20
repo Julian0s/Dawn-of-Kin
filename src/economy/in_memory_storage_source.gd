@@ -16,6 +16,7 @@ func is_locked() -> bool:
 		_is_preparing_withdrawal
 		or ReservedWithdrawalCoordinator._has_active_site_creation_for_storage(null, self)
 		or ReservedWithdrawalCoordinator._has_active_manual_complement_for_storage(null, self)
+		or ReservedWithdrawalCoordinator._has_active_cancellation_for_storage(null, self)
 	)
 
 
@@ -520,6 +521,177 @@ func _publish_site_reservation_committed(
 		return
 	_dispatch_reservations_changed()
 	_dispatch_storage_changed()
+
+
+## ---------------------------------------------------------------------------
+## T3.6.3-B1.1 — Scoped Silent Reservation Release Primitives (D3)
+## Revision Rollback Contract (Audit Adjustment 1):
+## Rollback restores exact reservation amounts, reservation_order, and next_seq
+## while advancing _transaction_revision monotonically so stale plans stay invalid.
+## ---------------------------------------------------------------------------
+
+func _prepare_cancel_release_under_guard(
+	reservation_id: StringName,
+	expected_amounts: Dictionary,
+	scope: Variant = null
+) -> Dictionary:
+	if not (scope is ReservedWithdrawalCoordinator.CancellationScope):
+		return {"ok": false, "reason": "unauthorized_scope"}
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not ReservedWithdrawalCoordinator._owns_cancellation_scope(cc) or cc.storage_source != self or cc._rolled_back or cc._published:
+		return {"ok": false, "reason": "unauthorized_scope"}
+	if cc._release_applied or cc._commit_authorized or cc._rollback_authorized or is_batch_active() or not _is_preparing_withdrawal:
+		return {"ok": false, "reason": "busy"}
+	if not CarryProvenanceLedger._id(reservation_id) or reservation_id != cc.reservation_id:
+		return {"ok": false, "reason": "reservation_identity_mismatch"}
+
+	var normalized_expected: Dictionary = {}
+	var positive_expected: Dictionary = {}
+	var total_expected: int = 0
+	for k: Variant in expected_amounts.keys():
+		if not CarryProvenanceLedger._id(k):
+			return {"ok": false, "reason": "invalid_expected_amounts"}
+		var v: Variant = expected_amounts[k]
+		if typeof(v) != TYPE_INT or int(v) < 0:
+			return {"ok": false, "reason": "invalid_expected_amounts"}
+		var amt: int = int(v)
+		if total_expected > CarryProvenanceLedger.MAX_INT - amt:
+			return {"ok": false, "reason": "overflow"}
+		var res_key := StringName(k)
+		normalized_expected[res_key] = amt
+		total_expected += amt
+		if amt > 0:
+			positive_expected[res_key] = amt
+	if normalized_expected != cc._expected_release_amounts:
+		return {"ok": false, "reason": "expected_amounts_mismatch"}
+	if cc._release_noop != (total_expected == 0):
+		return {"ok": false, "reason": "noop_expectation_mismatch"}
+
+	var actual_reserved: Dictionary = get_reservation_amounts(reservation_id)
+	if total_expected == 0:
+		if has_reservation(reservation_id) or not actual_reserved.is_empty():
+			return {"ok": false, "reason": "reservation_amount_mismatch"}
+		return {
+			"ok": true,
+			"reason": "",
+			"noop": true,
+			"reservation_id": reservation_id,
+			"released_amounts": {},
+			"revisions": {"storage_revision": _transaction_revision},
+		}
+
+	if not has_reservation(reservation_id):
+		return {"ok": false, "reason": "missing_reservation"}
+	if actual_reserved != positive_expected:
+		return {"ok": false, "reason": "reservation_amount_mismatch"}
+
+	return {
+		"ok": true,
+		"reason": "",
+		"noop": false,
+		"reservation_id": reservation_id,
+		"released_amounts": positive_expected.duplicate(),
+		"revisions": {"storage_revision": _transaction_revision},
+	}
+
+
+func _apply_prepared_cancel_release_silent(
+	plan: Dictionary,
+	scope: Variant = null
+) -> Dictionary:
+	if not (scope is ReservedWithdrawalCoordinator.CancellationScope):
+		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not ReservedWithdrawalCoordinator._owns_cancellation_scope(cc) or cc.storage_source != self or cc._rolled_back or cc._published:
+		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
+	if cc._release_applied or cc._commit_authorized or cc._rollback_authorized or is_batch_active() or not _is_preparing_withdrawal:
+		return {"ok": false, "reason": "busy", "checkpoint": {}}
+	if not bool(plan.get("ok", false)) or StringName(plan.get("reservation_id", &"")) != cc.reservation_id:
+		return {"ok": false, "reason": "invalid_plan", "checkpoint": {}}
+
+	var plan_revs_var: Variant = plan.get("revisions")
+	if not (plan_revs_var is Dictionary) or int((plan_revs_var as Dictionary).get("storage_revision", -1)) != _transaction_revision:
+		return {"ok": false, "reason": "stale_revision", "checkpoint": {}}
+
+	var recomputed: Dictionary = _prepare_cancel_release_under_guard(cc.reservation_id, cc._expected_release_amounts, cc)
+	if not bool(recomputed.get("ok", false)) or recomputed != plan:
+		return {"ok": false, "reason": String(recomputed.get("reason", "stale_plan")), "checkpoint": {}}
+
+	var is_noop: bool = bool(plan.get("noop", false))
+	var checkpoint: Dictionary = {
+		"reservation_id": cc.reservation_id,
+		"noop": is_noop,
+		"mutated": not is_noop,
+		"snap": _create_rollback_snapshot(),
+		"pre_storage_revision": _transaction_revision,
+	}
+	if not is_noop:
+		_reservations.erase(cc.reservation_id)
+		_reservation_order.erase(cc.reservation_id)
+	_transaction_revision += 1
+	checkpoint["applied_storage_revision"] = _transaction_revision
+	cc._release_applied = true
+	cc._bound_checkpoint = checkpoint.duplicate(true)
+	return {"ok": true, "reason": "", "noop": is_noop, "checkpoint": checkpoint}
+
+
+func _restore_cancel_release_checkpoint_silent(
+	checkpoint: Dictionary,
+	scope: Variant = null
+) -> bool:
+	if not (scope is ReservedWithdrawalCoordinator.CancellationScope):
+		return false
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not ReservedWithdrawalCoordinator._owns_cancellation_scope(cc) or cc.storage_source != self:
+		return false
+	if (
+		not cc._release_applied
+		or cc._published
+		or cc._rolled_back
+		or not cc._rollback_authorized
+		or cc._commit_authorized
+		or checkpoint.is_empty()
+		or cc._bound_checkpoint.is_empty()
+		or checkpoint != cc._bound_checkpoint
+	):
+		return false
+	_restore_rollback_snapshot(cc._bound_checkpoint.get("snap"))
+	_transaction_revision += 1
+	cc._release_applied = false
+	cc._rollback_authorized = false
+	cc._rolled_back = true
+	cc._bound_checkpoint = {}
+	return true
+
+
+func _publish_cancel_release_committed(
+	scope: Variant = null
+) -> bool:
+	if not (scope is ReservedWithdrawalCoordinator.CancellationScope):
+		return false
+	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
+	if not ReservedWithdrawalCoordinator._owns_cancellation_scope(cc) or cc.storage_source != self:
+		return false
+	if (
+		not cc._release_applied
+		or cc._published
+		or cc._rolled_back
+		or not cc._commit_authorized
+		or cc._rollback_authorized
+	):
+		return false
+	cc._published = true
+	cc._commit_authorized = false
+	cc._bound_checkpoint = {}
+	if cc._release_noop:
+		return true
+	if is_batch_active():
+		_reservation_batch_dirty = true
+		_batch_dirty = true
+		return true
+	_dispatch_reservations_changed()
+	_dispatch_storage_changed()
+	return true
 
 
 func _prepare_manual_complement_under_guard(
