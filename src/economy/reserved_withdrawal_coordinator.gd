@@ -59,6 +59,10 @@ class SiteCreationScope extends RefCounted:
 	var sites: Array[ConstructionSite] = []
 	var new_site: ConstructionSite = null
 	var authority: RegionalAuthority = null
+	var _expected_site_id: StringName
+	var _expected_reservation_id: StringName
+	var _expected_definition: BuildingDefinition
+	var _expected_costs: Dictionary = {}
 	var _reservation_applied: bool = false
 	var _commit_authorized: bool = false
 	var _rollback_authorized: bool = false
@@ -641,10 +645,25 @@ static func _release_site_creation_scope(scope: SiteCreationScope) -> void:
 static func _authorize_site_creation_commit(scope: SiteCreationScope) -> bool:
 	if not _owns_site_creation_scope(scope):
 		return false
-	if not scope._reservation_applied or scope._published or scope._rolled_back or scope._rollback_authorized:
+	if not scope._reservation_applied or scope._bound_checkpoint.is_empty() \
+		or scope._commit_authorized or scope._published or scope._rolled_back or scope._rollback_authorized:
+		return false
+	var site := scope.new_site
+	var manager := scope.manager
+	var sites_root := manager._sites_root
+	if not is_instance_valid(site) or site.is_queued_for_deletion() or not site.is_inside_tree() \
+		or not is_instance_valid(sites_root) or site.get_parent() != sites_root \
+		or site.get_world_3d() != scope.world or not manager._sites.has(site):
+		return false
+	if not site.is_valid() or site.get_site_state() != ConstructionSite.SiteState.ACTIVE \
+		or site.site_id != scope._expected_site_id or site.reservation_id != scope._expected_reservation_id \
+		or site.region_id != scope.region_id or manager.get_region_id() != scope.region_id \
+		or site.get_inventory() != scope.inventory or manager.get_inventory() != scope.inventory \
+		or site.definition != scope._expected_definition or scope._expected_costs.is_empty() \
+		or site.get_required_amounts() != scope._expected_costs \
+		or scope.inventory.get_reservation_amounts(site.reservation_id) != scope._expected_costs:
 		return false
 	scope._commit_authorized = true
-	scope._bound_checkpoint = {}
 	return true
 
 

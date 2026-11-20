@@ -481,13 +481,16 @@ func try_create_site_from_placement(
 
 	var scope: ReservedWithdrawalCoordinator.SiteCreationScope = acq["scope"] as ReservedWithdrawalCoordinator.SiteCreationScope
 	_creation_in_progress = true
-	var expected_world: World3D = scope.world
 	var storage_source: SettlementStorageSource = scope.storage_source
 	var saved_next_site_seq: int = _next_site_seq
 
 	var ids: Dictionary = _allocate_unique_ids()
 	var new_site_id: StringName = ids["site_id"] as StringName
 	var new_res_id: StringName = ids["reservation_id"] as StringName
+	scope._expected_site_id = new_site_id
+	scope._expected_reservation_id = new_res_id
+	scope._expected_definition = definition
+	scope._expected_costs = costs.duplicate()
 
 	var reservation_checkpoint: Dictionary = {}
 	var reserved_via_silent_pile: bool = false
@@ -576,19 +579,18 @@ func try_create_site_from_placement(
 		_sites_root.add_child(site)
 		valid = (
 			is_instance_valid(site)
-			and site.is_inside_tree()
-			and site.get_parent() == _sites_root
-			and site.get_world_3d() == expected_world
 			and site.is_valid()
-			and site.site_id == new_site_id
-			and site.reservation_id == new_res_id
-			and site.region_id == _region_id
-			and site.definition == definition
-			and site.get_inventory() == _inventory
-			and site.get_site_state() == ConstructionSite.SiteState.ACTIVE
 			and not has_footprint_overlapping_rect(site.get_footprint_rect())
-			and _inventory.get_reservation_amounts(new_res_id) == costs
 		)
+
+	var rejection_reason := "site_instantiation_failed"
+	if valid:
+		# Registration is provisional until the coordinator checks the full intent.
+		_sites.append(site)
+		if not ReservedWithdrawalCoordinator._authorize_site_creation_commit(scope):
+			_sites.erase(site)
+			valid = false
+			rejection_reason = "site_commit_not_authorized"
 
 	if not valid:
 		ReservedWithdrawalCoordinator._authorize_site_creation_rollback(scope)
@@ -605,19 +607,17 @@ func try_create_site_from_placement(
 		scope.new_site = null
 		_finish_site_creation_guards(scope)
 		return _reject(
-			"site_instantiation_failed",
+			rejection_reason,
 			"Falha ao criar o canteiro de obra; reserva liberada.",
 			definition,
 			world_position
 		)
 
 	# Irreversible commit point: site and reservation are both valid and registered before any signal fires.
-	_sites.append(site)
 	site.state_changed.connect(_on_site_state_changed)
 	if reserved_via_silent_pile:
 		_inventory._transaction_revision += 1
 
-	ReservedWithdrawalCoordinator._authorize_site_creation_commit(scope)
 	site._suppress_coordinator_signal_echo = true
 	if reserved_via_silent_pile:
 		(storage_source as GroundPileManager)._publish_site_reservation_committed(scope)
