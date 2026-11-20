@@ -16,8 +16,12 @@ class BackendOrder extends ConstructOrder:
 		pass
 
 func _fixture(buffer: Dictionary = COSTS) -> Dictionary:
+	# Tests may hold two independent inventories with the same region ID at once.
+	var viewport := SubViewport.new()
+	viewport.own_world_3d = true
+	add_test_child(viewport)
 	var host := Node3D.new()
-	add_test_child(host)
+	viewport.add_child(host)
 	var storage := InMemoryStorageSource.new()
 	var inventory := SettlementInventory.new(storage)
 	var site := ConstructionSite.new()
