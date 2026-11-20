@@ -41,6 +41,8 @@ signal order_finished(order: UnitOrder)
 
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
+## A contribution follows the worker even when its active order changes sites.
+var _last_construction_work_frame: int = -1
 var _world_navigation: WorldNavigation = null
 var _carry_load: UnitCarryLoad = UnitCarryLoad.new()
 var _order_state_explicit: bool = false

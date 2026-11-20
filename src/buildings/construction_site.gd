@@ -87,7 +87,6 @@ var _is_complementing: bool = false
 var _work_progress_usec: int = 0
 var _total_work_usec: int = 1
 var _builder_slot_positions: Dictionary = {}
-var _last_work_physics_frame_by_unit: Dictionary = {}
 var _work_cycle_serial: int = 0
 var _work_transaction_in_progress: bool = false
 var _completion_retry_count: int = 0
@@ -114,7 +113,6 @@ func _exit_tree() -> void:
 	_assigned_workers.clear()
 	_worker_order_ids.clear()
 	_builder_slot_positions.clear()
-	_last_work_physics_frame_by_unit.clear()
 	_supply_rebalance_completed = false
 
 
@@ -403,7 +401,11 @@ func get_assigned_builder_slot_position(unit: Unit) -> Dictionary:
 
 
 func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
+	if _work_transaction_in_progress:
+		return _work_rejection("duplicate_cycle_contribution")
 	if _is_preparing_or_transacting:
+		if is_inside_tree() and ReservedWithdrawalCoordinator._has_active_work_in_domain(get_world_3d(), region_id):
+			return _work_rejection("busy")
 		return _work_rejection("duplicate_cycle_contribution")
 	# Nine ordered guards; no progress, economic state or signals change on rejection.
 	if _site_state == SiteState.COMPLETION_FAILED_RETRYABLE:
@@ -414,7 +416,49 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 		return _work_rejection("invalid_delta")
 	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
 		return _work_rejection("invalid_unit")
+	var acquired := ReservedWithdrawalCoordinator._acquire_work_scope(self)
+	if not acquired.ok:
+		return _work_rejection(acquired.reason)
+	_work_transaction_in_progress = true
 	_prune_stale_state()
+	var frame: int = Engine.get_physics_frames()
+	var evaluation := _evaluate_work_contribution(unit, delta_sec, frame)
+	if evaluation["ok"]:
+		var prev_site_state: SiteState = _site_state
+		var prev_substate: AssemblySubstate = _assembly_substate
+		var prev_starved_resources: Array[StringName] = _starved_resources.duplicate()
+		_work_cycle_serial += 1
+		_transaction_revision += 1
+		unit._last_construction_work_frame = frame
+		var debits: Dictionary = evaluation["consumed"]
+		var buffer_mutated: bool = false
+		for res_id: StringName in _get_sorted_required_keys():
+			var debit: int = int(debits[res_id])
+			if debit > 0:
+				buffer_mutated = true
+			_delivered_buffer[res_id] = int(_delivered_buffer[res_id]) - debit
+			_consumed_materials[res_id] = int(_consumed_materials[res_id]) + debit
+		_work_progress_usec = int(evaluation["progress_usec"])
+		_starved_resources.assign(evaluation["starved_resources"])
+		if evaluation["completed"]:
+			_site_state = SiteState.COMPLETING
+			_assembly_substate = AssemblySubstate.NONE
+		else:
+			_assembly_substate = AssemblySubstate.PAUSED_STARVED if evaluation["starved"] else AssemblySubstate.ASSEMBLING
+		if int(evaluation["advanced_usec"]) > 0:
+			buffer_changed.emit(self)
+			state_changed.emit(self)
+		else:
+			if buffer_mutated:
+				buffer_changed.emit(self)
+			if _site_state != prev_site_state or _assembly_substate != prev_substate or _starved_resources != prev_starved_resources:
+				state_changed.emit(self)
+	_work_transaction_in_progress = false
+	ReservedWithdrawalCoordinator._release_work_scope(acquired.scope, self)
+	return evaluation
+
+
+func _evaluate_work_contribution(unit: Unit, delta_sec: float, frame: int) -> Dictionary:
 	var uid: int = unit.get_instance_id()
 	if not _assigned_workers.has(uid):
 		return _work_rejection("worker_not_registered")
@@ -433,45 +477,10 @@ func contribute_work(unit: Unit, delta_sec: float) -> Dictionary:
 		return _work_rejection("worker_not_in_assigned_slot")
 	if not BuildSlotPlanner.is_unit_in_site_dropoff_range(unit.global_position, self, DEFAULT_DROPOFF_REACH_TOLERANCE, get_world_3d()):
 		return _work_rejection("worker_out_of_reach")
-	var frame: int = Engine.get_physics_frames()
-	if _work_transaction_in_progress or _is_preparing_or_transacting or int(_last_work_physics_frame_by_unit.get(uid, -1)) == frame:
+	if unit._last_construction_work_frame == frame:
 		return _work_rejection("duplicate_cycle_contribution")
-	var evaluation: Dictionary = evaluate_work_transaction_usec(_work_progress_usec, _total_work_usec,
+	return evaluate_work_transaction_usec(_work_progress_usec, _total_work_usec,
 		maxi(1, roundi(delta_sec * USEC_PER_SEC)), _required_amounts, _consumed_materials, _delivered_buffer)
-	if not evaluation["ok"]:
-		return evaluation
-	var prev_site_state: SiteState = _site_state
-	var prev_substate: AssemblySubstate = _assembly_substate
-	var prev_starved_resources: Array[StringName] = _starved_resources.duplicate()
-	_work_transaction_in_progress = true
-	_work_cycle_serial += 1
-	_transaction_revision += 1
-	_last_work_physics_frame_by_unit[uid] = frame
-	var debits: Dictionary = evaluation["consumed"]
-	var buffer_mutated: bool = false
-	for res_id: StringName in _get_sorted_required_keys():
-		var debit: int = int(debits[res_id])
-		if debit > 0:
-			buffer_mutated = true
-		_delivered_buffer[res_id] = int(_delivered_buffer[res_id]) - debit
-		_consumed_materials[res_id] = int(_consumed_materials[res_id]) + debit
-	_work_progress_usec = int(evaluation["progress_usec"])
-	_starved_resources.assign(evaluation["starved_resources"])
-	if evaluation["completed"]:
-		_site_state = SiteState.COMPLETING
-		_assembly_substate = AssemblySubstate.NONE
-	else:
-		_assembly_substate = AssemblySubstate.PAUSED_STARVED if evaluation["starved"] else AssemblySubstate.ASSEMBLING
-	if int(evaluation["advanced_usec"]) > 0:
-		buffer_changed.emit(self)
-		state_changed.emit(self)
-	else:
-		if buffer_mutated:
-			buffer_changed.emit(self)
-		if _site_state != prev_site_state or _assembly_substate != prev_substate or _starved_resources != prev_starved_resources:
-			state_changed.emit(self)
-	_work_transaction_in_progress = false
-	return evaluation
 
 
 func _can_unblock_starvation() -> bool:

@@ -90,6 +90,13 @@ class ManualComplementScope extends RefCounted:
 	var _bound_checkpoint: Dictionary = {}
 
 
+class WorkScope extends RefCounted:
+	var participants: Dictionary
+	var authority: RegionalAuthority
+	var temporary_authority: bool
+	var had_domain_metadata: bool
+
+
 class RegionalAuthority extends RefCounted:
 	var storage: WeakRef
 	var is_executing: bool = false
@@ -100,6 +107,7 @@ class RegionalAuthority extends RefCounted:
 	var active_completion: CompletionScope
 	var active_site_creation: SiteCreationScope
 	var active_manual_complement: ManualComplementScope
+	var active_work: WorkScope
 	var construction_transfer_serial: int = 0
 
 	func has_active_operation() -> bool:
@@ -110,6 +118,7 @@ class RegionalAuthority extends RefCounted:
 			or active_completion != null
 			or active_site_creation != null
 			or active_manual_complement != null
+			or active_work != null
 		)
 
 
@@ -696,6 +705,10 @@ static func _authorize_manual_complement_rollback(scope: ManualComplementScope) 
 
 
 static func _inspect_manual_complement_preconditions_readonly(site: ConstructionSite) -> Dictionary:
+	return _inspect_site_mutation_preconditions_readonly(site, true)
+
+
+static func _inspect_site_mutation_preconditions_readonly(site: ConstructionSite, sort_peers: bool) -> Dictionary:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		return {"ok": false, "busy": false, "reason": "wrong_thread"}
 	if (
@@ -713,6 +726,8 @@ static func _inspect_manual_complement_preconditions_readonly(site: Construction
 	var region: StringName = site.region_id
 	if world == null or not is_instance_valid(world) or tree == null or not CarryProvenanceLedger._id(region):
 		return {"ok": false, "busy": false, "reason": "invalid_domain"}
+	if _has_active_work_in_domain(world, region):
+		return {"ok": false, "busy": true, "reason": "busy"}
 	var inventory: SettlementInventory = site.get_inventory()
 	var storage_source: SettlementStorageSource = inventory.get_storage_source()
 	if storage_source == null:
@@ -736,10 +751,11 @@ static func _inspect_manual_complement_preconditions_readonly(site: Construction
 				peer_sites.append(peer)
 	if not seen_ids.has(site.get_instance_id()):
 		peer_sites.append(site)
-	peer_sites.sort_custom(func(left: ConstructionSite, right: ConstructionSite) -> bool:
-		if left.site_id == right.site_id:
-			return left.get_instance_id() < right.get_instance_id()
-		return String(left.site_id) < String(right.site_id))
+	if sort_peers:
+		peer_sites.sort_custom(func(left: ConstructionSite, right: ConstructionSite) -> bool:
+			if left.site_id == right.site_id:
+				return left.get_instance_id() < right.get_instance_id()
+			return String(left.site_id) < String(right.site_id))
 
 	var domains_raw: Variant = world.get_meta(DOMAIN_META, {}) if world.has_meta(DOMAIN_META) else {}
 	var domains: Dictionary = domains_raw as Dictionary if domains_raw is Dictionary else {}
@@ -820,6 +836,76 @@ static func _inspect_manual_complement_preconditions_readonly(site: Construction
 		"sites": peer_sites,
 		"authority": authority,
 	}
+
+
+static func _has_active_work_in_domain(world: World3D, region: StringName) -> bool:
+	if world == null:
+		return false
+	var domains: Variant = world.get_meta(DOMAIN_META, {})
+	if not domains is Dictionary:
+		return false
+	var authority := (domains as Dictionary).get(region) as RegionalAuthority
+	return authority != null and authority.active_work != null
+
+
+static func _acquire_work_scope(site: ConstructionSite) -> Dictionary:
+	var pre := _inspect_site_mutation_preconditions_readonly(site, false)
+	if not pre.ok:
+		return pre
+	var world: World3D = pre.world
+	var region: StringName = pre.region
+	var domains_raw: Variant = world.get_meta(DOMAIN_META, {})
+	if not domains_raw is Dictionary:
+		return {"ok": false, "reason": "ambiguous_domain"}
+	var domains: Dictionary = domains_raw
+	var scope := WorkScope.new()
+	scope.participants = pre
+	scope.had_domain_metadata = world.has_meta(DOMAIN_META)
+	scope.authority = pre.authority
+	if scope.authority == null:
+		# Legacy and in-memory sites only need an authority for this synchronous step.
+		scope.temporary_authority = true
+		scope.authority = RegionalAuthority.new()
+		scope.authority.storage = weakref(pre.storage_source)
+		domains[region] = scope.authority
+		world.set_meta(DOMAIN_META, domains)
+	scope.authority.is_executing = true
+	scope.authority.active_work = scope
+	_set_work_participant_guards(pre, site, true)
+	return {"ok": true, "scope": scope}
+
+
+static func _set_work_participant_guards(pre: Dictionary, site: ConstructionSite, locked: bool) -> void:
+	var peers: Array[ConstructionSite] = pre.sites
+	for peer: ConstructionSite in peers:
+		if is_instance_valid(peer) and peer != site:
+			peer._is_preparing_or_transacting = locked
+	var inventory: SettlementInventory = pre.inventory
+	inventory._is_delivering = locked
+	var storage_source: SettlementStorageSource = pre.storage_source
+	if storage_source is GroundPileManager:
+		(storage_source as GroundPileManager)._is_preparing_withdrawal = locked
+	else:
+		(storage_source as InMemoryStorageSource)._is_preparing_withdrawal = locked
+	var camp_zone: CampStorageZone = pre.camp_zone
+	if is_instance_valid(camp_zone):
+		camp_zone._coordinator_transaction_locked = locked
+
+
+static func _release_work_scope(scope: WorkScope, site: ConstructionSite) -> void:
+	if scope.authority.active_work != scope:
+		return
+	_set_work_participant_guards(scope.participants, site, false)
+	scope.authority.active_work = null
+	scope.authority.is_executing = false
+	if scope.temporary_authority:
+		var world: World3D = scope.participants.world
+		var region: StringName = scope.participants.region
+		var domains: Dictionary = world.get_meta(DOMAIN_META, {})
+		if domains.get(region) == scope.authority:
+			domains.erase(region)
+			if domains.is_empty() and not scope.had_domain_metadata:
+				world.remove_meta(DOMAIN_META)
 
 
 static func _acquire_manual_complement_scope(site: ConstructionSite) -> Dictionary:
