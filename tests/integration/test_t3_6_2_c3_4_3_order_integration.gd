@@ -65,6 +65,7 @@ func _fixture() -> Dictionary:
 	viewport.size = Vector2i(1280, 720)
 	add_test_child(viewport)
 	var main := MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	viewport.add_child(main)
 	var nav := main.get_test_map().get_navigation()
 	assert_true(await _until(func() -> bool: return nav.is_navigation_ready(), 180))
@@ -648,6 +649,27 @@ func test_group_c_construct_order_site_b_preservation_explicit_return_d3_block_a
 # ==============================================================================
 # GROUP D — CANCELLATION AND FAILURES (Scenarios 27–40)
 # ==============================================================================
+func test_redirect_restores_other_site_before_delivering_target_cargo() -> void:
+	var fx := await _fixture()
+	var worker: Unit = fx.worker
+	assert_true(worker.get_carry_load().enable_provenance(&"precedence"))
+	assert_true(fx.inventory.deposit(&"wood", 8))
+	assert_true(fx.inventory.deposit(&"stone", 4))
+	var target := _create_site(fx, {&"stone": 2}, SITE_A_POS)
+	var origin := _create_site(fx, {&"wood": 4}, SITE_B_POS)
+	_withdraw_site_lot_physically(fx, target, worker, &"stone", 1, &"precedence_a", &"precedence_lot_a")
+	_withdraw_site_lot_physically(fx, origin, worker, &"wood", 2, &"precedence_b", &"precedence_lot_b")
+	_place_worker(fx, worker, FAR_WALK_POS)
+	var order := ConstructOrder.new(target, fx.camp, false, true, true)
+	worker.issue_order(order)
+	assert_eq(order.get_phase(), ConstructOrder.Phase.RETURNING_UNNEEDED_CARGO)
+	assert_true(await _until(func() -> bool: return target.get_delivered_buffer_amount(&"stone") > 0 or order.is_finished()))
+	assert_eq(order.camp_return_trips_completed, 1)
+	assert_eq(origin.get_reserved_in_piles_amount(&"wood"), 4)
+	assert_eq(origin._read_transit_claim_for_unit_pure(worker.get_instance_id()), {})
+	assert_eq(fx.inventory.get_available_amount(&"wood"), 4)
+
+
 func test_group_d_cancellation_during_walk_before_commit_after_commit_and_manual_replace() -> void:
 	var fx := await _fixture()
 	var worker: Unit = fx.worker

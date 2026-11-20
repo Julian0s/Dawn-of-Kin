@@ -34,6 +34,7 @@ ambient_light_sky_contribution = 0.7
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main_script")
+use_provenance_economy = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_main")

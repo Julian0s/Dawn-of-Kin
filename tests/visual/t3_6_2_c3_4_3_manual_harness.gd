@@ -284,6 +284,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var main := MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	root.add_child(main)
 	await process_frame
 	await process_frame

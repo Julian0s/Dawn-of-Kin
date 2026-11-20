@@ -84,6 +84,7 @@ func after_each() -> void:
 
 func _boot_main_on_root() -> Dictionary:
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	get_tree().root.add_child(main)
 	_active_mains.append(main)
 	await get_tree().process_frame

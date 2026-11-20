@@ -53,6 +53,7 @@ func _run_benchmark() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	if main == null:
 		push_error("Failed to instantiate MainScene for T2 benchmark.")
 		quit(1)

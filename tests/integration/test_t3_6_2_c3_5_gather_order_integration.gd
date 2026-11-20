@@ -86,6 +86,7 @@ func _fixture(fast_walk: bool = true) -> Dictionary:
 	viewport.size = Vector2i(1280, 720)
 	add_test_child(viewport)
 	var main := MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	viewport.add_child(main)
 	var test_map: TestMap = main.get_test_map()
 	var nav: WorldNavigation = test_map.get_navigation()

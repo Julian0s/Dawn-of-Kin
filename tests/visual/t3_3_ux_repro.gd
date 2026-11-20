@@ -21,6 +21,7 @@ func _run_all() -> void:
 	DirAccess.make_dir_recursive_absolute(shots_dir_abs)
 
 	var main_scene: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_scene.use_provenance_economy = false
 	root.add_child(main_scene)
 	await process_frame
 	await physics_frame

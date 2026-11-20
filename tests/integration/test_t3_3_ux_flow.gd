@@ -24,6 +24,7 @@ func after_each() -> void:
 
 func _boot_main_scene() -> Dictionary:
 	_scene = MAIN_SCENE.instantiate() as MainScene
+	_scene.use_provenance_economy = false
 	get_tree().root.add_child(_scene)
 	await get_tree().process_frame
 	await get_tree().physics_frame

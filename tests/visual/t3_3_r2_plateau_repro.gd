@@ -125,6 +125,7 @@ func _resolve_scenarios() -> Array[String]:
 
 func _boot_fresh_main(focus_xz: Vector2, zoom_dist: float) -> Dictionary:
 	var main_inst: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_inst.use_provenance_economy = false
 	root.add_child(main_inst)
 
 	var test_map: TestMap = main_inst.get_test_map()

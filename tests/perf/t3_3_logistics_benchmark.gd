@@ -48,6 +48,7 @@ func _summarize(raw_vals: Array[float]) -> Dictionary:
 func _run() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	root.add_child(main)
 
 	var test_map: TestMap = main.get_test_map()

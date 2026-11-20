@@ -50,6 +50,7 @@ func _spawn_main_in_viewport(use_spy_site: bool = false) -> Dictionary:
 	add_test_child(vp)
 
 	var main_root: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_root.use_provenance_economy = false
 	vp.add_child(main_root)
 
 	var test_map: TestMap = main_root.get_test_map()

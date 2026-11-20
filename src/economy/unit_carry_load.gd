@@ -288,12 +288,20 @@ func is_transaction_busy() -> bool:
 
 ## An owned ledger is created here and never exposed: one ledger per load.
 func enable_provenance(unit_id: StringName) -> bool:
-	if _provenance != null or _provenance_busy or String(unit_id).strip_edges().is_empty() or not _amounts.is_empty() or not _unit_weights.is_empty():
+	if not _can_enable_provenance(unit_id):
 		return false
+	_enable_provenance_unchecked(unit_id)
+	return true
+
+
+func _can_enable_provenance(unit_id: StringName) -> bool:
+	return _provenance == null and not is_transaction_busy() and not _coordinator_transaction_locked and CarryProvenanceLedger._id(unit_id) and _amounts.is_empty() and _unit_weights.is_empty()
+
+
+func _enable_provenance_unchecked(unit_id: StringName) -> void:
 	_provenance_unit = unit_id
 	_provenance = CarryProvenanceLedger.new()
 	_transaction_revision += 1
-	return true
 
 func provenance_snapshot() -> Dictionary:
 	if _provenance == null:

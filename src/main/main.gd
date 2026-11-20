@@ -9,6 +9,8 @@ const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone
 const SHELTER_BASIC_DEFINITION: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
 const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildings/storage_depot.tres")
 
+@export var use_provenance_economy: bool = false
+
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
 @onready var _units_root: Node3D = $Units
@@ -33,6 +35,7 @@ var _economy_domain_owner_token: RefCounted = null
 var _economy_world_ref: WeakRef = null
 var _economy_region_id: StringName = &"default"
 var _last_domain_release_result: Dictionary = {}
+var _economy_admission_reason: String = ""
 
 
 func _ready() -> void:
@@ -47,13 +50,23 @@ func _ready() -> void:
 
 	_setup_economy(world_nav)
 	_setup_construction(world_nav)
+	if use_provenance_economy:
+		var admission := ReservedWithdrawalCoordinator.admit_empty_provenance_units(
+			get_units(), _units_root, _camp_storage_zone, _settlement_inventory, _economy_region_id
+		)
+		_economy_admission_reason = String(admission.get("reason", "invalid_domain")) if not admission.ok else ""
+		if not _economy_admission_reason.is_empty():
+			print("Economia RTS bloqueada: ", _economy_admission_reason)
 
 	if _command_controller != null:
 		_command_controller.configure(_selection_manager, world_nav, _destination_marker)
-		if _settlement_inventory != null and _camp_storage_zone != null:
-			_command_controller.configure_economy(_settlement_inventory, _camp_storage_zone)
+		_command_controller.configure_economy(
+			_settlement_inventory, _camp_storage_zone, _economy_region_id,
+			use_provenance_economy, _economy_admission_reason
+		)
 
-	_setup_placement(world_nav)
+	if _economy_admission_reason.is_empty():
+		_setup_placement(world_nav)
 
 	if _input_controller != null:
 		_input_controller.configure(
@@ -61,7 +74,7 @@ func _ready() -> void:
 			_camera_rig,
 			_selection_box_overlay,
 			_command_controller,
-			_placement_controller
+			_placement_controller if _economy_admission_reason.is_empty() else null
 		)
 
 	if _resource_hud != null:
@@ -102,7 +115,8 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 			_selection_manager,
 			_construction_sites_root,
 			_settlement_inventory,
-			_economy_region_id
+			_economy_region_id,
+			use_provenance_economy
 		)
 		_placement_test_overlay.configure_test_workers(_test_workers_controller)
 		_placement_test_overlay.use_game_catalog()

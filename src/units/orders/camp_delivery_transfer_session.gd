@@ -130,6 +130,7 @@ static func inspect_cargo_for_construction_site(
 ) -> Dictionary:
 	var empty_result: Dictionary = {
 		"has_usable_for_site": false,
+		"other_site_return_required": false,
 		"returnable_requests": [] as Array[Dictionary],
 		"has_non_returnable": false,
 		"blocking_reason": "",
@@ -155,6 +156,7 @@ static func inspect_cargo_for_construction_site(
 	var has_non_returnable: bool = false
 	var blocking_reason: String = ""
 	var preflight_fatal_reason: String = ""
+	var other_site_return_required := false
 	var free_candidates: Array[Dictionary] = []
 	var other_site_candidates: Array[Dictionary] = []
 
@@ -218,6 +220,7 @@ static func inspect_cargo_for_construction_site(
 		var probe_other: Dictionary = probe_preflight(inventory, camp_zone, unit, region, [entry])
 		var other_reason: String = String(probe_other.get("reason", ""))
 		if bool(probe_other.get("ok", false)) or other_reason == "busy":
+			other_site_return_required = true
 			selected_requests.append(entry)
 		else:
 			has_non_returnable = true
@@ -225,6 +228,7 @@ static func inspect_cargo_for_construction_site(
 				blocking_reason = other_reason if not other_reason.is_empty() else "unneeded_cargo_rejected"
 			if preflight_fatal_reason.is_empty() and _is_fatal_camp_preflight_reason(other_reason):
 				preflight_fatal_reason = other_reason
+				other_site_return_required = true
 
 	for free_entry: Dictionary in free_candidates:
 		selected_requests.append(free_entry)
@@ -252,6 +256,7 @@ static func inspect_cargo_for_construction_site(
 
 	return {
 		"has_usable_for_site": has_usable_for_site,
+		"other_site_return_required": other_site_return_required,
 		"returnable_requests": returnable_requests,
 		"has_non_returnable": has_non_returnable,
 		"blocking_reason": blocking_reason,

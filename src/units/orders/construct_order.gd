@@ -350,6 +350,19 @@ func _advance_by_role(movement: UnitMovement) -> void:
 			site, camp_zone, _unit, carry_load, return_other_site_reserved
 		)
 		has_usable_site_cargo = bool(provenance_cargo["has_usable_for_site"])
+		if provenance_cargo["other_site_return_required"]:
+			_clear_pickup_target()
+			site.release_pickup_claim(_unit)
+			var return_reason: String = provenance_cargo["preflight_fatal_reason"]
+			if not return_reason.is_empty():
+				_finish_failed(return_reason)
+				return
+			var required_returns: Array[Dictionary] = provenance_cargo["returnable_requests"]
+			if not required_returns.is_empty() and carry_load.get_transaction_revision() != _last_camp_return_load_revision:
+				_start_returning_unneeded_cargo_selective(movement, required_returns)
+				return
+			_finish_failed(REASON_UNNEEDED_CARGO_REJECTED)
+			return
 	else:
 		var site_claim: Dictionary = site.get_transit_claim_for_unit(_unit)
 		has_usable_site_cargo = _has_any_deliverable_claim(site_claim, carry_load)

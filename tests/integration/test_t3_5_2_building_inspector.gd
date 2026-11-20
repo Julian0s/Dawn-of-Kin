@@ -6,13 +6,14 @@ const SITE_A := Vector3(-6.0, 0.0, 1.5)
 const SITE_B := Vector3(0.37, 0.0, -13.19)
 
 
-func _fixture() -> Dictionary:
+func _fixture(use_provenance: bool = true) -> Dictionary:
 	var viewport := SubViewport.new()
 	viewport.own_world_3d = true
 	viewport.size = Vector2i(1280, 720)
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_test_child(viewport)
 	var main := MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = use_provenance
 	viewport.add_child(main)
 	var nav := main.get_test_map().get_navigation()
 	for i: int in range(120):
@@ -81,7 +82,7 @@ func test_site_selection_refresh_and_layout() -> void:
 
 
 func test_decay_explicit_confirmation_and_conservation() -> void:
-	var ctx: Dictionary = await _fixture()
+	var ctx: Dictionary = await _fixture(false)
 	var main: MainScene = ctx.main
 	var ui: BuildingInspectorPanel = ctx.ui
 	var manager := main.get_ground_pile_manager()

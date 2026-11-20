@@ -26,6 +26,7 @@ var _selection_manager: SelectionManager = null
 var _construction_sites_root: Node3D = null
 var _settlement_inventory: SettlementInventory = null
 var _region_id: StringName = &""
+var _use_provenance: bool = false
 var _spawned_workers: Array[Unit] = []
 
 
@@ -36,7 +37,8 @@ func configure(
 	selection_manager: SelectionManager = null,
 	construction_sites_root: Node3D = null,
 	settlement_inventory: SettlementInventory = null,
-	region_id: StringName = &""
+	region_id: StringName = &"",
+	use_provenance: bool = false
 ) -> void:
 	_units_root = units_root
 	_world_navigation = world_navigation
@@ -45,6 +47,7 @@ func configure(
 	_construction_sites_root = construction_sites_root
 	_settlement_inventory = settlement_inventory
 	_region_id = region_id
+	_use_provenance = use_provenance
 
 
 func get_temporary_workers() -> Array[Unit]:
@@ -125,9 +128,22 @@ func spawn_temporary_workers() -> Dictionary:
 		Color(0.28, 0.22, 0.14, 1.0)
 	)
 
-	var w3: Unit = _instantiate_worker("Worker3", def_3, pos_3)
-	var w4: Unit = _instantiate_worker("Worker4", def_4, pos_4)
+	var w3: Unit = _instantiate_worker("Worker3", def_3)
+	var w4: Unit = _instantiate_worker("Worker4", def_4)
+	if _use_provenance:
+		var pair: Array[Unit] = [w3, w4]
+		var admission := ReservedWithdrawalCoordinator.admit_empty_provenance_units(
+			pair, _units_root, _camp_storage_zone, _settlement_inventory, _region_id
+		)
+		if not admission.ok:
+			w3.free()
+			w4.free()
+			return {"ok": false, "reason": admission.reason, "message": "Admissão econômica bloqueada: %s" % admission.reason, "workers": []}
+	w3.position = _units_root.to_local(pos_3)
+	w4.position = _units_root.to_local(pos_4)
 	_spawned_workers = [w3, w4]
+	_units_root.add_child(w3)
+	_units_root.add_child(w4)
 
 	return {
 		"ok": true,
@@ -556,15 +572,12 @@ func _cannot_remove(reason: String, message: String) -> Dictionary:
 	}
 
 
-func _instantiate_worker(node_name: String, def: CharacterDefinition, world_pos: Vector3) -> Unit:
+func _instantiate_worker(node_name: String, def: CharacterDefinition) -> Unit:
 	var unit: Unit = UNIT_SCENE.instantiate() as Unit
 	unit.name = node_name
 	unit.definition = def
 	if _world_navigation != null:
 		unit.set_world_navigation(_world_navigation)
-	_units_root.add_child(unit)
-	unit.global_position = world_pos
-	unit.apply_definition(def)
 	return unit
 
 

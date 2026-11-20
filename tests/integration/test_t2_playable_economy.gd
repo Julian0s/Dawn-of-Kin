@@ -58,6 +58,7 @@ func _release_all_inputs() -> void:
 
 func _spawn_main_scene() -> Dictionary:
 	var main_root: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_root.use_provenance_economy = false
 	add_test_child(main_root)
 
 	var test_map: TestMap = main_root.get_test_map()
@@ -682,6 +683,7 @@ func _spawn_main_in_subviewport(vp_size: Vector2i) -> Dictionary:
 	add_test_child(vp)
 
 	var main_root: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_root.use_provenance_economy = false
 	vp.add_child(main_root)
 	var test_map: TestMap = main_root.get_test_map()
 	var nav: WorldNavigation = test_map.get_navigation()

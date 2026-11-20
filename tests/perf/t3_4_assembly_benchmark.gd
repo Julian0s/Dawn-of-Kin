@@ -32,6 +32,7 @@ func _run() -> void:
 	DisplayServer.window_set_size(Vector2i(1920, 1080))
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	root.add_child(main)
 	var nav: WorldNavigation = main.get_test_map().get_navigation()
 	for _frame: int in range(240):

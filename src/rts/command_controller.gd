@@ -19,6 +19,9 @@ var _world_navigation: WorldNavigation = null
 var _destination_marker: DestinationMarker = null
 var _settlement_inventory: SettlementInventory = null
 var _camp_storage_zone: CampStorageZone = null
+var _economy_region_id: StringName = &""
+var _use_provenance_economy: bool = false
+var _economy_admission_reason: String = ""
 var _last_plan: GroupMovePlanner.PlanResult = null
 var _last_command_reason: String = ""
 
@@ -44,10 +47,16 @@ func set_world_navigation(world_navigation: WorldNavigation) -> void:
 
 func configure_economy(
 	settlement_inventory: SettlementInventory,
-	camp_storage_zone: CampStorageZone
+	camp_storage_zone: CampStorageZone,
+	region_id: StringName = &"",
+	use_provenance: bool = false,
+	admission_reason: String = ""
 ) -> void:
 	_settlement_inventory = settlement_inventory
 	_camp_storage_zone = camp_storage_zone
+	_economy_region_id = region_id
+	_use_provenance_economy = use_provenance
+	_economy_admission_reason = admission_reason
 
 
 func get_settlement_inventory() -> SettlementInventory:
@@ -189,6 +198,8 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 		return false
 
 	var source: ResourceSource = pick.resource_source
+	if not _admit_economic_command(pick, units, source):
+		return false
 	if source.is_depleted():
 		_last_command_reason = "resource_source_depleted"
 		return false
@@ -212,7 +223,7 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 				first_failure_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
 			continue
 
-		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory)
+		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0, _use_provenance_economy, _economy_region_id)
 		unit.issue_order(order)
 		if _is_order_accepted(unit, order):
 			started_count += 1
@@ -268,6 +279,8 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 		_last_command_reason = ConstructOrder.REASON_INVALID_SITE
 		return false
 
+	if not _admit_economic_command(pick, units, site):
+		return false
 	var started_count: int = 0
 	var first_failure_reason: String = ""
 	for unit: Unit in units:
@@ -276,7 +289,7 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
 
-		var order := ConstructOrder.new(site, _camp_storage_zone)
+		var order := ConstructOrder.new(site, _camp_storage_zone, false, _use_provenance_economy, _use_provenance_economy)
 		unit.issue_order(order)
 		if _is_order_accepted(unit, order):
 			started_count += 1
@@ -294,6 +307,45 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 
 	command_issued.emit(pick, marker_pos, started_count, true)
 	return true
+
+
+func _admit_economic_command(pick: PickResult, units: Array[Unit], target: Node3D) -> bool:
+	if not _use_provenance_economy:
+		return true
+	var reason := _economy_admission_reason
+	if reason.is_empty():
+		reason = _inspect_economic_command(units, target)
+	if reason.is_empty():
+		return true
+	_last_command_reason = reason
+	command_rejected.emit(pick, reason)
+	return false
+
+
+func _inspect_economic_command(units: Array[Unit], target: Node3D) -> String:
+	if not target.is_inside_tree() or not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_inside_tree() or not _camp_storage_zone.is_valid():
+		return "invalid_domain"
+	var world := _camp_storage_zone.get_world_3d()
+	var storage := _settlement_inventory.get_storage_source() as GroundPileManager if _settlement_inventory != null else null
+	if storage == null or storage.get_camp_zone() != _camp_storage_zone or target.get_world_3d() != world:
+		return "invalid_domain"
+	if target is ConstructionSite:
+		var site := target as ConstructionSite
+		if site.region_id != _economy_region_id or site.get_inventory() != _settlement_inventory:
+			return "invalid_domain"
+	var domain := ReservedWithdrawalCoordinator.inspect_camp_domain_for_preparation(world, _economy_region_id, _settlement_inventory, storage, &"", get_tree())
+	if not domain.ok:
+		return domain.reason
+	for unit: Unit in units:
+		if unit.get_meta(&"region_id", &"") != _economy_region_id:
+			return "unit_not_admitted"
+		var load := unit.get_carry_load()
+		var identity := ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(world, _economy_region_id, unit, load, get_tree())
+		if not identity.ok:
+			return identity.reason
+		if not load.validate_provenance():
+			return "unreconciled_cargo"
+	return ""
 
 
 func _is_order_accepted(unit: Unit, order: UnitOrder) -> bool:

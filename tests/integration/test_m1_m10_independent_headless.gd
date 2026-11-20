@@ -38,6 +38,7 @@ func _fixture() -> Dictionary:
 	viewport.size = Vector2i(1280, 720)
 	add_test_child(viewport)
 	var main := MAIN.instantiate() as MainScene
+	main.use_provenance_economy = false
 	viewport.add_child(main)
 	var nav := main.get_test_map().get_navigation()
 	assert_true(await _until(nav.is_navigation_ready, 240))

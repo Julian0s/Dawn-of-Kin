@@ -27,6 +27,7 @@ func _release_all_inputs() -> void:
 
 func _spawn_main_scene() -> Dictionary:
 	var main_root: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main_root.use_provenance_economy = false
 	add_test_child(main_root)
 
 	var test_map: TestMap = main_root.get_node_or_null("TestMap") as TestMap

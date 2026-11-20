@@ -1322,6 +1322,45 @@ static func inspect_camp_domain_for_preparation(
 ## UnitCarryLoad instances across live units/receipts, preserves legitimate isolation of
 ## distinct regions in the same World3D when regional association is proven, and fails closed
 ## on empty/invalid IDs or ambiguous regional association. Never mutates state or creates authorities.
+static func admit_empty_provenance_units(
+	units: Array[Unit], units_root: Node3D, camp: CampStorageZone,
+	inventory: SettlementInventory, region: StringName
+) -> Dictionary:
+	if units.is_empty() or not is_instance_valid(units_root) or not units_root.is_inside_tree() or not is_instance_valid(camp) or not camp.is_inside_tree() or not camp.is_valid():
+		return _failure("invalid_domain", "admission")
+	var world := units_root.get_world_3d()
+	var tree := units_root.get_tree()
+	var storage := inventory.get_storage_source() as GroundPileManager if inventory != null else null
+	if storage == null or camp.get_world_3d() != world or storage.get_camp_zone() != camp:
+		return _failure("invalid_domain", "admission")
+	if inventory.is_transaction_busy() or storage.is_locked() or storage.is_batch_active() or camp.is_transaction_locked() or is_region_transaction_active_readonly(world, region):
+		return _failure("busy", "admission")
+	var domain := inspect_camp_domain_for_preparation(world, region, inventory, storage, &"", tree)
+	if not domain.ok:
+		return domain
+	var ids: Dictionary = {}
+	var loads: Dictionary = {}
+	for unit: Unit in units:
+		if not is_instance_valid(unit) or unit.is_queued_for_deletion() or (unit.get_parent() != null and unit.get_parent() != units_root):
+			return _failure("invalid_unit", "admission")
+		var id := unit.get_character_id()
+		var load := unit.get_carry_load()
+		if not CarryProvenanceLedger._id(id) or ids.has(id) or loads.has(load):
+			return _failure("ambiguous_unit_identity", "admission")
+		if load == null or not load._can_enable_provenance(id) or unit.get_current_order() != null:
+			return _failure("load_unavailable_for_admission", "admission")
+		var identity := _validate_unit_identity_in_domain(world, region, unit, load, tree, id)
+		if not identity.ok:
+			return identity
+		ids[id] = true
+		loads[load] = id
+	# The apply pass consists of assignments without signals or callbacks.
+	for unit: Unit in units:
+		unit.get_carry_load()._enable_provenance_unchecked(unit.get_character_id())
+		unit.set_meta(&"region_id", region)
+	return {"ok": true}
+
+
 static func validate_unit_identity_in_domain_readonly(
 	world: World3D,
 	region_id: StringName,
@@ -1329,20 +1368,27 @@ static func validate_unit_identity_in_domain_readonly(
 	load: UnitCarryLoad,
 	tree: SceneTree
 ) -> Dictionary:
+	return _validate_unit_identity_in_domain(world, region_id, unit, load, tree)
+
+
+static func _validate_unit_identity_in_domain(
+	world: World3D, region_id: StringName, unit: Unit, load: UnitCarryLoad,
+	tree: SceneTree, proposed_id: StringName = &""
+) -> Dictionary:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		return {"ok": false, "reason": "wrong_thread", "dependency": "thread"}
 	if world == null or not is_instance_valid(world) or not CarryProvenanceLedger._id(region_id) or tree == null or not is_instance_valid(tree):
 		return {"ok": false, "reason": "invalid_domain", "dependency": "unit"}
-	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+	if not is_instance_valid(unit) or (proposed_id.is_empty() and not unit.is_inside_tree()) or unit.is_queued_for_deletion():
 		return {"ok": false, "reason": "invalid_unit", "dependency": "unit"}
-	if unit.get_world_3d() != world:
+	if unit.is_inside_tree() and unit.get_world_3d() != world:
 		return {"ok": false, "reason": "unit_world_mismatch", "dependency": "unit"}
 	if load == null or unit.get_carry_load() != load:
 		return {"ok": false, "reason": "carry_load_mismatch", "dependency": "carry_load"}
-	if not load.is_provenance_enabled() or not CarryProvenanceLedger._id(load.get_provenance_unit_id()):
+	var target_prov_id: StringName = proposed_id if not proposed_id.is_empty() else load.get_provenance_unit_id()
+	if not CarryProvenanceLedger._id(target_prov_id) or (proposed_id.is_empty() and not load.is_provenance_enabled()):
 		return {"ok": false, "reason": "provenance_disabled", "dependency": "carry_load"}
 
-	var target_prov_id: StringName = load.get_provenance_unit_id()
 	var domains: Dictionary = {}
 	if world.has_meta(DOMAIN_META):
 		var raw_domains: Variant = world.get_meta(DOMAIN_META)

@@ -239,6 +239,7 @@ func _spawn_main() -> Dictionary:
 	add_test_child(vp)
 
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	vp.add_child(main)
 	_active_mains.append(main)
 

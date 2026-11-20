@@ -14,6 +14,7 @@ func _init() -> void:
 
 func _start_scenario() -> void:
 	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = false
 	if main == null:
 		push_error("Failed to instantiate MainScene for decay scenario.")
 		quit(1)
