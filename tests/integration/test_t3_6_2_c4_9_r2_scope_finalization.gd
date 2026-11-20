@@ -452,3 +452,175 @@ func test_04_repeated_publish_restore_and_manual_complement_active_scope_callbac
 	assert_eq(site_1.get_reserved_in_piles_amount(&"wood"), 4, "Checkpoint restore with active ManualComplementScope during commit callbacks must be rejected")
 	assert_eq(site_1.get_missing_amount(&"wood"), 0)
 	assert_true(site_1.verify_accounting_invariant())
+
+
+func test_r3_ground_override() -> void:
+	_audit(_create_gpm_env(&"audit_ground_override"), false, true)
+
+func test_r3_memory_override() -> void:
+	_audit(_create_mem_env(&"audit_memory_override"), false, true)
+
+func test_r3_ground_child() -> void:
+	_audit(_create_gpm_env(&"audit_ground_child"), true, true)
+
+func test_r3_memory_child() -> void:
+	_audit(_create_mem_env(&"audit_memory_child"), true, true)
+
+func test_r3_ground_authorize_only() -> void:
+	_audit(_create_gpm_env(&"audit_ground_auth_only"), false, false)
+
+func test_r3_memory_authorize_only() -> void:
+	_audit(_create_mem_env(&"audit_memory_auth_only"), false, false)
+
+func _audit(fx: Dictionary, at_tree_entry: bool, should_publish: bool) -> void:
+	var cm: ConstructionManager = fx.cm
+	var root: Node3D = fx.sites_root
+	var inv: SettlementInventory = fx.inventory
+	var storage: SettlementStorageSource = inv.get_storage_source()
+	var def := _make_def(&"audit_wood", {&"wood": 4})
+	assert_true(inv.deposit(&"wood", 8))
+	var first := cm.try_create_site_from_placement(def, Vector3(4, 0, 4))
+	if not assert_true(first.ok, str(first)):
+		return
+	var valid_site: ConstructionSite = first.site
+	var revisions := func() -> Array:
+		return [storage.get_transaction_revision(), inv.get_transaction_revision(),
+			valid_site.get_transaction_revision(),
+			(storage as GroundPileManager).get_pile_ledger_revision() if storage is GroundPileManager else -1]
+	var before: Array = revisions.call()
+	var seq := cm._next_site_seq
+	var observations := {}
+	var events: Array = []
+	var rejected: Array = []
+	var created: Array = []
+	for label: String in ["storage_changed", "reservations_changed", "inventory_changed", "inventory_reservations_changed"]:
+		var source: Object = storage if label in ["storage_changed", "reservations_changed"] else inv
+		var signal_name := "reservations_changed" if label == "inventory_reservations_changed" else label
+		_connect_tracked(Signal(source, signal_name), func() -> void:
+			events.append([label, cm._sites.size(), storage.get_reserved_amount(&"wood")]))
+	_connect_tracked(cm.site_created, func(s: ConstructionSite) -> void: created.append(s))
+	_connect_tracked(cm.site_creation_rejected, func(r: String, _m: String, _d: BuildingDefinition, _p: Vector3) -> void:
+		rejected.append(r))
+	var probe := func(rid: StringName) -> void:
+		for sc: ReservedWithdrawalCoordinator.SiteCreationScope in ReservedWithdrawalCoordinator._active_site_creation_scopes:
+			if sc.manager != cm or sc.storage_source != storage:
+				continue
+			observations["rid"] = rid
+			observations["pre"] = [sc._reservation_applied, sc._bound_checkpoint.is_empty(), cm._sites.size(),
+				sc.new_site != null, storage.get_reservation_amount(rid, &"wood")]
+			observations["authorized"] = ReservedWithdrawalCoordinator._authorize_site_creation_commit(sc)
+			observations["checkpoint_cleared"] = sc._bound_checkpoint.is_empty()
+			if observations["authorized"] and should_publish:
+				storage.call("_publish_site_reservation_committed", sc)
+			observations["published"] = sc._published
+			return
+	if at_tree_entry:
+		_connect_tracked(root.child_entered_tree, func(child: Node) -> void:
+			var site := child as ConstructionSite
+			probe.call(site.reservation_id)
+			site.position = valid_site.position)
+	else:
+		cm.site_creator_override = func(_sid: StringName, rid: StringName, _d: BuildingDefinition, _p: Vector3) -> ConstructionSite:
+			probe.call(rid)
+			return null
+	var second := cm.try_create_site_from_placement(def, Vector3(12, 0, 4))
+	cm.site_creator_override = Callable()
+	var after: Array = revisions.call()
+	var rid: StringName = observations.get("rid", &"")
+	var orphan := storage.get_reservation_amount(rid, &"wood")
+	print("[C49 AUDIT] backend=%s tree=%s publish_attempt=%s probe=%s result=%s orphan=%d physical=%d reserved=%d free=%d revisions=%s -> %s seq=%d -> %d events=%s rejected=%s" % [
+		"ground" if storage is GroundPileManager else "memory", at_tree_entry, should_publish, observations,
+		second.get("reason"), orphan, storage.get_physical_amount(&"wood"), storage.get_reserved_amount(&"wood"),
+		storage.get_available_amount(&"wood"), before, after, seq, cm._next_site_seq, events, rejected])
+	assert_eq(observations.get("pre"), [true, false, 1, at_tree_entry, 4], "fixture and real active scope")
+	assert_eq(second.get("reason"), "site_instantiation_failed")
+	assert_eq(cm.get_sites(), [valid_site])
+	assert_eq(root.get_child_count(), 1)
+	assert_eq(created.size(), 0)
+	assert_eq(rejected, ["site_instantiation_failed"])
+	assert_eq(storage.get_physical_amount(&"wood"), 8)
+	assert_eq(storage.get_reservation_amount(valid_site.reservation_id, &"wood"), 4)
+	assert_eq(cm._next_site_seq, seq)
+	assert_false(cm._creation_in_progress)
+	assert_false(inv.is_transaction_busy())
+	assert_false(storage.is_locked())
+	assert_false(valid_site.is_transaction_busy())
+	assert_false(ReservedWithdrawalCoordinator._active_site_creation_scopes.any(
+		func(sc: ReservedWithdrawalCoordinator.SiteCreationScope) -> bool: return sc.manager == cm))
+	assert_eq(observations.get("authorized"), false, "Premature authorization must fail")
+	assert_eq(observations.get("checkpoint_cleared"), false)
+	assert_eq(orphan, 0, "A failed site must have no reservation")
+	assert_eq(storage.get_available_amount(&"wood"), 4)
+	assert_eq(after, before, "All revisions must roll back")
+	assert_eq(events, [], "A failed site must emit no economic signals")
+
+
+func test_r3_internal_refusal_rolls_back_and_legitimate_creation_reuses_id() -> void:
+	_check_internal_refusal(_create_gpm_env(&"r3_ground_internal"))
+	_check_internal_refusal(_create_mem_env(&"r3_memory_internal"))
+
+
+func _check_internal_refusal(fx: Dictionary) -> void:
+	var cm: ConstructionManager = fx.cm
+	var root: Node3D = fx.sites_root
+	var inv: SettlementInventory = fx.inventory
+	var storage: SettlementStorageSource = inv.get_storage_source()
+	var def := _make_def(&"r3_internal", {&"wood": 4})
+	assert_true(inv.deposit(&"wood", 8))
+	var first := cm.try_create_site_from_placement(def, Vector3(4, 0, 4))
+	if not assert_true(first.ok, str(first)):
+		return
+	var peer: ConstructionSite = first.site
+	var before := [storage.get_transaction_revision(), inv.get_transaction_revision(), peer.get_transaction_revision()]
+	var seq := cm._next_site_seq
+	var probe := {}
+	var events: Array = []
+	var created: Array = []
+	var queue_candidate := func(child: Node) -> void:
+		var site := child as ConstructionSite
+		probe["site_id"] = site.site_id
+		probe["reservation_id"] = site.reservation_id
+		probe["node_id"] = site.get_instance_id()
+		# Keep the site valid and non-overlapping, but make it ineligible for commit.
+		site.queue_free()
+	_connect_tracked(root.child_entered_tree, queue_candidate)
+	var inspect_cleanup := func(child: Node) -> void:
+		if child.get_instance_id() == probe.get("node_id"):
+			var site := child as ConstructionSite
+			probe["cleaned"] = not cm._sites.has(site) and not site.state_changed.is_connected(cm._on_site_state_changed)
+	_connect_tracked(root.child_exiting_tree, inspect_cleanup)
+	_connect_tracked(storage.reservations_changed, func() -> void: events.append(&"reservation"))
+	_connect_tracked(storage.storage_changed, func() -> void: events.append(&"storage"))
+	_connect_tracked(inv.inventory_changed, func() -> void: events.append(&"inventory"))
+	_connect_tracked(cm.site_created, func(site: ConstructionSite) -> void:
+		created.append([cm._sites.has(site), storage.get_reservation_amount(site.reservation_id, &"wood")]))
+
+	var denied := cm.try_create_site_from_placement(def, Vector3(12, 0, 4))
+	root.child_entered_tree.disconnect(queue_candidate)
+	assert_eq(denied.get("reason"), "site_commit_not_authorized")
+	assert_eq(probe.get("cleaned"), true)
+	assert_false(is_instance_id_valid(int(probe.get("node_id", 0))))
+	assert_eq(root.get_child_count(), 1)
+	assert_eq(cm.get_sites(), [peer])
+	assert_eq(cm._next_site_seq, seq)
+	assert_eq(storage.get_all_reservation_ids(), [peer.reservation_id])
+	assert_eq(storage.get_available_amount(&"wood"), 4)
+	assert_eq([storage.get_transaction_revision(), inv.get_transaction_revision(), peer.get_transaction_revision()], before)
+	assert_eq(events, [])
+	assert_eq(created, [])
+	assert_false(cm._creation_in_progress)
+	assert_false(inv.is_transaction_busy())
+	assert_false(storage.is_locked())
+	assert_false(peer.is_transaction_busy())
+
+	var legitimate := cm.try_create_site_from_placement(def, Vector3(12, 0, 4))
+	if not assert_true(legitimate.ok, str(legitimate)):
+		return
+	var site: ConstructionSite = legitimate.site
+	assert_eq(site.site_id, probe.get("site_id"))
+	assert_eq(site.reservation_id, probe.get("reservation_id"))
+	assert_eq(cm.get_sites(), [peer, site])
+	assert_true(site.state_changed.is_connected(cm._on_site_state_changed))
+	assert_eq(storage.get_physical_amount(&"wood"), 8)
+	assert_eq(storage.get_reserved_amount(&"wood"), 8)
+	assert_eq(created, [[true, 4]])
