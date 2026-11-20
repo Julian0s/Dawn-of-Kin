@@ -160,7 +160,7 @@ static func _inspect_cargo(site: ConstructionSite, operation: StringName, under_
 			if previous.load == load:
 				return _reject("shared_carry_load")
 		entries.append({"unit": unit, "load": load, "assigned": assigned, "revision": load.get_transaction_revision(),
-			"before": snapshot, "rewritten": rewritten, "lots": moves})
+			"before": snapshot, "rewritten": rewritten, "lots": moves, "order_revision": unit.get_order_revision()})
 	return {"ok": true, "entries": entries, "totals": totals}
 
 
@@ -219,6 +219,8 @@ static func execute(
 		return _reject("scope_finalization_failed")
 	_set_participant_guards(scope, plan.cargo, false)
 	manager._cancellation_in_progress = false
+	if outcome.ok and is_instance_valid(manager._recovery_dispatcher):
+		manager._recovery_dispatcher.schedule_committed(cancel_id, plan.cargo)
 	if not outcome.ok and previous_authority == null:
 		var live_domains: Dictionary = world.get_meta(ReservedWithdrawalCoordinator.DOMAIN_META, {})
 		live_domains.erase(plan.region)

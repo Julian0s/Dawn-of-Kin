@@ -29,6 +29,7 @@ var _queued_completions: Dictionary = {}
 var _completion_in_progress: bool = false
 var _creation_in_progress: bool = false
 var _cancellation_in_progress: bool = false
+var _recovery_dispatcher: CancellationRecoveryDispatcher
 var _retry_timers: Dictionary = {}
 var _busy_completion_timers: Dictionary = {}
 var _navigation_retry_timer: Timer = null
@@ -59,6 +60,21 @@ func configure(
 			_world_navigation.register_additional_source_root(_buildings_root)
 			if not _world_navigation.navigation_rebake_failed.is_connected(_on_navigation_rebake_failed):
 				_world_navigation.navigation_rebake_failed.connect(_on_navigation_rebake_failed)
+
+
+func enable_cancellation_recovery() -> void:
+	if _recovery_dispatcher != null or not is_inside_tree():
+		return
+	_recovery_dispatcher = CancellationRecoveryDispatcher.new()
+	_recovery_dispatcher.name = "CancellationRecoveryDispatcher"
+	add_child(_recovery_dispatcher)
+	_recovery_dispatcher.configure(_inventory, _camp_zone, _world_navigation, _region_id)
+
+
+func assign_cancellation_recovery(cancel_id: StringName, units: Array[Unit]) -> Dictionary:
+	if _recovery_dispatcher == null:
+		return {"ok": false, "reason": "recovery_dispatch_disabled", "assigned": 0}
+	return _recovery_dispatcher.assign(cancel_id, units)
 
 
 func _exit_tree() -> void:

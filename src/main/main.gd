@@ -10,6 +10,7 @@ const SHELTER_BASIC_DEFINITION: BuildingDefinition = preload("res://data/buildin
 const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildings/storage_depot.tres")
 
 @export var use_provenance_economy: bool = false
+@export var automatic_cancellation_recovery: bool = true
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -158,6 +159,82 @@ func _setup_construction(world_nav: WorldNavigation) -> void:
 		world_nav,
 		_economy_region_id
 	)
+	if use_provenance_economy and automatic_cancellation_recovery:
+		_construction_manager.enable_cancellation_recovery()
+
+
+func preflight_economic_teardown() -> Dictionary:
+	if _ground_pile_manager == null or _settlement_inventory == null:
+		return {"ok": false, "reason": "missing_economy"}
+	if _settlement_inventory.is_transaction_busy():
+		return {"ok": false, "reason": "transaction_in_progress"}
+	var custody := CancellationLifecycleGuard.inspect_storage(_ground_pile_manager)
+	if not custody.ok:
+		return custody
+	for unit: Unit in get_units():
+		var load := unit.get_carry_load()
+		if unit._is_reserved_withdrawal_locked() or load.is_transaction_busy():
+			return {"ok": false, "reason": "transaction_in_progress"}
+		if not load.is_empty() or load.get_current_weight() > 0 or (load.is_provenance_enabled() and not load.validate_provenance()):
+			return {"ok": false, "reason": "pending_material_obligation"}
+	return {"ok": true, "reason": ""}
+
+
+## Explicit internal entry; no UI/quit binding is introduced. _exit_tree cannot veto free().
+func request_controlled_teardown() -> Dictionary:
+	var check := preflight_economic_teardown()
+	if not check.ok:
+		return check
+	if get_parent() == null or not is_inside_tree():
+		return {"ok": false, "reason": "invalid_scene"}
+	# Quiesce cooperative economic entry points before tree-exit observers run.
+	# Keep local owners: _exit_tree clears MainScene's composition references.
+	var storage := _ground_pile_manager
+	var inventory := _settlement_inventory
+	var camp := _camp_storage_zone
+	var world := get_world_3d()
+	var tree := get_tree()
+	var domain_owner := _economy_domain_owner_token
+	var region := storage.get_bound_withdrawal_region()
+	if region.is_empty():
+		region = _economy_region_id
+	var authority := CancellationRecoveryTransaction._authority(world, region)
+	if authority != null and (authority.storage == null or authority.storage.get_ref() != storage or authority.has_active_operation()):
+		return {"ok": false, "reason": "ambiguous_or_busy_economic_domain"}
+	var loads: Array[UnitCarryLoad] = []
+	var orders: Array[Dictionary] = []
+	if authority != null:
+		authority.is_executing = true
+	inventory._is_delivering = true
+	storage._is_preparing_withdrawal = true
+	if is_instance_valid(camp):
+		camp._coordinator_transaction_locked = true
+	for unit: Unit in get_units():
+		var load := unit.get_carry_load()
+		loads.append(load)
+		load._coordinator_transaction_locked = true
+		load._provenance_busy = true
+		if unit.get_current_order() != null:
+			orders.append({"order": unit.get_current_order(), "movement": unit.get_movement()})
+	get_parent().remove_child(self)
+	for load: UnitCarryLoad in loads:
+		load._coordinator_transaction_locked = false
+		load._provenance_busy = false
+	if is_instance_valid(camp):
+		camp._coordinator_transaction_locked = false
+	storage._is_preparing_withdrawal = false
+	inventory._is_delivering = false
+	if authority != null:
+		authority.is_executing = false
+	# A transfer delegate may conservatively defer cancellation while locked.
+	# The detached scene cannot accept new work; finish unbinding those delegates.
+	for entry: Dictionary in orders:
+		if entry.order.is_active():
+			entry.order.cancel(entry.movement, UnitOrder.REASON_UNIT_EXITED)
+	storage.cleanup()
+	_last_domain_release_result = ReservedWithdrawalCoordinator.release_regional_domain(world, region, storage, domain_owner, tree, inventory)
+	queue_free()
+	return {"ok": true, "reason": ""}
 
 
 func _on_placement_confirmed(

@@ -41,6 +41,7 @@ signal order_finished(order: UnitOrder)
 
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
+var _order_revision: int = 0
 ## A contribution follows the worker even when its active order changes sites.
 var _last_construction_work_frame: int = -1
 var _world_navigation: WorldNavigation = null
@@ -195,6 +196,10 @@ func get_current_order() -> UnitOrder:
 	return _current_order
 
 
+func get_order_revision() -> int:
+	return _order_revision
+
+
 func get_definition() -> CharacterDefinition:
 	return definition
 
@@ -242,11 +247,18 @@ func _is_reserved_withdrawal_locked() -> bool:
 func issue_order(order: UnitOrder) -> void:
 	if _is_reserved_withdrawal_locked():
 		return
+	_order_revision += 1
+	var issued_revision := _order_revision
 	if _current_order != null and _current_order.is_active():
 		var previous_order: UnitOrder = _current_order
 		_current_order = null
 		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
 		order_finished.emit(previous_order)
+		if _order_revision != issued_revision:
+			# A callback accepted a newer command. Do not stop or overwrite its movement.
+			if order != null:
+				order.mark_cancelled(UnitOrder.REASON_REPLACED)
+			return
 
 	if order == null:
 		if _movement != null:
@@ -261,6 +273,8 @@ func issue_order(order: UnitOrder) -> void:
 	_current_order = order
 	_order_state_explicit = false
 	order.start(self, _movement, _world_navigation)
+	if _order_revision != issued_revision or _current_order != order:
+		return
 
 	if order.is_finished():
 		var finished_order: UnitOrder = _current_order
@@ -276,6 +290,8 @@ func issue_order(order: UnitOrder) -> void:
 func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
 	if _is_reserved_withdrawal_locked():
 		return
+	_order_revision += 1
+	var cancelled_revision := _order_revision
 	if _current_order == null:
 		if _movement != null:
 			_movement.stop_movement()
@@ -286,6 +302,9 @@ func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
 	var cancelled_order: UnitOrder = _current_order
 	_current_order = null
 	cancelled_order.cancel(_movement, reason)
+	if _order_revision != cancelled_revision:
+		order_finished.emit(cancelled_order)
+		return
 	if not cancelled_order.is_finished():
 		if _current_order == null:
 			_current_order = cancelled_order

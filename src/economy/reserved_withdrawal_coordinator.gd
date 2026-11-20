@@ -153,6 +153,7 @@ class CancellationCustodyRecord extends RefCounted:
 	var in_transit_remaining: Dictionary = {}
 	var transit_lots_by_unit: Dictionary = {}
 	var assigned_unit_ids: Array[StringName] = []
+	var recovery_unit_ids: Array[StringName] = []
 	var delivered_to_camp: Dictionary = {}
 	var demolition_loss: Dictionary = {}
 	var missing_deficit: Dictionary = {}
@@ -213,6 +214,7 @@ class CancellationCustodyRecord extends RefCounted:
 			"in_transit_remaining": in_transit_remaining.duplicate(true),
 			"transit_lots_by_unit": transit_lots_by_unit.duplicate(true),
 			"assigned_unit_ids": assigned_unit_ids.duplicate(),
+			"recovery_unit_ids": recovery_unit_ids.duplicate(),
 			"delivered_to_camp": delivered_to_camp.duplicate(true),
 			"demolition_loss": demolition_loss.duplicate(true),
 			"missing_deficit": missing_deficit.duplicate(true),

@@ -225,6 +225,10 @@ func remove_temporary_workers_safely() -> Dictionary:
 		}
 
 	for worker: Unit in workers:
+		# Revalidate each removal: previous tree/selection callbacks may change obligations.
+		var immediate_check := _validate_workers_for_removal([worker], true)
+		if not immediate_check.can_remove:
+			return {"ok": false, "reason": immediate_check.reason, "message": immediate_check.message}
 		if worker.get_parent() == _units_root:
 			_units_root.remove_child(worker)
 		worker.queue_free()
@@ -372,6 +376,9 @@ func _validate_single_worker(
 		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: %s está sob trava de transação econômica." % worker.name)
 	if carry.is_transaction_busy() or carry._coordinator_transaction_locked:
 		return _cannot_remove("transaction_in_progress", "Remoção bloqueada: mochila de %s está sob transação ativa." % worker.name)
+	var custody_check := CancellationLifecycleGuard.inspect_worker(worker, resolved_region)
+	if not custody_check.ok:
+		return _cannot_remove(custody_check.reason, "Remoção bloqueada: recuperação ou custódia pendente de %s." % worker.name)
 
 	# Active order transactional / cancellability inspection.
 	var order: UnitOrder = worker.get_current_order()

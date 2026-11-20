@@ -336,6 +336,7 @@ static func _apply_recovery(authority: ReservedWithdrawalCoordinator.RegionalAut
 
 
 static func sync_footprint(record: ReservedWithdrawalCoordinator.CancellationCustodyRecord, world: World3D) -> void:
+	var geometry_changed := false
 	var site := record.visual_site.get_ref() as ConstructionSite if record.visual_site != null else null
 	var body := record.custody_body.get_ref() as StaticBody3D if record.custody_body != null else null
 	if record.requires_local_footprint_occupation() and body == null and is_instance_valid(site):
@@ -353,14 +354,17 @@ static func sync_footprint(record: ReservedWithdrawalCoordinator.CancellationCus
 		body.position = (site.get_parent() as Node3D).to_local(record.anchor_position)
 		site.get_parent().add_child(body)
 		record.custody_body = weakref(body)
+		geometry_changed = true
 	if is_instance_valid(site):
+		geometry_changed = geometry_changed or site._site_body.collision_layer != 0
 		site._site_body.collision_layer = 0
 		if not record.requires_local_footprint_occupation():
 			site._visual_root.hide()
 	if not record.requires_local_footprint_occupation() and is_instance_valid(body):
+		geometry_changed = geometry_changed or body.collision_layer != 0
 		body.collision_layer = 0
 		body.queue_free()
-	if world != null and record.inventory_ref != null:
+	if geometry_changed and world != null and record.inventory_ref != null:
 		var inventory := record.inventory_ref.get_ref() as SettlementInventory
 		var nav := inventory.get_storage_source().get_camp_zone().get_world_navigation() as WorldNavigation if inventory != null else null
 		if is_instance_valid(nav):

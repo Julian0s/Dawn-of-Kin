@@ -166,7 +166,7 @@ func get_resource_definition_pure(resource_id: StringName) -> ResourceDefinition
 
 
 func cleanup() -> void:
-	if is_locked() or is_batch_active():
+	if not CancellationLifecycleGuard.inspect_storage(self).ok:
 		return
 	for pile: GroundResourcePile in _piles:
 		if is_instance_valid(pile):

@@ -5,11 +5,13 @@ const SHELTER := preload("res://data/buildings/shelter_basic.tres")
 const COORD := preload("res://src/economy/reserved_withdrawal_coordinator.gd")
 
 
-func _fixture() -> MainScene:
+func _fixture(automatic_recovery: bool = false) -> MainScene:
 	var viewport := SubViewport.new()
 	viewport.own_world_3d = true
 	add_test_child(viewport)
 	var main := MAIN.instantiate() as MainScene
+	# These primitive transaction tests control transport explicitly. B1.4 opts in.
+	main.automatic_cancellation_recovery = automatic_recovery
 	viewport.add_child(main)
 	main.get_economy_clock().set_process(false)
 	var nav := main.get_test_map().get_navigation()
