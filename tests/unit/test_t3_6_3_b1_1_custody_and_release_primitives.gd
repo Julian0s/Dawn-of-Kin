@@ -455,6 +455,107 @@ func test_04_scoped_reservation_release_in_memory_storage_source() -> void:
 	assert_eq(mem.get_all_reservation_ids(), [&"res_m_a", &"res_m_b"])
 
 
+func test_06_release_scope_rolls_back_unpublished_reservations() -> void:
+	var coord := ReservedWithdrawalCoordinator.new()
+	var fx := _create_gpm_fixture()
+	for physical: bool in [true, false]:
+		var storage: SettlementStorageSource = fx.gpm if physical else InMemoryStorageSource.new()
+		var inv := SettlementInventory.new(storage) if not physical else fx.inventory as SettlementInventory
+		assert_true(inv.deposit(&"wood", 8))
+		assert_true(inv.reserve_batch(&"guard_a", {&"wood": 4}))
+		assert_true(inv.reserve_batch(&"guard_b", {&"wood": 2}))
+		var acquired: Dictionary = coord.call("_acquire_cancellation_scope_for_primitives",
+			fx.world, fx.region_id, inv, &"guard_cancel", &"guard_op", &"guard_site", &"guard_a", 1, {&"wood": 4}, false)
+		assert_true(acquired.ok, str(acquired))
+		if not acquired.ok:
+			continue
+		var scope = acquired.scope
+		assert_false(coord.call("_authorize_cancellation_release_commit", scope), "Premature authorization")
+		var events: Array[bool] = []
+		var observer := func() -> void: events.append(true)
+		storage.reservations_changed.connect(observer)
+		var plan: Dictionary = storage.call("_prepare_cancel_release_under_guard", &"guard_a", {&"wood": 4}, scope)
+		var applied: Dictionary = storage.call("_apply_prepared_cancel_release_silent", plan, scope)
+		assert_true(applied.ok, str(applied))
+		assert_eq(inv.get_reservation_amount(&"guard_a", &"wood"), 0)
+		assert_true(coord.call("_authorize_cancellation_release_commit", scope))
+		var applied_revision := storage.get_transaction_revision()
+		assert_true(coord.call("_release_cancellation_scope", scope))
+		storage.reservations_changed.disconnect(observer)
+		assert_eq(inv.get_reservation_amount(&"guard_a", &"wood"), 4)
+		assert_eq(inv.get_reservation_amount(&"guard_b", &"wood"), 2)
+		assert_eq(inv.get_physical_amount(&"wood"), 8)
+		assert_gt(storage.get_transaction_revision(), applied_revision)
+		assert_eq(events.size(), 0)
+		assert_false(inv.is_transaction_busy())
+		assert_false(coord.call("_owns_cancellation_scope", scope))
+		var retry: Dictionary = coord.call("_acquire_cancellation_scope_for_primitives",
+			fx.world, fx.region_id, inv, &"guard_cancel", &"guard_op", &"guard_site", &"guard_a", 1, {&"wood": 4}, false)
+		assert_true(retry.ok, str(retry))
+		var next_scope = retry.scope
+		assert_eq(storage.call("_apply_prepared_cancel_release_silent", plan, next_scope).reason, "stale_revision")
+		var fresh: Dictionary = storage.call("_prepare_cancel_release_under_guard", &"guard_a", {&"wood": 4}, next_scope)
+		assert_true(storage.call("_apply_prepared_cancel_release_silent", fresh, next_scope).ok)
+		assert_true(coord.call("_authorize_cancellation_release_commit", next_scope))
+		var during_publish: Array = []
+		var reenter := func() -> void:
+			during_publish.append(coord.call("_release_cancellation_scope", next_scope))
+			during_publish.append(coord.call("_authorize_cancellation_release_rollback", next_scope))
+			during_publish.append(inv.is_transaction_busy())
+			during_publish.append(storage.release_batch(&"guard_b"))
+		storage.reservations_changed.connect(reenter)
+		assert_true(storage.call("_publish_cancel_release_committed", next_scope))
+		storage.reservations_changed.disconnect(reenter)
+		assert_eq(during_publish, [false, false, true, false])
+		assert_false(storage.call("_publish_cancel_release_committed", next_scope))
+		assert_true(coord.call("_release_cancellation_scope", next_scope))
+		assert_false(inv.is_transaction_busy())
+		assert_eq(inv.get_reservation_amount(&"guard_b", &"wood"), 2)
+
+
+func test_07_regional_release_checks_pending_and_settled_custody() -> void:
+	var coord := ReservedWithdrawalCoordinator.new()
+	for idx: int in range(5):
+		var region := StringName("b11_release_%d" % idx)
+		var fx := _create_gpm_fixture(region)
+		var acquired: Dictionary = coord.call("_acquire_cancellation_scope_for_primitives",
+			fx.world, region, fx.inventory, &"release_cancel", &"release_op", &"release_site", &"release_res", 1, {&"wood": 0}, true)
+		assert_true(acquired.ok, str(acquired))
+		if not acquired.ok:
+			continue
+		var scope = acquired.scope
+		var authority = scope.authority
+		coord.call("_release_cancellation_scope", scope)
+		if idx < 4:
+			var record := ReservedWithdrawalCoordinator.CancellationCustodyRecord.new()
+			record.cancel_id = &"release_cancel"
+			record.operation_id = &"release_op"
+			record.site_id = &"release_site"
+			record.reservation_id = &"release_res"
+			record.region_id = region
+			record.world_instance_id = fx.world.get_instance_id()
+			record.generation = 1
+			record.required_amounts = {&"wood": 2}
+			record.state = [CancelMath.State.RECOVERY_PENDING, CancelMath.State.RETURNING,
+				CancelMath.State.RETURN_BLOCKED, CancelMath.State.SETTLED][idx]
+			record.local_buffer_remaining = {&"wood": 2} if idx in [0, 2] else {}
+			record.in_transit_remaining = {&"wood": 2} if idx == 1 else {}
+			record.delivered_to_camp = {&"wood": 2} if idx == 3 else {}
+			authority.cancellation_custodies[record.cancel_id] = record
+		fx.root.get_parent().remove_child(fx.root)
+		fx.gpm.cleanup()
+		var result := ReservedWithdrawalCoordinator.release_regional_domain(
+			fx.world, region, fx.gpm, fx.token, get_tree(), fx.inventory)
+		if idx < 3:
+			assert_false(result.ok, str(result))
+			assert_eq(result.reason, "pending_cancellation_custody")
+			assert_true(coord.call("get_cancellation_custody_readonly", fx.world, region, &"release_cancel").ok)
+		else:
+			assert_true(result.ok and result.released, str(result))
+		# Test records are isolated from the operational registration path.
+		authority.cancellation_custodies.clear()
+
+
 func test_05_regional_custody_contracts_state_machine_and_d3_gate() -> void:
 	var coord := ReservedWithdrawalCoordinator.new()
 	if not coord.has_method("validate_custody_accounting_pure"):
@@ -554,15 +655,27 @@ func test_05_regional_custody_contracts_state_machine_and_d3_gate() -> void:
 	)
 	assert_true(bool(acq_a.get("ok", false)))
 	var scope_a = acq_a["scope"]
-	assert_true(bool(coord.call("_authorize_cancellation_release_commit", scope_a)))
-	var reg_ok: Dictionary = coord.call("_register_cancellation_custody_under_scope", scope_a, valid_spec)
-	assert_true(bool(reg_ok.get("ok", false)), str(reg_ok))
-	var record = reg_ok["record"]
+	assert_false(coord.call("_authorize_cancellation_release_commit", scope_a))
+	assert_false(coord.call("_register_cancellation_custody_under_scope", scope_a, valid_spec).ok)
+	var storage: GroundPileManager = fx_a.gpm
+	var empty_plan: Dictionary = storage.call("_prepare_cancel_release_under_guard", scope_a.reservation_id, {&"wood": 0, &"stone": 0}, scope_a)
+	assert_true(empty_plan.ok)
+	assert_true(storage.call("_apply_prepared_cancel_release_silent", empty_plan, scope_a).ok)
+	assert_true(coord.call("_authorize_cancellation_release_commit", scope_a))
+	assert_true(storage.call("_publish_cancel_release_committed", scope_a))
+	assert_false(coord.call("_authorize_cancellation_release_rollback", scope_a))
+	assert_eq(coord.call("_register_cancellation_custody_under_scope", scope_a, valid_spec).reason, "d3_cancellation_not_implemented")
+	var authority = scope_a.authority
+	assert_true(authority.cancellation_custodies.is_empty())
+	assert_true(authority.cancellation_id_by_site_gen.is_empty())
+	assert_true(authority.cancellation_operation_ids.is_empty())
+	assert_true(coord.call("_release_cancellation_scope", scope_a))
 
-	# Duplicate registration with same cancel_id, operation_id, or (site_id, generation) fails closed
-	var dup_reg: Dictionary = coord.call("_register_cancellation_custody_under_scope", scope_a, valid_spec)
-	assert_false(bool(dup_reg.get("ok", true)))
-	coord.call("_release_cancellation_scope", scope_a)
+	# Test-only record for read and accounting contracts, with no operational indexes.
+	var record := ReservedWithdrawalCoordinator.CancellationCustodyRecord.new()
+	for key: String in valid_spec:
+		record.set(key, valid_spec[key])
+	authority.cancellation_custodies[record.cancel_id] = record
 
 	# Verify custody query, D-CANC-02/A footprint occupation (A > 0 -> occupied; A == 0 -> released even if H > 0), and obligation status (Ajuste 4)
 	assert_eq(record.get_local_custody_total(), 7)
@@ -575,6 +688,8 @@ func test_05_regional_custody_contracts_state_machine_and_d3_gate() -> void:
 	assert_true(bool(found_a.get("ok", false)))
 	var found_b: Dictionary = coord.call("get_cancellation_custody_readonly", fx_b["world"], &"b11_custody_reg_b", &"cancel_site_1_gen_1")
 	assert_false(bool(found_b.get("ok", true)))
+
+	authority.cancellation_custodies.clear()
 
 	# 5. Operational D3 cancellation remains strictly gated/inaccessible in B1.1
 	var op_d3: Dictionary = coord.call("execute_site_cancellation", null, &"op_d3_blocked")

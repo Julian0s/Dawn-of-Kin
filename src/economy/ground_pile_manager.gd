@@ -2021,15 +2021,16 @@ func _publish_cancel_release_committed(
 	var cc := scope as ReservedWithdrawalCoordinator.CancellationScope
 	if not cc._commit_authorized or cc._rollback_authorized:
 		return false
+	if is_batch_active() or not ReservedWithdrawalCoordinator._cancellation_release_is_applied(cc):
+		return false
+	# Commit is definitive before observers are notified.
 	cc._published = true
 	cc._commit_authorized = false
 	cc._bound_checkpoint = {}
 	if cc._release_noop:
 		return true
-	if is_batch_active():
-		_reservation_batch_dirty = true
-		_batch_dirty = true
-		return true
+	cc._publishing = true
 	_dispatch_reservations_changed()
 	_dispatch_storage_changed()
+	cc._publishing = false
 	return true

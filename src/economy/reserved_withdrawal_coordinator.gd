@@ -120,6 +120,7 @@ class CancellationScope extends RefCounted:
 	var _commit_authorized: bool = false
 	var _rollback_authorized: bool = false
 	var _published: bool = false
+	var _publishing: bool = false
 	var _rolled_back: bool = false
 	var _bound_checkpoint: Dictionary = {}
 
@@ -1872,6 +1873,15 @@ static func release_regional_domain(
 	if authority.has_active_operation():
 		return _release_result(false, false, "busy", region)
 
+	for value: Variant in authority.cancellation_custodies.values():
+		var record := value as CancellationCustodyRecord
+		if record == null or record.region_id != region or record.world_instance_id != world.get_instance_id():
+			return _release_result(false, false, "invalid_cancellation_custody", region)
+		if record.get_obligation_status() != &"settled":
+			return _release_result(false, false, "pending_cancellation_custody", region)
+		if not validate_custody_accounting_pure(record).ok:
+			return _release_result(false, false, "invalid_cancellation_custody", region)
+
 	var shutdown_err: String = _validate_storage_shutdown_for_release(world, region, storage, tree)
 	if not shutdown_err.is_empty():
 		return _release_result(false, false, shutdown_err, region)
@@ -2806,10 +2816,19 @@ static func _acquire_cancellation_scope_for_primitives(
 	return {"ok": true, "busy": false, "scope": scope}
 
 
-static func _authorize_cancellation_release_commit(scope: CancellationScope) -> bool:
-	if not _owns_cancellation_scope(scope):
+static func _cancellation_release_is_applied(scope: CancellationScope) -> bool:
+	if not _owns_cancellation_scope(scope) or not scope._release_applied or scope._published or scope._rolled_back:
 		return false
-	if scope._published or scope._rolled_back or scope._rollback_authorized:
+	var checkpoint := scope._bound_checkpoint
+	if checkpoint.is_empty() or checkpoint.get("reservation_id") != scope.reservation_id:
+		return false
+	if checkpoint.get("applied_storage_revision") != scope.storage_source.get_transaction_revision() or scope.storage_source.has_reservation(scope.reservation_id):
+		return false
+	return scope.storage == null or checkpoint.get("applied_ledger_revision") == scope.storage.get_pile_ledger_revision()
+
+
+static func _authorize_cancellation_release_commit(scope: CancellationScope) -> bool:
+	if not _cancellation_release_is_applied(scope) or scope._rollback_authorized:
 		return false
 	scope._commit_authorized = true
 	return true
@@ -2818,26 +2837,37 @@ static func _authorize_cancellation_release_commit(scope: CancellationScope) -> 
 static func _authorize_cancellation_release_rollback(scope: CancellationScope) -> bool:
 	if not _owns_cancellation_scope(scope):
 		return false
-	if not scope._release_applied or scope._published or scope._rolled_back or scope._commit_authorized:
+	if not scope._release_applied or scope._published or scope._rolled_back or scope._bound_checkpoint.is_empty():
 		return false
+	# Authorization to publish is reversible until the backend commits.
+	scope._commit_authorized = false
 	scope._rollback_authorized = true
 	return true
 
 
-static func _release_cancellation_scope(scope: CancellationScope) -> void:
-	if scope == null:
-		return
+static func _release_cancellation_scope(scope: CancellationScope) -> bool:
+	if not _owns_cancellation_scope(scope) or scope._publishing:
+		return false
+	if scope._release_applied and not scope._published:
+		if not _authorize_cancellation_release_rollback(scope):
+			return false
+		var restored: bool
+		if scope.storage != null:
+			restored = scope.storage._restore_cancel_release_checkpoint_silent(scope._bound_checkpoint, scope)
+		else:
+			restored = (scope.storage_source as InMemoryStorageSource)._restore_cancel_release_checkpoint_silent(scope._bound_checkpoint, scope)
+		if not restored:
+			return false
 	_active_cancellation_scopes.erase(scope)
 	if scope.storage != null:
 		scope.storage._is_preparing_withdrawal = false
-	elif scope.storage_source is InMemoryStorageSource:
+	else:
 		(scope.storage_source as InMemoryStorageSource)._is_preparing_withdrawal = false
-	if scope.inventory != null:
-		scope.inventory._is_delivering = false
+	scope.inventory._is_delivering = false
 	if scope.authority != null:
-		if scope.authority.active_cancellation == scope:
-			scope.authority.active_cancellation = null
+		scope.authority.active_cancellation = null
 		scope.authority.is_executing = false
+	return true
 
 
 static func validate_custody_accounting_pure(record_or_dict: Variant) -> Dictionary:
@@ -2991,67 +3021,12 @@ static func transition_custody_record(
 
 static func _register_cancellation_custody_under_scope(
 	scope: CancellationScope,
-	spec: Dictionary
+	_spec: Dictionary
 ) -> Dictionary:
-	if not _owns_cancellation_scope(scope) or not scope._commit_authorized or scope._rollback_authorized:
+	if not _owns_cancellation_scope(scope):
 		return {"ok": false, "reason": "unauthorized_scope"}
-	if scope.authority == null:
-		return {"ok": false, "reason": "missing_regional_authority"}
-	var check: Dictionary = validate_custody_accounting_pure(spec)
-	if not bool(check.get("ok", false)):
-		return check
-	var cid := StringName(spec["cancel_id"])
-	var op_id := StringName(spec["operation_id"])
-	var sid := StringName(spec["site_id"])
-	var rid := StringName(spec["reservation_id"])
-	var gen := int(spec["generation"])
-	var reg := StringName(spec["region_id"])
-	var w_id := int(spec["world_instance_id"])
-	if (
-		cid != scope.cancel_id
-		or op_id != scope.operation_id
-		or sid != scope.site_id
-		or rid != scope.reservation_id
-		or gen != scope.generation
-		or reg != scope.region_id
-		or w_id != scope.world.get_instance_id()
-	):
-		return {"ok": false, "reason": "scope_identity_mismatch"}
-	var site_gen_key := StringName("%s:%d" % [String(sid), gen])
-	if (
-		scope.authority.cancellation_custodies.has(cid)
-		or scope.authority.cancellation_id_by_site_gen.has(site_gen_key)
-		or scope.authority.cancellation_operation_ids.has(op_id)
-		or scope.authority.receipts.has(op_id)
-	):
-		return {"ok": false, "reason": "duplicate_custody_registration"}
-
-	var record := CancellationCustodyRecord.new()
-	record.cancel_id = cid
-	record.operation_id = op_id
-	record.site_id = sid
-	record.reservation_id = rid
-	record.generation = gen
-	record.region_id = reg
-	record.world_instance_id = w_id
-	record.work_progress_usec = int(spec["work_progress_usec"])
-	record.total_work_usec = int(spec["total_work_usec"])
-	record.required_amounts = (spec["required_amounts"] as Dictionary).duplicate(true)
-	record.released_on_piles = (spec["released_on_piles"] as Dictionary).duplicate(true)
-	record.local_buffer_remaining = (spec["local_buffer_remaining"] as Dictionary).duplicate(true)
-	record.local_incorporated_remaining = (spec["local_incorporated_remaining"] as Dictionary).duplicate(true)
-	record.in_transit_remaining = (spec["in_transit_remaining"] as Dictionary).duplicate(true)
-	record.delivered_to_camp = (spec["delivered_to_camp"] as Dictionary).duplicate(true)
-	record.demolition_loss = (spec["demolition_loss"] as Dictionary).duplicate(true)
-	record.missing_deficit = (spec["missing_deficit"] as Dictionary).duplicate(true)
-	record.state = int(spec["state"])
-	record.diagnostic_reason = String(spec.get("diagnostic_reason", ""))
-	record.revision = 1
-
-	scope.authority.cancellation_custodies[cid] = record
-	scope.authority.cancellation_id_by_site_gen[site_gen_key] = cid
-	scope.authority.cancellation_operation_ids[op_id] = cid
-	return {"ok": true, "record": record, "snapshot": record.to_snapshot_dict()}
+	# A reservation release alone does not prove a complete D3 commit.
+	return {"ok": false, "reason": "d3_cancellation_not_implemented"}
 
 
 static func get_cancellation_custody_readonly(
