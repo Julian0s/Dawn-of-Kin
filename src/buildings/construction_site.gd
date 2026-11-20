@@ -778,6 +778,7 @@ func authorize_manual_complement(
 		}
 
 	if not verify_accounting_invariant() or not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope):
+		ReservedWithdrawalCoordinator._authorize_manual_complement_rollback(scope)
 		if scope.storage != null:
 			scope.storage._restore_manual_complement_checkpoint_silent(checkpoint, scope)
 		elif scope.storage_source is InMemoryStorageSource:
@@ -793,6 +794,7 @@ func authorize_manual_complement(
 	_transaction_revision += 1
 	_inventory._transaction_revision += 1
 
+	ReservedWithdrawalCoordinator._authorize_manual_complement_commit(scope)
 	if scope.storage != null:
 		scope.storage._publish_manual_complement_committed(scope)
 	elif scope.storage_source is InMemoryStorageSource:

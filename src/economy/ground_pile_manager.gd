@@ -1584,7 +1584,7 @@ func _is_authorized_guard_scope(
 		if not (scope is ReservedWithdrawalCoordinator.ManualComplementScope):
 			return false
 		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
-		if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(mc) or mc.storage != self:
+		if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(mc) or mc.storage != self or mc._rolled_back:
 			return false
 		if require_applied and not mc._complement_applied:
 			return false
@@ -1594,7 +1594,7 @@ func _is_authorized_guard_scope(
 	if not (scope is ReservedWithdrawalCoordinator.SiteCreationScope):
 		return false
 	var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
-	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(sc) or sc.storage != self:
+	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(sc) or sc.storage != self or sc._rolled_back:
 		return false
 	if require_applied and not sc._reservation_applied:
 		return false
@@ -1611,6 +1611,14 @@ func _prepare_reserve_plan_under_guard_internal(
 ) -> Dictionary:
 	if not _is_authorized_guard_scope(scope, allow_existing, false, true):
 		return {"ok": false, "reason": "unauthorized_scope", "entries": []}
+	if allow_existing:
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		if mc._complement_applied or mc._commit_authorized or mc._rollback_authorized:
+			return {"ok": false, "reason": "busy", "entries": []}
+	else:
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		if sc._reservation_applied or sc._commit_authorized or sc._rollback_authorized:
+			return {"ok": false, "reason": "busy", "entries": []}
 	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or is_batch_active():
 		return {"ok": false, "reason": "busy", "entries": []}
 	var plan: Dictionary = _build_reserve_plan_internal(reservation_id, amounts, allow_existing)
@@ -1628,10 +1636,12 @@ func _apply_prepared_entries_silent_internal(
 	if not _is_authorized_guard_scope(scope, expect_complement, false, true):
 		return {"ok": false, "checkpoint": {}}
 	if expect_complement:
-		if (scope as ReservedWithdrawalCoordinator.ManualComplementScope)._complement_applied:
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		if mc._complement_applied or mc._commit_authorized or mc._rollback_authorized:
 			return {"ok": false, "checkpoint": {}}
 	else:
-		if (scope as ReservedWithdrawalCoordinator.SiteCreationScope)._reservation_applied:
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		if sc._reservation_applied or sc._commit_authorized or sc._rollback_authorized:
 			return {"ok": false, "checkpoint": {}}
 	if not _is_preparing_withdrawal or _is_mutating or _is_notifying or entries.is_empty():
 		return {"ok": false, "checkpoint": {}}
@@ -1662,9 +1672,13 @@ func _apply_prepared_entries_silent_internal(
 	_transaction_revision += 1
 	_is_mutating = false
 	if expect_complement:
-		(scope as ReservedWithdrawalCoordinator.ManualComplementScope)._complement_applied = true
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		mc._complement_applied = true
+		mc._bound_checkpoint = checkpoint.duplicate(true)
 	else:
-		(scope as ReservedWithdrawalCoordinator.SiteCreationScope)._reservation_applied = true
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		sc._reservation_applied = true
+		sc._bound_checkpoint = checkpoint.duplicate(true)
 	return {"ok": true, "checkpoint": checkpoint}
 
 
@@ -1677,15 +1691,34 @@ func _restore_silent_checkpoint_internal(
 		return
 	if checkpoint.is_empty():
 		return
+	var bound_ckpt: Dictionary = {}
+	if expect_complement:
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		if not mc._rollback_authorized or mc._commit_authorized or mc._bound_checkpoint.is_empty() or checkpoint != mc._bound_checkpoint:
+			return
+		bound_ckpt = mc._bound_checkpoint
+	else:
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		if not sc._rollback_authorized or sc._commit_authorized or sc._bound_checkpoint.is_empty() or checkpoint != sc._bound_checkpoint:
+			return
+		bound_ckpt = sc._bound_checkpoint
 	_is_mutating = true
-	_ledger.restore_state(checkpoint["ledger_snapshot"] as Dictionary)
-	_ledger._transaction_revision = int(checkpoint["ledger_revision"])
-	_transaction_revision = int(checkpoint["storage_revision"])
+	_ledger.restore_state(bound_ckpt["ledger_snapshot"] as Dictionary)
+	_ledger._transaction_revision = int(bound_ckpt["ledger_revision"])
+	_transaction_revision = int(bound_ckpt["storage_revision"])
 	_is_mutating = false
 	if expect_complement:
-		(scope as ReservedWithdrawalCoordinator.ManualComplementScope)._complement_applied = false
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		mc._complement_applied = false
+		mc._rollback_authorized = false
+		mc._rolled_back = true
+		mc._bound_checkpoint = {}
 	else:
-		(scope as ReservedWithdrawalCoordinator.SiteCreationScope)._reservation_applied = false
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		sc._reservation_applied = false
+		sc._rollback_authorized = false
+		sc._rolled_back = true
+		sc._bound_checkpoint = {}
 
 
 func _publish_silent_reservation_events(
@@ -1695,9 +1728,19 @@ func _publish_silent_reservation_events(
 	if not _is_authorized_guard_scope(scope, expect_complement, true, true):
 		return
 	if expect_complement:
-		(scope as ReservedWithdrawalCoordinator.ManualComplementScope)._published = true
+		var mc := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		if not mc._commit_authorized or mc._rollback_authorized:
+			return
+		mc._published = true
+		mc._commit_authorized = false
+		mc._bound_checkpoint = {}
 	else:
-		(scope as ReservedWithdrawalCoordinator.SiteCreationScope)._published = true
+		var sc := scope as ReservedWithdrawalCoordinator.SiteCreationScope
+		if not sc._commit_authorized or sc._rollback_authorized:
+			return
+		sc._published = true
+		sc._commit_authorized = false
+		sc._bound_checkpoint = {}
 	if is_batch_active():
 		_reservation_batch_dirty = true
 		_batch_dirty = true

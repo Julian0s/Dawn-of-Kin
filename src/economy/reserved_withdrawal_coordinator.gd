@@ -60,7 +60,11 @@ class SiteCreationScope extends RefCounted:
 	var new_site: ConstructionSite = null
 	var authority: RegionalAuthority = null
 	var _reservation_applied: bool = false
+	var _commit_authorized: bool = false
+	var _rollback_authorized: bool = false
 	var _published: bool = false
+	var _rolled_back: bool = false
+	var _bound_checkpoint: Dictionary = {}
 
 
 ## Capability for the one active manual complement in this domain.
@@ -75,7 +79,11 @@ class ManualComplementScope extends RefCounted:
 	var sites: Array[ConstructionSite] = []
 	var authority: RegionalAuthority = null
 	var _complement_applied: bool = false
+	var _commit_authorized: bool = false
+	var _rollback_authorized: bool = false
 	var _published: bool = false
+	var _rolled_back: bool = false
+	var _bound_checkpoint: Dictionary = {}
 
 
 class RegionalAuthority extends RefCounted:
@@ -628,6 +636,44 @@ static func _release_site_creation_scope(scope: SiteCreationScope) -> void:
 		if scope.authority.active_site_creation == scope:
 			scope.authority.active_site_creation = null
 		scope.authority.is_executing = false
+
+
+static func _authorize_site_creation_commit(scope: SiteCreationScope) -> bool:
+	if not _owns_site_creation_scope(scope):
+		return false
+	if not scope._reservation_applied or scope._published or scope._rolled_back or scope._rollback_authorized:
+		return false
+	scope._commit_authorized = true
+	scope._bound_checkpoint = {}
+	return true
+
+
+static func _authorize_site_creation_rollback(scope: SiteCreationScope) -> bool:
+	if not _owns_site_creation_scope(scope):
+		return false
+	if not scope._reservation_applied or scope._published or scope._rolled_back or scope._commit_authorized:
+		return false
+	scope._rollback_authorized = true
+	return true
+
+
+static func _authorize_manual_complement_commit(scope: ManualComplementScope) -> bool:
+	if not _owns_manual_complement_scope(scope):
+		return false
+	if not scope._complement_applied or scope._published or scope._rolled_back or scope._rollback_authorized:
+		return false
+	scope._commit_authorized = true
+	scope._bound_checkpoint = {}
+	return true
+
+
+static func _authorize_manual_complement_rollback(scope: ManualComplementScope) -> bool:
+	if not _owns_manual_complement_scope(scope):
+		return false
+	if not scope._complement_applied or scope._published or scope._rolled_back or scope._commit_authorized:
+		return false
+	scope._rollback_authorized = true
+	return true
 
 
 static func _inspect_manual_complement_preconditions_readonly(site: ConstructionSite) -> Dictionary:

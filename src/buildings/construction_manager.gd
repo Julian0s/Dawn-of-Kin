@@ -591,6 +591,7 @@ func try_create_site_from_placement(
 		)
 
 	if not valid:
+		ReservedWithdrawalCoordinator._authorize_site_creation_rollback(scope)
 		if reserved_via_silent_pile:
 			(storage_source as GroundPileManager)._restore_site_reservation_checkpoint_silent(reservation_checkpoint, scope)
 		elif reserved_via_silent_memory:
@@ -616,6 +617,7 @@ func try_create_site_from_placement(
 	if reserved_via_silent_pile:
 		_inventory._transaction_revision += 1
 
+	ReservedWithdrawalCoordinator._authorize_site_creation_commit(scope)
 	site._suppress_coordinator_signal_echo = true
 	if reserved_via_silent_pile:
 		(storage_source as GroundPileManager)._publish_site_reservation_committed(scope)

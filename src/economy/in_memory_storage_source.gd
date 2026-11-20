@@ -194,7 +194,15 @@ func _apply_complement_reservation_internal(
 	var mc_scope := scope as ReservedWithdrawalCoordinator.ManualComplementScope
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(mc_scope) or mc_scope.storage_source != self:
 		return {"ok": false, "checkpoint": {}}
-	if mc_scope._complement_applied or mc_scope._published or is_batch_active() or not _is_preparing_withdrawal:
+	if (
+		mc_scope._complement_applied
+		or mc_scope._published
+		or mc_scope._rolled_back
+		or mc_scope._commit_authorized
+		or mc_scope._rollback_authorized
+		or is_batch_active()
+		or not _is_preparing_withdrawal
+	):
 		return {"ok": false, "checkpoint": {}}
 	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts, mc_scope):
 		return {"ok": false, "checkpoint": {}}
@@ -219,6 +227,7 @@ func _apply_complement_reservation_internal(
 	if not _reservation_order.has(reservation_id):
 		_reservation_order[reservation_id] = _next_reservation_seq
 		_next_reservation_seq += 1
+	mc_scope._bound_checkpoint = checkpoint.duplicate(true)
 	return {"ok": true, "checkpoint": checkpoint}
 
 
@@ -435,7 +444,15 @@ func _apply_site_reservation_silent(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
-	if scope._reservation_applied or is_batch_active() or not _is_preparing_withdrawal:
+	if (
+		scope._reservation_applied
+		or scope._published
+		or scope._rolled_back
+		or scope._commit_authorized
+		or scope._rollback_authorized
+		or is_batch_active()
+		or not _is_preparing_withdrawal
+	):
 		return {"ok": false, "reason": "busy", "checkpoint": {}}
 	if not super.can_reserve_batch(reservation_id, amounts):
 		return {"ok": false, "reason": "insufficient_resources", "checkpoint": {}}
@@ -452,6 +469,7 @@ func _apply_site_reservation_silent(
 	_next_reservation_seq += 1
 	_transaction_revision += 1
 	scope._reservation_applied = true
+	scope._bound_checkpoint = checkpoint.duplicate(true)
 	return {"ok": true, "reason": "", "checkpoint": checkpoint}
 
 
@@ -461,11 +479,23 @@ func _restore_site_reservation_checkpoint_silent(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return
-	if not scope._reservation_applied or scope._published or checkpoint.is_empty():
+	if (
+		not scope._reservation_applied
+		or scope._published
+		or scope._rolled_back
+		or not scope._rollback_authorized
+		or scope._commit_authorized
+		or checkpoint.is_empty()
+		or scope._bound_checkpoint.is_empty()
+		or checkpoint != scope._bound_checkpoint
+	):
 		return
-	_restore_rollback_snapshot(checkpoint.get("snap"))
-	_transaction_revision = int(checkpoint.get("storage_revision", _transaction_revision))
+	_restore_rollback_snapshot(scope._bound_checkpoint.get("snap"))
+	_transaction_revision = int(scope._bound_checkpoint.get("storage_revision", _transaction_revision))
 	scope._reservation_applied = false
+	scope._rollback_authorized = false
+	scope._rolled_back = true
+	scope._bound_checkpoint = {}
 
 
 func _publish_site_reservation_committed(
@@ -473,9 +503,17 @@ func _publish_site_reservation_committed(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return
-	if not scope._reservation_applied or scope._published:
+	if (
+		not scope._reservation_applied
+		or scope._published
+		or scope._rolled_back
+		or not scope._commit_authorized
+		or scope._rollback_authorized
+	):
 		return
 	scope._published = true
+	scope._commit_authorized = false
+	scope._bound_checkpoint = {}
 	if is_batch_active():
 		_reservation_batch_dirty = true
 		_batch_dirty = true
@@ -491,7 +529,15 @@ func _prepare_manual_complement_under_guard(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return {"ok": false, "reason": "unauthorized_scope"}
-	if is_batch_active() or not _is_preparing_withdrawal:
+	if (
+		scope._complement_applied
+		or scope._published
+		or scope._rolled_back
+		or scope._commit_authorized
+		or scope._rollback_authorized
+		or is_batch_active()
+		or not _is_preparing_withdrawal
+	):
 		return {"ok": false, "reason": "busy"}
 	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts, scope):
 		return {"ok": false, "reason": "insufficient_resources"}
@@ -505,7 +551,15 @@ func _apply_manual_complement_silent(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
-	if scope._complement_applied or scope._published or is_batch_active() or not _is_preparing_withdrawal:
+	if (
+		scope._complement_applied
+		or scope._published
+		or scope._rolled_back
+		or scope._commit_authorized
+		or scope._rollback_authorized
+		or is_batch_active()
+		or not _is_preparing_withdrawal
+	):
 		return {"ok": false, "reason": "busy", "checkpoint": {}}
 	var res: Dictionary = _apply_complement_reservation_internal(reservation_id, extra_amounts, scope)
 	if not bool(res.get("ok", false)):
@@ -521,11 +575,23 @@ func _restore_manual_complement_checkpoint_silent(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return
-	if not scope._complement_applied or scope._published or checkpoint.is_empty():
+	if (
+		not scope._complement_applied
+		or scope._published
+		or scope._rolled_back
+		or not scope._rollback_authorized
+		or scope._commit_authorized
+		or checkpoint.is_empty()
+		or scope._bound_checkpoint.is_empty()
+		or checkpoint != scope._bound_checkpoint
+	):
 		return
-	_restore_rollback_snapshot(checkpoint.get("snap"))
-	_transaction_revision = int(checkpoint.get("storage_revision", _transaction_revision))
+	_restore_rollback_snapshot(scope._bound_checkpoint.get("snap"))
+	_transaction_revision = int(scope._bound_checkpoint.get("storage_revision", _transaction_revision))
 	scope._complement_applied = false
+	scope._rollback_authorized = false
+	scope._rolled_back = true
+	scope._bound_checkpoint = {}
 
 
 func _publish_manual_complement_committed(
@@ -533,9 +599,17 @@ func _publish_manual_complement_committed(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return
-	if not scope._complement_applied or scope._published:
+	if (
+		not scope._complement_applied
+		or scope._published
+		or scope._rolled_back
+		or not scope._commit_authorized
+		or scope._rollback_authorized
+	):
 		return
 	scope._published = true
+	scope._commit_authorized = false
+	scope._bound_checkpoint = {}
 	if is_batch_active():
 		_reservation_batch_dirty = true
 		_batch_dirty = true
