@@ -152,7 +152,19 @@ func reserve_batch(reservation_id: StringName, amounts: Dictionary) -> bool:
 	return true
 
 
-func _can_complement_reservation_unlocked(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
+func _can_complement_reservation_unlocked(
+	reservation_id: StringName,
+	extra_amounts: Dictionary,
+	scope: Variant = null
+) -> bool:
+	if scope != null:
+		if not (scope is ReservedWithdrawalCoordinator.ManualComplementScope):
+			return false
+		var mc_scope := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+		if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(mc_scope) or mc_scope.storage_source != self:
+			return false
+	elif is_locked():
+		return false
 	if reservation_id.is_empty():
 		return false
 	var parsed: Dictionary = parse_positive_batch(extra_amounts)
@@ -169,11 +181,22 @@ func _can_complement_reservation_unlocked(reservation_id: StringName, extra_amou
 func can_complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
 	if is_locked():
 		return false
-	return _can_complement_reservation_unlocked(reservation_id, extra_amounts)
+	return _can_complement_reservation_unlocked(reservation_id, extra_amounts, null)
 
 
-func _apply_complement_reservation_internal(reservation_id: StringName, extra_amounts: Dictionary) -> Dictionary:
-	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts):
+func _apply_complement_reservation_internal(
+	reservation_id: StringName,
+	extra_amounts: Dictionary,
+	scope: Variant = null
+) -> Dictionary:
+	if not (scope is ReservedWithdrawalCoordinator.ManualComplementScope):
+		return {"ok": false, "checkpoint": {}}
+	var mc_scope := scope as ReservedWithdrawalCoordinator.ManualComplementScope
+	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(mc_scope) or mc_scope.storage_source != self:
+		return {"ok": false, "checkpoint": {}}
+	if mc_scope._complement_applied or mc_scope._published or is_batch_active() or not _is_preparing_withdrawal:
+		return {"ok": false, "checkpoint": {}}
+	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts, mc_scope):
 		return {"ok": false, "checkpoint": {}}
 	var parsed: Dictionary = parse_positive_batch(extra_amounts)
 	var items: Dictionary = parsed["items"] as Dictionary
@@ -200,11 +223,26 @@ func _apply_complement_reservation_internal(reservation_id: StringName, extra_am
 
 
 func complement_reservation(reservation_id: StringName, extra_amounts: Dictionary) -> bool:
-	if is_locked():
+	if is_locked() or not _can_complement_reservation_unlocked(reservation_id, extra_amounts, null):
 		return false
-	var applied: Dictionary = _apply_complement_reservation_internal(reservation_id, extra_amounts)
-	if not bool(applied.get("ok", false)):
-		return false
+	var parsed: Dictionary = parse_positive_batch(extra_amounts)
+	var items: Dictionary = parsed["items"] as Dictionary
+	var sorted_keys: Array[StringName] = parsed["keys"] as Array[StringName]
+	var snapshot: Variant = _create_rollback_snapshot()
+
+	if not _reservations.has(reservation_id):
+		_reservations[reservation_id] = {}
+	var bucket: Dictionary = _reservations[reservation_id] as Dictionary
+	for res_id: StringName in sorted_keys:
+		var add_amt: int = int(items[res_id])
+		if get_available_amount(res_id) < add_amt:
+			_restore_rollback_snapshot(snapshot)
+			return false
+		bucket[res_id] = int(bucket.get(res_id, 0)) + add_amt
+	if not _reservation_order.has(reservation_id):
+		_reservation_order[reservation_id] = _next_reservation_seq
+		_next_reservation_seq += 1
+
 	begin_batch()
 	_emit_reservations_changed()
 	_emit_storage_changed()
@@ -423,10 +461,11 @@ func _restore_site_reservation_checkpoint_silent(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_site_creation_scope(scope) or scope.storage_source != self:
 		return
-	if checkpoint.is_empty():
+	if not scope._reservation_applied or scope._published or checkpoint.is_empty():
 		return
 	_restore_rollback_snapshot(checkpoint.get("snap"))
 	_transaction_revision = int(checkpoint.get("storage_revision", _transaction_revision))
+	scope._reservation_applied = false
 
 
 func _publish_site_reservation_committed(
@@ -454,7 +493,7 @@ func _prepare_manual_complement_under_guard(
 		return {"ok": false, "reason": "unauthorized_scope"}
 	if is_batch_active() or not _is_preparing_withdrawal:
 		return {"ok": false, "reason": "busy"}
-	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts):
+	if not _can_complement_reservation_unlocked(reservation_id, extra_amounts, scope):
 		return {"ok": false, "reason": "insufficient_resources"}
 	return {"ok": true, "reason": ""}
 
@@ -466,9 +505,9 @@ func _apply_manual_complement_silent(
 ) -> Dictionary:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return {"ok": false, "reason": "unauthorized_scope", "checkpoint": {}}
-	if scope._complement_applied or is_batch_active() or not _is_preparing_withdrawal:
+	if scope._complement_applied or scope._published or is_batch_active() or not _is_preparing_withdrawal:
 		return {"ok": false, "reason": "busy", "checkpoint": {}}
-	var res: Dictionary = _apply_complement_reservation_internal(reservation_id, extra_amounts)
+	var res: Dictionary = _apply_complement_reservation_internal(reservation_id, extra_amounts, scope)
 	if not bool(res.get("ok", false)):
 		return {"ok": false, "reason": "insufficient_resources", "checkpoint": {}}
 	_transaction_revision += 1
@@ -482,10 +521,11 @@ func _restore_manual_complement_checkpoint_silent(
 ) -> void:
 	if not ReservedWithdrawalCoordinator._owns_manual_complement_scope(scope) or scope.storage_source != self:
 		return
-	if checkpoint.is_empty():
+	if not scope._complement_applied or scope._published or checkpoint.is_empty():
 		return
 	_restore_rollback_snapshot(checkpoint.get("snap"))
 	_transaction_revision = int(checkpoint.get("storage_revision", _transaction_revision))
+	scope._complement_applied = false
 
 
 func _publish_manual_complement_committed(
