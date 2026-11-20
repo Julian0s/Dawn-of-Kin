@@ -1,5 +1,7 @@
 extends TestCase
 
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
+
 const MAIN_SCENE: PackedScene = preload("res://src/main/main.tscn")
 const UNIT_SCENE: PackedScene = preload("res://src/units/unit.tscn")
 const SHELTER: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
@@ -130,7 +132,7 @@ func _add_free_lot(
 	lot_id: StringName
 ) -> void:
 	var load: UnitCarryLoad = worker.get_carry_load()
-	var res: Dictionary = load.add_with_provenance(
+	var res: Dictionary = CarryFixture.add_lot(load,
 		op_id, lot_id, def.resource_id, def.unit_weight, amount, CarryProvenanceLedger.FREE_GATHERED
 	)
 	assert_true(bool(res.get("ok", false)), str(res))

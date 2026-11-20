@@ -1,5 +1,7 @@
 class_name TestT362C47ConstructionCompletionAuthority
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Focused integration suite for T3.6.2-C4.7 (P6-A):
 ## Regional transactional boundary for construction completion:
 ## - Respects (World3D, region_id) RegionalAuthority and cooperative guards.
@@ -295,7 +297,7 @@ func test_01_completion_blocked_during_active_regional_tx_and_reentrant_post_com
 	peer.set_world_navigation(fx["nav"] as WorldNavigation)
 	peer.global_position = camp.global_position
 	assert_true(peer.get_carry_load().enable_provenance(&"c47_peer"))
-	assert_true(bool(peer.get_carry_load().add_with_provenance(&"c47_pg", &"c47_pl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(peer.get_carry_load(), &"c47_pg", &"c47_pl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 
 	var probe := {
 		"fired": false,
@@ -385,7 +387,7 @@ func test_02_reentrant_economic_tx_and_duplicate_completion_blocked_during_compl
 	peer.set_world_navigation(nav)
 	peer.global_position = camp.global_position
 	assert_true(peer.get_carry_load().enable_provenance(&"c47_peer_re"))
-	assert_true(bool(peer.get_carry_load().add_with_provenance(&"c47_rg", &"c47_rl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(peer.get_carry_load(), &"c47_rg", &"c47_rl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 
 	var camp_coord := SelectiveCampDeliveryCoordinator.new()
 	var wd_coord := ReservedWithdrawalCoordinator.new()

@@ -1,4 +1,6 @@
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Adversarial integration tests for T3.6.2-C2:
 ## ReservedWithdrawalCoordinator atomic reserved withdrawal transaction:
 ## pile + ledger reservation -> carry load + SITE_RESERVED provenance -> site transit claim & pending pickup.
@@ -479,7 +481,7 @@ func test_09_10_11_12_13_14_precondition_rejections_zero_mutations_zero_signals(
 	assert_eq(String(r_wt_opt["reason"]), "resource_or_weight_mismatch")
 
 	var u_bad_w: Unit = _spawn_unit(host, "BadW", &"bad_w", 20, pile_w.global_position)
-	assert_true(bool(u_bad_w.get_carry_load().add_with_provenance(&"op_bw_seed", &"lot_bw_seed", &"wood", 1, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
+	assert_true(bool(CarryFixture.add_lot(u_bad_w.get_carry_load(), &"op_bw_seed", &"lot_bw_seed", &"wood", 1, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
 	_assign_transporter_and_claim(site_a, u_bad_w, pile_w, &"wood", 1, true)
 	var r_wt_load: Dictionary = coord.execute_reserved_withdrawal(site_a, u_bad_w, pile_w.pile_id, &"wood", 1, &"op_r13b", &"lot_r13b")
 	assert_false(bool(r_wt_load["ok"]))
@@ -869,7 +871,7 @@ func test_27_reentrancy_in_all_signals_and_consistent_observer_view() -> void:
 			"mgr_withdraw": manager.withdraw_reserved_from_pile(pile_w.pile_id, site.reservation_id, &"wood", 1),
 			"mgr_release": manager.release_batch(site.reservation_id, {&"wood": 1}),
 			"inv_withdraw": inventory.withdraw_reserved_from_pile_to_carry_load(pile_w.pile_id, site.reservation_id, WOOD_BASE.duplicate(), 1, load1),
-			"carry_add": bool(load1.add_with_provenance(&"op_c", &"lot_c", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]),
+			"carry_add": bool(CarryFixture.add_lot(load1, &"op_c", &"lot_c", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]),
 			"site_claim_amt": site.claim_pickup(u1, pile_w.pile_id, &"wood", 1),
 		}
 		site.record_withdrawn_for_site(u1, &"wood", 1)
@@ -989,12 +991,12 @@ func test_28_world_region_generation_worker_eligibility_and_tamper() -> void:
 	(tampered["pile_plan"]["after"] as Dictionary)["pile_amount"] = 999
 	assert_eq(String(coord.commit_prepared_withdrawal(site, u1, tampered)["reason"]), "tampered_or_stale_plan")
 
-	assert_true(bool(u1.get_carry_load().add_with_provenance(&"op_badgen", &"lot_badgen", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site.site_id, site.get_generation() + 5)["ok"]))
+	assert_true(bool(CarryFixture.add_lot(u1.get_carry_load(), &"op_badgen", &"lot_badgen", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site.site_id, site.get_generation() + 5)["ok"]))
 	assert_eq(String(coord.execute_reserved_withdrawal(site, u1, pile_w.pile_id, &"wood", 1, &"op_bg", &"lot_bg")["reason"]), "generation_mismatch")
 
 	var u_reg: Unit = _spawn_unit(host, "RegU", &"reg_u", 20, pile_w.global_position)
 	_assign_transporter_and_claim(site, u_reg, pile_w, &"wood", 1, true)
-	assert_true(bool(u_reg.get_carry_load().add_with_provenance(&"op_for", &"lot_for", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, &"foreign_site", 1)["ok"]))
+	assert_true(bool(CarryFixture.add_lot(u_reg.get_carry_load(), &"op_for", &"lot_for", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, &"foreign_site", 1)["ok"]))
 	assert_eq(String(coord.execute_reserved_withdrawal(site, u_reg, pile_w.pile_id, &"wood", 1, &"op_for2", &"lot_for2")["reason"]), "unknown_reserved_site")
 
 	# Non-ACTIVE site state & wrong-thread affinity guard:

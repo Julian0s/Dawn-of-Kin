@@ -1,5 +1,7 @@
 class_name TestT362C44RtsOrderAcceptance
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Focused integration suite for T3.6.2-C4.4 (R3):
 ## - Orders silently ignored by Unit.issue_order() under transactional lock must NEVER be
 ##   counted as accepted/issued by CommandController across Move, Gather, and Construct paths.
@@ -133,7 +135,7 @@ func test_01_gather_command_rejected_under_real_transactional_lock() -> void:
 	# Seed opt-in provenance cargo on LeaderA and give it a prior MoveOrder so we verify it is NOT cancelled.
 	var load_a: UnitCarryLoad = leader_a.get_carry_load()
 	assert_true(load_a.enable_provenance(&"c44_la_01"))
-	assert_true(bool(load_a.add_with_provenance(&"c44_g1", &"c44_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(load_a, &"c44_g1", &"c44_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 	var prior_order := MoveOrder.new(Vector3(3.0, 0.0, 3.0))
 	leader_a.issue_order(prior_order)
@@ -235,7 +237,7 @@ func test_03_move_command_rejected_under_real_transactional_lock() -> void:
 
 	var load_a: UnitCarryLoad = leader_a.get_carry_load()
 	assert_true(load_a.enable_provenance(&"c44_la_03"))
-	assert_true(bool(load_a.add_with_provenance(&"c44_g3", &"c44_l3", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(load_a, &"c44_g3", &"c44_l3", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 	var prior_order := MoveOrder.new(Vector3(4.0, 0.0, 4.0))
 	leader_a.issue_order(prior_order)

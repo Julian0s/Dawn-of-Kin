@@ -1,5 +1,7 @@
 class_name TestT362C42LifecycleReadiness
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Integration suite for T3.6.2-C4.2:
 ## - P1: Controlled RegionalAuthority lifecycle on economic session shutdown (MainScene._exit_tree)
 ## - P5: Transactional & domain-wide guards in TemporaryTestWorkersController safe removal
@@ -204,7 +206,7 @@ func _run_opt_in_cycle_on_main(ctx: Dictionary, tag: String) -> void:
 	assert_true(load.enable_provenance(uid), "Enable provenance for %s" % tag)
 
 	# 1. Opt-in camp delivery (FREE_GATHERED -> camp pile)
-	var add_res: Dictionary = load.add_with_provenance(
+	var add_res: Dictionary = CarryFixture.add_lot(load,
 		StringName("%s_gather_op" % tag),
 		StringName("%s_gather_lot" % tag),
 		&"wood",
@@ -297,7 +299,7 @@ func test_p1_02_active_storage_replacement_and_mid_session_release_still_rejecte
 	var inv_1: SettlementInventory = s1["inventory"] as SettlementInventory
 	var u1: Unit = s1["leader_a"] as Unit
 	assert_true(u1.get_carry_load().enable_provenance(&"p102_u1"))
-	assert_true(bool(u1.get_carry_load().add_with_provenance(&"p102_g1", &"p102_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(u1.get_carry_load(), &"p102_g1", &"p102_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	u1.global_position = camp_1.global_position
 	var coord_1 := SelectiveCampDeliveryCoordinator.new()
 	var del_1: Dictionary = coord_1.execute_selective_camp_delivery(inv_1, camp_1, u1, &"default", &"p102_op1", [])
@@ -307,7 +309,7 @@ func test_p1_02_active_storage_replacement_and_mid_session_release_still_rejecte
 	var rogue_fx: Dictionary = _create_external_region_fixture(get_tree().root, &"default", Vector3(10.0, 0.0, 10.0), s1["nav"] as WorldNavigation)
 	var rogue_u: Unit = rogue_fx["unit"] as Unit
 	assert_true(rogue_u.get_carry_load().enable_provenance(&"p102_rogue"))
-	assert_true(bool(rogue_u.get_carry_load().add_with_provenance(&"p102_rg", &"p102_rl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(rogue_u.get_carry_load(), &"p102_rg", &"p102_rl", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var rogue_coord := SelectiveCampDeliveryCoordinator.new()
 	var rogue_res: Dictionary = rogue_coord.execute_selective_camp_delivery(
 		rogue_fx["inventory"] as SettlementInventory,
@@ -349,7 +351,7 @@ func test_p1_03_wrong_owner_storage_region_world_busy_and_repeated_release_guard
 
 	# Execute a real transaction on reg_p103_a and attempt release DURING post-commit signal (authority.is_executing == true).
 	assert_true(u_a.get_carry_load().enable_provenance(&"p103_ua"))
-	assert_true(bool(u_a.get_carry_load().add_with_provenance(&"p103_ga", &"p103_la", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(u_a.get_carry_load(), &"p103_ga", &"p103_la", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var busy_attempts: Array[Dictionary] = []
 	var on_storage_changed := func() -> void:
 		busy_attempts.append(ReservedWithdrawalCoordinator.release_regional_domain(world, &"reg_p103_a", mgr_a, tok_a, get_tree(), inv_a))
@@ -418,7 +420,7 @@ func test_p1_03_wrong_owner_storage_region_world_busy_and_repeated_release_guard
 	var fx_a2: Dictionary = _create_external_region_fixture(get_tree().root, &"reg_p103_a", Vector3(10.0, 0.0, -10.0), nav)
 	var u_a2: Unit = fx_a2["unit"] as Unit
 	assert_true(u_a2.get_carry_load().enable_provenance(&"p103_ua2"))
-	assert_true(bool(u_a2.get_carry_load().add_with_provenance(&"p103_ga2", &"p103_la2", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(u_a2.get_carry_load(), &"p103_ga2", &"p103_la2", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var coord_a2 := SelectiveCampDeliveryCoordinator.new()
 	var del_a2: Dictionary = coord_a2.execute_selective_camp_delivery(
 		fx_a2["inventory"] as SettlementInventory, fx_a2["camp"] as CampStorageZone, u_a2, &"reg_p103_a", &"p103_op_a2", []
@@ -441,7 +443,7 @@ func test_p1_04_other_regions_independent_and_main_exit_during_busy_is_conservat
 	var inv_b: SettlementInventory = fx_b["inventory"] as SettlementInventory
 	var camp_b: CampStorageZone = fx_b["camp"] as CampStorageZone
 	assert_true(u_b.get_carry_load().enable_provenance(&"p104_ub"))
-	assert_true(bool(u_b.get_carry_load().add_with_provenance(&"p104_gb", &"p104_lb", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(u_b.get_carry_load(), &"p104_gb", &"p104_lb", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var coord_b := SelectiveCampDeliveryCoordinator.new()
 	var del_b: Dictionary = coord_b.execute_selective_camp_delivery(inv_b, camp_b, u_b, &"region_independent_b", &"p104_op_b", [])
 	assert_true(bool(del_b.get("ok", false)), str(del_b))
@@ -469,7 +471,7 @@ func test_p1_04_other_regions_independent_and_main_exit_during_busy_is_conservat
 	var mgr_2: GroundPileManager = s2["manager"] as GroundPileManager
 	var u_2: Unit = s2["leader_a"] as Unit
 	assert_true(u_2.get_carry_load().enable_provenance(&"p104_u2"), "p104 enable_provenance u_2")
-	var add_2_res: Dictionary = u_2.get_carry_load().add_with_provenance(&"p104_g2", &"p104_l2", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED)
+	var add_2_res: Dictionary = CarryFixture.add_lot(u_2.get_carry_load(), &"p104_g2", &"p104_l2", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED)
 	assert_true(bool(add_2_res.get("ok", false)), "p104 add_2: %s" % str(add_2_res))
 	u_2.global_position = camp_2.global_position
 
@@ -536,7 +538,7 @@ func test_p5_01_normal_removal_cargo_refusal_and_recovery_after_delivery() -> vo
 	var w4: Unit = (spawn_2["workers"] as Array)[1] as Unit
 	assert_true(w3.get_carry_load().enable_provenance(&"p501_w3"))
 	assert_true(w4.get_carry_load().enable_provenance(&"p501_w4"))
-	assert_true(bool(w3.get_carry_load().add_with_provenance(&"p501_g", &"p501_l", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(w3.get_carry_load(), &"p501_g", &"p501_l", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 
 	var blocked: Dictionary = ctrl.remove_temporary_workers_safely()
 	assert_false(bool(blocked.get("ok", true)))
@@ -655,7 +657,7 @@ func test_p5_03_transactional_lock_and_post_commit_reentrancy_with_empty_backpac
 	assert_true(leader_a.get_carry_load().enable_provenance(&"p503_la"))
 
 	# 1. Reentrant removal during post-commit signal when w3's backpack JUST became empty!
-	assert_true(bool(w3.get_carry_load().add_with_provenance(&"p503_g", &"p503_l", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(w3.get_carry_load(), &"p503_g", &"p503_l", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	w3.global_position = camp.global_position
 	var reentrant_preflight: Array[Dictionary] = []
 	var reentrant_remove: Array[Dictionary] = []
@@ -764,7 +766,7 @@ func test_p5_04_uncancellable_order_no_partial_removal_and_multi_region_isolatio
 	var on_w3_order_finished := func(_ord: UnitOrder) -> void:
 		if not injected_cargo[0]:
 			injected_cargo[0] = true
-			w4.get_carry_load().add_with_provenance(&"p504_inj_g", &"p504_inj_l", &"wood", WOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)
+			CarryFixture.add_lot(w4.get_carry_load(), &"p504_inj_g", &"p504_inj_l", &"wood", WOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)
 	w3.order_finished.connect(on_w3_order_finished, CONNECT_ONE_SHOT)
 	_connections.append([w3.order_finished, on_w3_order_finished])
 

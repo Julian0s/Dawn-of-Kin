@@ -1,5 +1,7 @@
 class_name TestT362C48SiteCreationAuthority
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Focused integration suite for T3.6.2-C4.8 (P6-B1):
 ## Regional transactional boundary for ConstructionManager.try_create_site_from_placement():
 ## - Normal creation, legacy InMemoryStorageSource compatibility, and economic conservation.
@@ -384,7 +386,7 @@ func test_02_blocked_during_active_regional_tx_and_completion_p6a() -> void:
 	# A. Active SelectiveCampDeliveryCoordinator transaction in same (World3D, region_id).
 	var u0: Unit = units[0]
 	var load0 := _prepare_provenance_unit(u0, &"c48_camp_carrier")
-	assert_true(bool(load0.add_with_provenance(
+	assert_true(bool(CarryFixture.add_lot(load0,
 		&"c48_add_free_1", &"c48_free_lot_1", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED
 	).get("ok", false)))
 	u0.global_position = camp.get_anchor_position() + Vector3(1.0, 0.0, 0.0)
@@ -816,7 +818,7 @@ func test_05_multi_region_isolation_and_domain_binding_safety() -> void:
 	# A. While Region A has an active RegionalAuthority transaction (camp delivery), Region B creates cleanly.
 	var u0: Unit = units[0]
 	var load0 := _prepare_provenance_unit(u0, &"c48_region_a_worker")
-	assert_true(bool(load0.add_with_provenance(
+	assert_true(bool(CarryFixture.add_lot(load0,
 		&"c48_add_reg_a_1", &"c48_reg_a_lot_1", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED
 	).get("ok", false)))
 	u0.global_position = camp_a.get_anchor_position() + Vector3(1.0, 0.0, 0.0)

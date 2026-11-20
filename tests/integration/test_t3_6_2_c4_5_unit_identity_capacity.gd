@@ -1,5 +1,7 @@
 class_name TestT362C45UnitIdentityCapacity
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Focused integration suite for T3.6.2-C4.5 (P3):
 ## - P3-A: Economic unit identity uniqueness & shared-backpack rejection across all live
 ##   units in the domain (even without ConstructionSite participation), preserving legitimate
@@ -211,7 +213,7 @@ func test_01_p3a_duplicate_provenance_id_same_domain_without_sites_rejected() ->
 	assert_eq(bush.get_active_worker_count(), 0, "Rejected gather order must not leak worker slot")
 
 	# 2. SelectiveCampDeliveryPlanner + Coordinator must reject duplicate identity without any site.
-	assert_true(bool(load_a.add_with_provenance(&"c45_g_dup", &"c45_l_dup", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(load_a, &"c45_g_dup", &"c45_l_dup", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 	var camp_plan: Dictionary = CampPlanner.prepare_selective_camp_delivery(inv, camp, leader_a, &"default", &"c45_cp_dup", [])
 	assert_false(bool(camp_plan.get("ok", true)), "CampPlanner must reject duplicate provenance_unit_id without sites: %s" % str(camp_plan))
@@ -263,8 +265,8 @@ func test_02_p3a_distinct_ids_same_domain_and_distinct_regions_same_world() -> v
 	assert_eq(leader_a.get_character_id(), leader_b.get_character_id())
 	assert_true(leader_a.get_carry_load().enable_provenance(&"distinct_u1"))
 	assert_true(leader_b.get_carry_load().enable_provenance(&"distinct_u2"))
-	assert_true(bool(leader_a.get_carry_load().add_with_provenance(&"c45_d1", &"c45_dl1", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
-	assert_true(bool(leader_b.get_carry_load().add_with_provenance(&"c45_d2", &"c45_dl2", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(leader_a.get_carry_load(), &"c45_d1", &"c45_dl1", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(leader_b.get_carry_load(), &"c45_d2", &"c45_dl2", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 	leader_b.global_position = camp.global_position
 	var camp_coord := SelectiveCampDeliveryCoordinator.new()
@@ -282,8 +284,8 @@ func test_02_p3a_distinct_ids_same_domain_and_distinct_regions_same_world() -> v
 	ub.set_meta(&"region_id", &"reg_beta")
 	assert_true(ua.get_carry_load().enable_provenance(&"regional_carrier"))
 	assert_true(ub.get_carry_load().enable_provenance(&"regional_carrier"))
-	assert_true(bool(ua.get_carry_load().add_with_provenance(&"c45_ra_g", &"c45_ra_l", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
-	assert_true(bool(ub.get_carry_load().add_with_provenance(&"c45_rb_g", &"c45_rb_l", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(ua.get_carry_load(), &"c45_ra_g", &"c45_ra_l", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(ub.get_carry_load(), &"c45_rb_g", &"c45_rb_l", &"wood", WOOD.unit_weight, 3, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var res_a: Dictionary = camp_coord.execute_selective_camp_delivery(
 		fx_a["inventory"] as SettlementInventory, fx_a["camp"] as CampStorageZone, ua, &"reg_alpha", &"c45_ra_del", []
 	)
@@ -302,7 +304,7 @@ func test_02_p3a_distinct_ids_same_domain_and_distinct_regions_same_world() -> v
 	get_tree().root.add_child(stray)
 	_extra_nodes.append(stray)
 	assert_true(stray.get_carry_load().enable_provenance(&"regional_carrier"))
-	assert_true(bool(ua.get_carry_load().add_with_provenance(&"c45_ra_g2", &"c45_ra_l2", &"wood", WOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(ua.get_carry_load(), &"c45_ra_g2", &"c45_ra_l2", &"wood", WOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var ambig_res: Dictionary = camp_coord.execute_selective_camp_delivery(
 		fx_a["inventory"] as SettlementInventory, fx_a["camp"] as CampStorageZone, ua, &"reg_alpha", &"c45_ra_del2", []
 	)
@@ -328,7 +330,7 @@ func test_03_p3a_empty_id_shared_carry_load_and_busy_admission() -> void:
 	assert_true(leader_a.get_carry_load().enable_provenance(&"shared_bag_owner"))
 	var orig_b_load: UnitCarryLoad = leader_b.get_carry_load()
 	leader_b._carry_load = leader_a.get_carry_load()
-	assert_true(bool(leader_a.get_carry_load().add_with_provenance(&"c45_sb_g", &"c45_sb_l", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(leader_a.get_carry_load(), &"c45_sb_g", &"c45_sb_l", &"wood", WOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 
 	var camp_plan: Dictionary = CampPlanner.prepare_selective_camp_delivery(inv, camp, leader_a, &"default", &"c45_sb_cp", [])
@@ -379,7 +381,7 @@ func test_04_p3b_definition_change_blocked_under_real_transaction_lock() -> void
 	assert_eq(load_a.get_base_capacity(), 20)
 	assert_eq(load_a.get_effective_capacity(), 24)
 	assert_true(load_a.enable_provenance(&"p3b_unit_a"))
-	assert_true(bool(load_a.add_with_provenance(&"p3b_g1", &"p3b_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(load_a, &"p3b_g1", &"p3b_l1", &"wood", WOOD.unit_weight, 4, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_a.global_position = camp.global_position
 
 	var cap_events: Array[int] = [0]

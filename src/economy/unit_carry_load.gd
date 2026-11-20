@@ -334,7 +334,7 @@ func _prepare_provenance_add(operation_id: Variant, lot_id: Variant, resource_id
 		"amounts": next_amounts, "ledger": candidate.snapshot_transaction_state()}
 
 func _apply_prepared_provenance_add(plan: Dictionary) -> bool:
-	# This is an internal operation; public callers use add_with_provenance().
+	# Coordinators apply plans while holding the carry transaction guard.
 	if not _provenance_applying or not _provenance_busy or _provenance == null or not plan.get("ok", false) or plan.get("replayed", true):
 		return false
 	for key: String in ["base", "capacity", "revision", "operation", "lot_id", "resource", "weight", "amount", "origin", "site", "generation", "amounts", "ledger"]:
@@ -355,23 +355,11 @@ func _apply_prepared_provenance_add(plan: Dictionary) -> bool:
 	_transaction_revision += 1
 	return true
 
-func add_with_provenance(operation_id: Variant, lot_id: Variant, resource_id: StringName, unit_weight: int, amount: int, origin: Variant, site_id: Variant = &"", generation: int = 0) -> Dictionary:
-	if _provenance == null or _provenance_busy:
+## Provenance can only be credited by a transaction that transfers material.
+func add_with_provenance(_operation_id: Variant, _lot_id: Variant, _resource_id: StringName, _unit_weight: int, _amount: int, _origin: Variant, _site_id: Variant = &"", _generation: int = 0) -> Dictionary:
+	if _provenance == null or is_transaction_busy() or _coordinator_transaction_locked:
 		return {"ok": false, "reason": "unavailable"}
-	_provenance_busy = true
-	var plan := _prepare_provenance_add(operation_id, lot_id, resource_id, unit_weight, amount, origin, site_id, generation)
-	if not plan.ok or plan.get("replayed", false):
-		_provenance_busy = false
-		return plan
-	_provenance_applying = true
-	var applied := _apply_prepared_provenance_add(plan)
-	_provenance_applying = false
-	if not applied:
-		_provenance_busy = false
-		return {"ok": false, "reason": "stale_plan"}
-	_emit_load_changed()
-	_provenance_busy = false
-	return {"ok": true, "replayed": false}
+	return {"ok": false, "reason": "transfer_required"}
 
 
 func _capture_provenance_checkpoint() -> Dictionary:

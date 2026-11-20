@@ -1,5 +1,7 @@
 extends "res://tests/framework/selective_site_delivery_fixture.gd"
 
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
+
 
 func _prepare(site: ConstructionSite, unit: Unit, amounts: Variant = {}, op: Variant = &"drop") -> Dictionary:
 	return Planner.prepare_selective_site_delivery(site, unit, op, amounts)
@@ -129,7 +131,7 @@ func test_claim_generation_world_and_balance_rejections_are_pure() -> void:
 	site._site_state = ConstructionSite.SiteState.ACTIVE
 	assert_true(_prepare(site, unit).ok)
 	assert_eq(events, [])
-	assert_true(load.add_with_provenance(&"unknown", &"unknown_lot", &"wood", WOOD.unit_weight, 1,
+	assert_true(CarryFixture.add_lot(load, &"unknown", &"unknown_lot", &"wood", WOOD.unit_weight, 1,
 		CarryProvenanceLedger.SITE_RESERVED, &"unknown_site", 1).ok)
 	events.clear()
 	var snapshot := _snapshot(fx, [site], unit)
@@ -204,7 +206,7 @@ func test_simulated_id_collision_is_avoided_and_buffer_overbooking_is_refused() 
 	var unit := _unit(fx, &"carrier")
 	_withdraw(fx, site, unit, fx.wood, 2, &"reserved")
 	var load := unit.get_carry_load()
-	assert_true(load.add_with_provenance(&"c3.1:4:drop:0", &"unrelated", &"wood",
+	assert_true(CarryFixture.add_lot(load, &"c3.1:4:drop:0", &"unrelated", &"wood",
 		WOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED).ok)
 	var events := _observe(fx, [site], unit)
 	var before := _snapshot(fx, [site], unit)
@@ -230,7 +232,7 @@ func test_valid_plan_can_be_prepared_without_creating_an_authority() -> void:
 	var load := unit.get_carry_load()
 	# Controlled bootstrap of an existing reconciled cargo without registering a C2 receipt.
 	assert_true(fx.manager.withdraw_reserved_from_pile(fx.wood.pile_id, site.reservation_id, &"wood", 2))
-	assert_true(load.add_with_provenance(&"historical", &"lot", &"wood", WOOD.unit_weight, 2,
+	assert_true(CarryFixture.add_lot(load, &"historical", &"lot", &"wood", WOOD.unit_weight, 2,
 		CarryProvenanceLedger.SITE_RESERVED, site.site_id, site.get_generation()).ok)
 	site._ensure_transit_listener(unit, load)
 	site._transit_claims[unit.get_instance_id()].amounts[&"wood"] = 2

@@ -1,5 +1,7 @@
 class_name TestT362C46GatherRegionalIsolation
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Focused integration suite for T3.6.2-C4.6 (R1):
 ## - R1-A: GatherTransferSession retries with an already-allocated operation_id must
 ##   check RegionalAuthority activity read-only before calling ResourceSource transfer,
@@ -311,7 +313,7 @@ func test_01_r1a_normal_gather_and_preallocated_retry_blocked_by_active_authorit
 	var load_a_snap_before: Dictionary = load_a.provenance_snapshot()
 
 	# Peer LeaderB initiates a real regional transaction (camp delivery) in the SAME region.
-	assert_true(bool(load_b.add_with_provenance(&"c46_peer_g", &"c46_peer_l", &"stone", STONE.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(load_b, &"c46_peer_g", &"c46_peer_l", &"stone", STONE.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	leader_b.global_position = camp.global_position
 
 	var probe := {
@@ -414,7 +416,7 @@ func test_02_r1a_distinct_regions_unblocked_committed_replay_and_retry_limit() -
 	assert_false((world.get_meta(DOMAIN_META, {}) as Dictionary).has(&"c46_uninit_reg"))
 
 	# Case 4: While reg_b authority is executing, reg_a pre-allocated retry MUST SUCCEED immediately!
-	assert_true(bool(ub.get_carry_load().add_with_provenance(&"c46_rb_g", &"c46_rb_l", &"food", FOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(ub.get_carry_load(), &"c46_rb_g", &"c46_rb_l", &"food", FOOD.unit_weight, 2, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 	var cross_reg := {"fired": false, "res": {}}
 	_watch(ub.get_carry_load().load_changed, func() -> void:
 		if bool(cross_reg["fired"]):
@@ -447,7 +449,7 @@ func test_02_r1a_distinct_regions_unblocked_committed_replay_and_retry_limit() -
 	ua_peer.global_position = camp_a.global_position
 	ua_peer.set_meta(&"region_id", &"c46_reg_a")
 	assert_true(ua_peer.get_carry_load().enable_provenance(&"c46_ua_peer"))
-	assert_true(bool(ua_peer.get_carry_load().add_with_provenance(&"c46_rap_g", &"c46_rap_l", &"food", FOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
+	assert_true(bool(CarryFixture.add_lot(ua_peer.get_carry_load(), &"c46_rap_g", &"c46_rap_l", &"food", FOOD.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false)))
 
 	var replay_sess := GatherTransferSession.new()
 	assert_true(bool(replay_sess.initialize_cycle(inv_a, camp_a, rock_a, ua, &"c46_reg_a", 5001, 1, 3).get("ok", false)))

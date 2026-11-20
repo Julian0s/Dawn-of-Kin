@@ -1,5 +1,7 @@
 extends "res://tests/framework/selective_site_delivery_fixture.gd"
 
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
+
 const Delivery = preload("res://src/economy/selective_site_delivery_coordinator.gd")
 
 
@@ -345,9 +347,9 @@ func test_simulated_and_commit_ids_probe_existing_operations_in_their_own_namesp
 	var load := unit.get_carry_load()
 	_withdraw(fx, site, unit, fx.wood, 2, &"lot")
 	_at_dropoff(site, unit)
-	assert_true(load.add_with_provenance(&"c3.1:4:drop:0", &"sim_collision", &"wood", WOOD.unit_weight,
+	assert_true(CarryFixture.add_lot(load, &"c3.1:4:drop:0", &"sim_collision", &"wood", WOOD.unit_weight,
 		1, CarryProvenanceLedger.FREE_GATHERED).ok)
-	assert_true(load.add_with_provenance(&"c3.2:4:drop:0", &"real_collision", &"wood", WOOD.unit_weight,
+	assert_true(CarryFixture.add_lot(load, &"c3.2:4:drop:0", &"real_collision", &"wood", WOOD.unit_weight,
 		1, CarryProvenanceLedger.FREE_GATHERED).ok)
 	var peer := _unit(fx, &"peer")
 	_arm_order(site, peer)

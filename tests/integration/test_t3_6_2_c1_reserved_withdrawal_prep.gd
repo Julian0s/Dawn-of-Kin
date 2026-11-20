@@ -1,4 +1,6 @@
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Integration tests for T3.6.2-C1:
 ## Pure, opt-in, side-effect-free preparation of a site-reserved pile withdrawal
 ## into a provenance-enabled UnitCarryLoad with matching ConstructionSite claim.
@@ -467,11 +469,11 @@ func test_03_mixed_carry_load_multi_site_claims_and_unreconciled_detection() -> 
 
 	# 2. Seed valid existing SITE_RESERVED cargo for Site B (1 stone, weight 2) and Site A (1 wood, weight 1)
 	assert_true(manager.withdraw_reserved_from_pile(pile_s.pile_id, site_b.reservation_id, &"stone", 1))
-	assert_true(bool(load1.add_with_provenance(&"op_b_prev", &"lot_b_prev", &"stone", STONE_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_b.site_id, site_b.get_generation())["ok"]))
+	assert_true(bool(CarryFixture.add_lot(load1, &"op_b_prev", &"lot_b_prev", &"stone", STONE_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_b.site_id, site_b.get_generation())["ok"]))
 	_seed_site_transit_claim(site_b, u1, &"stone", 1)
 
 	assert_true(manager.withdraw_reserved_from_pile(pile_w.pile_id, site_a.reservation_id, &"wood", 1))
-	assert_true(bool(load1.add_with_provenance(&"op_a_prev", &"lot_a_prev", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_a.site_id, site_a.get_generation())["ok"]))
+	assert_true(bool(CarryFixture.add_lot(load1, &"op_a_prev", &"lot_a_prev", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.SITE_RESERVED, site_a.site_id, site_a.get_generation())["ok"]))
 	_seed_site_transit_claim(site_a, u1, &"wood", 1)
 
 	# Current weight: 2*2 + 1*3 + 1*2 = 9 / 20 kg. Wood total = 3 (2 FREE, 1 SITE_A). Stone total = 1 (SITE_B).
@@ -590,13 +592,13 @@ func test_04_site_states_capacity_weights_and_invalid_or_conflicting_ids() -> vo
 
 	# Separate unit holding wood with incompatible registered weight in carry load (1 != WOOD_BASE.unit_weight 2):
 	var u_bad_w: Unit = _spawn_unit(host, "BadWeightUnit", &"bad_weight_unit", 20)
-	assert_true(bool(u_bad_w.get_carry_load().add_with_provenance(&"op_bw", &"lot_bw", &"wood", 1, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
+	assert_true(bool(CarryFixture.add_lot(u_bad_w.get_carry_load(), &"op_bw", &"lot_bw", &"wood", 1, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
 	var bad_load_w: Dictionary = site.prepare_reserved_withdrawal(u_bad_w, pile_w.pile_id, &"wood", 1, &"op_bw2", &"lot_bw2")
 	assert_false(bool(bad_load_w["ok"]))
 	assert_eq(String(bad_load_w["reason"]), "resource_or_weight_mismatch")
 
 	# Preload wood with matching WOOD_BASE.unit_weight on u1 to test operation/lot conflicts
-	assert_true(bool(load1.add_with_provenance(&"op_w_seed", &"lot_w_seed", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
+	assert_true(bool(CarryFixture.add_lot(load1, &"op_w_seed", &"lot_w_seed", &"wood", WOOD_BASE.unit_weight, 1, CarryProvenanceLedger.FREE_GATHERED)["ok"]))
 	# Attempting to register op_w_seed again -> operation_conflict; reusing lot_w_seed -> duplicate_lot
 	var op_reuse: Dictionary = site.prepare_reserved_withdrawal(u1, pile_w.pile_id, &"wood", 1, &"op_w_seed", &"lot_new")
 	assert_false(bool(op_reuse["ok"]))
@@ -828,7 +830,7 @@ func test_06_unknown_reserved_origin_is_not_reconciled_by_physical_totals() -> v
 	var unit: Unit = fx.unit
 	var pile: GroundResourcePile = fx.pile
 	var load := unit.get_carry_load()
-	assert_true(load.add_with_provenance(&"old", &"old_lot", &"wood", WOOD_BASE.unit_weight, 1,
+	assert_true(CarryFixture.add_lot(load, &"old", &"old_lot", &"wood", WOOD_BASE.unit_weight, 1,
 		CarryProvenanceLedger.SITE_RESERVED, &"missing_site", 1).ok)
 	assert_true(load.validate_provenance())
 	var spy := SignalSpy.new()
@@ -929,7 +931,7 @@ func test_09_claim_proof_is_scoped_to_site_identity_region_and_world() -> void:
 	assert_eq(remote_site.site_id, site.site_id)
 	assert_ne(remote_site.get_world_3d(), site.get_world_3d())
 	assert_true(manager.withdraw_reserved_from_pile(pile.pile_id, peer.reservation_id, &"wood", 1))
-	assert_true(load.add_with_provenance(&"peer_op", &"peer_lot", &"wood", WOOD_BASE.unit_weight, 1,
+	assert_true(CarryFixture.add_lot(load, &"peer_op", &"peer_lot", &"wood", WOOD_BASE.unit_weight, 1,
 		CarryProvenanceLedger.SITE_RESERVED, peer.site_id, peer.get_generation()).ok)
 	_seed_site_transit_claim(peer, unit, &"wood", 1)
 	var spy := SignalSpy.new()

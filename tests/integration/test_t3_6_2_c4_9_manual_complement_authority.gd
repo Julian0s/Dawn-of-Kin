@@ -1,5 +1,7 @@
 class_name TestT362C49ManualComplementAuthority
 extends TestCase
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Adversarial & regression suite for T3.6.2-C4.9 / P6-B2:
 ## Regional transactional authority, peer/domain isolation, signal-reentrancy protection,
 ## direct storage boundary enforcement, fail-closed checks, and DEC-11B preservation
@@ -564,7 +566,7 @@ func test_03_in_flight_complement_blocks_withdrawal_delivery_and_removal_while_o
 	assert_true(unit_a.get_carry_load().enable_provenance(&"worker_alpha"))
 	var unit_d: Unit = _spawn_worker(host_a, "WorkerDeliv", Vector3(11.0, 0.0, 10.0))
 	assert_true(unit_d.get_carry_load().enable_provenance(&"worker_deliv"))
-	var seed_add: Dictionary = unit_d.get_carry_load().add_with_provenance(
+	var seed_add: Dictionary = CarryFixture.add_lot(unit_d.get_carry_load(),
 		&"op_seed",
 		&"lot_seed_free",
 		&"wood",

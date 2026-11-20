@@ -1,5 +1,7 @@
 extends TestCase
 
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
+
 const MAIN_SCENE: PackedScene = preload("res://src/main/main.tscn")
 const UNIT_SCENE: PackedScene = preload("res://src/units/unit.tscn")
 const TREE_SCENE: PackedScene = preload("res://src/economy/sources/tree_source.tscn")
@@ -209,7 +211,7 @@ func _add_free_lot(
 	lot_id: StringName
 ) -> void:
 	var load: UnitCarryLoad = worker.get_carry_load()
-	var res: Dictionary = load.add_with_provenance(
+	var res: Dictionary = CarryFixture.add_lot(load,
 		op_id, lot_id, def.resource_id, def.unit_weight, amount, CarryProvenanceLedger.FREE_GATHERED
 	)
 	assert_true(bool(res.get("ok", false)), str(res))
@@ -1085,7 +1087,7 @@ func test_group_e_cancellations_removals_navigation_callbacks_and_guards() -> vo
 			re_checks["load_cap_mutated"] = load.set_base_capacity(9)
 			re_checks["load_mod_mutated"] = load.set_capacity_modifier(&"bad_cb", -5)
 			load.begin_batch()
-			re_checks["load_add_ok"] = bool(load.add_with_provenance(&"bad_cb_op", &"bad_cb_lot", &"food", 1, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false))
+			re_checks["load_add_ok"] = bool(CarryFixture.add_lot(load, &"bad_cb_op", &"bad_cb_lot", &"food", 1, 1, CarryProvenanceLedger.FREE_GATHERED).get("ok", false))
 			re_checks["load_take_nonempty"] = not load.take_all().is_empty()
 	)
 	_watch(re_bush.amount_changed, func(_s: ResourceSource, _left: int, _delta: int) -> void:

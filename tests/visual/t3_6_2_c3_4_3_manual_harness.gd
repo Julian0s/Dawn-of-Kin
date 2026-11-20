@@ -1,4 +1,6 @@
 extends SceneTree
+
+const CarryFixture = preload("res://tests/framework/carry_provenance_fixture.gd")
 ## Removable standalone development harness for manual visual validation of T3.6.2-C3.4.3.
 ## Keeps production scenes and permanent HUD completely untouched.
 ## Launch:
@@ -74,7 +76,7 @@ class HarnessController extends Node:
 			print("[C3.4.3 HARNESS] Habilite proveniencia primeiro com Ctrl+1.")
 			return
 		seq += 1
-		var res: Dictionary = load.add_with_provenance(
+		var res: Dictionary = CarryFixture.add_lot(load,
 			StringName("manual_op_free_%d" % seq),
 			StringName("manual_lot_free_%d" % seq),
 			&"wood",
@@ -140,7 +142,7 @@ class HarnessController extends Node:
 		site_b.unregister_worker(unit, tmp_order)
 		unit._current_order = null
 		unit.global_position = saved_pos
-		var f_res: Dictionary = load.add_with_provenance(
+		var f_res: Dictionary = CarryFixture.add_lot(load,
 			StringName("manual_op_mix_free_%d" % seq),
 			StringName("manual_lot_mix_free_%d" % seq),
 			&"food",
