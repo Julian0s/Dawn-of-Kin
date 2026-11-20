@@ -28,6 +28,7 @@ var _completed_buildings: Array[BuildingInstance] = []
 var _queued_completions: Dictionary = {}
 var _completion_in_progress: bool = false
 var _creation_in_progress: bool = false
+var _cancellation_in_progress: bool = false
 var _retry_timers: Dictionary = {}
 var _busy_completion_timers: Dictionary = {}
 var _navigation_retry_timer: Timer = null
@@ -41,6 +42,8 @@ func configure(
 	p_world_navigation: WorldNavigation = null,
 	p_region_id: StringName = &"default"
 ) -> void:
+	if _cancellation_in_progress:
+		return
 	_sites_root = p_sites_root
 	_inventory = p_inventory
 	_resource_defs = p_resource_defs.duplicate()
@@ -132,7 +135,7 @@ func has_site_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool:
 		Vector2(maxf(0.0, rect.size.x - tolerance * 2.0), maxf(0.0, rect.size.y - tolerance * 2.0))
 	)
 	for site: ConstructionSite in _sites:
-		if site.get_footprint_rect().intersects(shrunk, true):
+		if site.occupies_construction_footprint() and site.get_footprint_rect().intersects(shrunk, true):
 			return true
 	return false
 
@@ -257,7 +260,7 @@ func _execute_site_completion(
 	building_instance: BuildingInstance,
 	from_queued_dispatch: bool
 ) -> bool:
-	if _completion_in_progress or _creation_in_progress or not _valid_completion_site(site):
+	if _cancellation_in_progress or _completion_in_progress or _creation_in_progress or not _valid_completion_site(site):
 		if from_queued_dispatch and is_instance_valid(site) and _sites.has(site) and site.get_site_state() == ConstructionSite.SiteState.COMPLETING and (_completion_in_progress or _creation_in_progress or site.is_transaction_busy()):
 			_schedule_busy_completion_retry(site)
 		return false
@@ -466,7 +469,7 @@ func try_create_site_from_placement(
 				world_position
 			)
 
-	if _creation_in_progress or _completion_in_progress:
+	if _creation_in_progress or _completion_in_progress or _cancellation_in_progress:
 		return _reject("busy", "Região econômica ocupada por outra transação.", definition, world_position)
 
 	var acq: Dictionary = ReservedWithdrawalCoordinator._acquire_site_creation_scope(self)
@@ -587,6 +590,7 @@ func try_create_site_from_placement(
 	if valid:
 		# Registration is provisional until the coordinator checks the full intent.
 		_sites.append(site)
+		site._construction_manager_ref = weakref(self)
 		if not ReservedWithdrawalCoordinator._authorize_site_creation_commit(scope):
 			_sites.erase(site)
 			valid = false

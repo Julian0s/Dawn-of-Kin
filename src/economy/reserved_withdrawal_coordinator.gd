@@ -142,6 +142,8 @@ class CancellationCustodyRecord extends RefCounted:
 	var local_buffer_remaining: Dictionary = {}
 	var local_incorporated_remaining: Dictionary = {}
 	var in_transit_remaining: Dictionary = {}
+	var transit_lots_by_unit: Dictionary = {}
+	var assigned_unit_ids: Array[StringName] = []
 	var delivered_to_camp: Dictionary = {}
 	var demolition_loss: Dictionary = {}
 	var missing_deficit: Dictionary = {}
@@ -197,6 +199,8 @@ class CancellationCustodyRecord extends RefCounted:
 			"local_buffer_remaining": local_buffer_remaining.duplicate(true),
 			"local_incorporated_remaining": local_incorporated_remaining.duplicate(true),
 			"in_transit_remaining": in_transit_remaining.duplicate(true),
+			"transit_lots_by_unit": transit_lots_by_unit.duplicate(true),
+			"assigned_unit_ids": assigned_unit_ids.duplicate(),
 			"delivered_to_camp": delivered_to_camp.duplicate(true),
 			"demolition_loss": demolition_loss.duplicate(true),
 			"missing_deficit": missing_deficit.duplicate(true),
@@ -2632,12 +2636,27 @@ static func _prep_to_failure(prep: Dictionary) -> Dictionary:
 ## ---------------------------------------------------------------------------
 
 ## Operational D3 cancellation remains strictly gated until B1.2+ authorization.
-static func execute_site_cancellation(_site: Variant, _operation_id: Variant = &"") -> Dictionary:
-	return {
-		"ok": false,
-		"reason": "d3_cancellation_not_implemented",
-		"dependency": "cancellation_d3",
-	}
+static func prepare_site_cancellation(site: ConstructionSite, operation_id: Variant) -> Dictionary:
+	return SiteCancellationTransaction.prepare(site, operation_id)
+
+
+static func execute_site_cancellation(site: Variant, operation_id: Variant = &"", prepared: Dictionary = {}) -> Dictionary:
+	if not (site is ConstructionSite):
+		return {"ok": false, "reason": "d3_cancellation_not_implemented", "dependency": "cancellation_d3"}
+	return SiteCancellationTransaction.execute(site, operation_id, prepared)
+
+
+static func get_site_cancellation_receipt_readonly(world: World3D, region: Variant, operation_id: Variant) -> Dictionary:
+	var authority := _receipt_authority_in_domain(world, region, operation_id)
+	if authority == null:
+		return {}
+	var entry: Variant = authority.receipts.get(StringName(operation_id))
+	if not (entry is Dictionary) or not (entry.get("receipt") is Dictionary):
+		return {}
+	var receipt: Dictionary = entry.receipt
+	if receipt.get("kind") != RECEIPT_SITE_CANCELLATION or receipt.get("operation_id") != StringName(operation_id) or receipt.get("region_id") != StringName(region):
+		return {}
+	return receipt.duplicate(true)
 
 
 static func _owns_cancellation_scope(scope: CancellationScope) -> bool:

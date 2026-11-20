@@ -493,7 +493,7 @@ func _prepare_confirm_job(
 		}
 	]
 	for existing_site: ConstructionSite in context.construction_sites:
-		if existing_site == null or not is_instance_valid(existing_site) or existing_site.definition == null:
+		if existing_site == null or not is_instance_valid(existing_site) or existing_site.definition == null or not existing_site.occupies_construction_footprint():
 			continue
 		candidate_boxes.append({
 			"position": existing_site.global_position,
@@ -761,6 +761,9 @@ func _validate_spatial_base(
 	)
 	var scoped_obstacles: Array[Dictionary] = []
 	for hit: Dictionary in obstacle_hits:
+		var site := ConstructionSite.resolve_from_collider(hit.get("collider"))
+		if site != null and not site.occupies_construction_footprint():
+			continue
 		var building: BuildingInstance = BuildingInstance.resolve_from_collider(hit.get("collider"))
 		if building == null or building.region_id == context.region_id:
 			scoped_obstacles.append(hit)
@@ -783,7 +786,7 @@ func _validate_spatial_base(
 			_fail_result(result, REASON_OBSTACLE_OVERLAP, "Completed building occupies this area.")
 			return result
 	for existing_site: ConstructionSite in context.construction_sites:
-		if existing_site == null or not is_instance_valid(existing_site) or not existing_site.is_valid():
+		if existing_site == null or not is_instance_valid(existing_site) or not existing_site.is_valid() or not existing_site.occupies_construction_footprint():
 			continue
 		if existing_site.get_footprint_rect().intersects(shrunk_candidate, true):
 			_fail_result(result, REASON_OBSTACLE_OVERLAP, "Posição inválida: já existe um canteiro de obra nessa área.")

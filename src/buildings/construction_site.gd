@@ -21,6 +21,7 @@ enum SiteState {
 	COMPLETION_FAILED_RETRYABLE,
 	COMPLETION_BLOCKED_ERROR,
 	COMPLETED,
+	CANCELLED,
 }
 
 enum AssemblySubstate {
@@ -66,6 +67,8 @@ var definition: BuildingDefinition = null:
 			definition = value
 
 var _inventory: SettlementInventory = null
+var _construction_manager_ref: WeakRef = null
+var _cancellation_custody: ReservedWithdrawalCoordinator.CancellationCustodyRecord = null
 var _resource_defs: Dictionary = {}
 var _required_amounts: Dictionary = {}
 var _delivered_buffer: Dictionary = {}
@@ -206,6 +209,10 @@ func get_assembly_substate() -> AssemblySubstate:
 
 func is_active() -> bool:
 	return _site_state == SiteState.ACTIVE
+
+
+func occupies_construction_footprint() -> bool:
+	return _site_state != SiteState.CANCELLED or _cancellation_custody == null or _cancellation_custody.requires_local_footprint_occupation()
 
 
 func is_completion_ready() -> bool:
@@ -945,7 +952,7 @@ func get_remaining_supply_to_claim(resource_id: StringName, exclude_unit: Unit =
 
 
 func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amount: int, pile_reserved_total: int = -1) -> int:
-	if is_transaction_busy():
+	if is_transaction_busy() or _site_state == SiteState.CANCELLED:
 		return 0
 	_prune_stale_state()
 	if unit == null or not is_instance_valid(unit) or desired_amount <= 0:
@@ -1165,7 +1172,7 @@ func register_worker(
 	order: UnitOrder,
 	force_transporter: bool = false
 ) -> WorkerRole:
-	if is_transaction_busy():
+	if is_transaction_busy() or _site_state == SiteState.CANCELLED:
 		return WorkerRole.UNASSIGNED
 	_prune_stale_state()
 	if unit == null or not is_instance_valid(unit) or order == null or definition == null:

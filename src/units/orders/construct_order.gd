@@ -1422,7 +1422,7 @@ func _clear_pickup_target() -> void:
 
 
 func _is_site_valid() -> bool:
-	return site != null and is_instance_valid(site) and site.is_inside_tree() and site.is_valid()
+	return site != null and is_instance_valid(site) and site.is_inside_tree() and site.is_valid() and site.get_site_state() != ConstructionSite.SiteState.CANCELLED
 
 
 func _finish_succeeded() -> void:
