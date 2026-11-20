@@ -116,7 +116,9 @@ static func _inspect_cargo(site: ConstructionSite, operation: StringName, under_
 		var moves: Array[StringName] = []
 		var amounts: Dictionary = {}
 		var explicit_region: Variant = unit.get_meta(&"region_id", &"")
-		if explicit_region == &"" or explicit_region == site.region_id or assigned or not claim.is_empty():
+		# Target-site cargo is an obligation even without an assignment/claim. Never
+		# use the unit's region to hide it from reconciliation.
+		if not lots.is_empty():
 			for lot: Dictionary in lots.values():
 				if lot.site_id != site.site_id or lot.origin != CarryProvenanceLedger.SITE_RESERVED:
 					continue
@@ -318,6 +320,7 @@ static func _apply(scope: ReservedWithdrawalCoordinator.CancellationScope, plan:
 		return _reject("injected_precommit_failure" if fail_at == FailureStage.RECORD else "commit_validation_failed")
 
 	scope._publishing = true
+	CancellationRecoveryTransaction.sync_footprint(record, scope.world)
 	if not record.requires_local_footprint_occupation():
 		site._site_collision_shape.set_deferred("disabled", true)
 		site._visual_root.hide()
@@ -374,6 +377,13 @@ static func _make_record(scope: ReservedWithdrawalCoordinator.CancellationScope,
 	record.generation = scope.generation
 	record.region_id = scope.region_id
 	record.world_instance_id = scope.world.get_instance_id()
+	record.anchor_position = scope.site.global_position
+	record.footprint_size = scope.site.definition.footprint_size
+	record.collider_height = maxf(scope.site.definition.visual_height * 0.45, ConstructionSite.DEFAULT_COLLIDER_MIN_HEIGHT)
+	record.visual_site = weakref(scope.site)
+	record.inventory_ref = weakref(scope.inventory)
+	for resource: StringName in scope.site._required_amounts:
+		record.resource_weights[resource] = scope.site._resolve_resource_definition_pure(resource).unit_weight
 	record.work_progress_usec = plan.progress
 	record.total_work_usec = plan.total_work
 	record.required_amounts = scope.site._required_amounts.duplicate()

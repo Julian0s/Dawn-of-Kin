@@ -334,6 +334,15 @@ static func _prepare(
 		"nav_revision": nav.get_navigation_revision() if nav != null else 0,
 		"has_custom_validator": _has_untrusted_custom_position_validator(camp_zone),
 	}
+	var cancellation_revisions: Dictionary = {}
+	for entry: Dictionary in selected_lots_out:
+		if CancellationRecoveryTransaction.CANCEL_ORIGINS.has(entry.origin):
+			var custody := CancellationRecoveryTransaction.classify_lot(unit, storage, entry)
+			if not custody.ok:
+				return _reject(custody.reason, "cancellation_custody")
+			cancellation_revisions[custody.record.cancel_id] = custody.snapshot
+	if not cancellation_revisions.is_empty():
+		camp_config_rev["cancellation_custodies"] = cancellation_revisions
 
 	return {
 		"ok": true,
@@ -873,6 +882,16 @@ static func _classify_lots_pure(
 				"destination_class": DEST_CAMP_FREE_STOCK,
 				"reason": "",
 				"dependency": "",
+			}
+			continue
+
+		if CancellationRecoveryTransaction.CANCEL_ORIGINS.has(origin):
+			var custody := CancellationRecoveryTransaction.classify_lot(unit, storage, lot)
+			lot_info_by_id[lid] = {
+				"lot_id": lid, "resource_id": res_id, "origin": origin, "site_id": sid,
+				"generation": gen, "reservation_id": &"", "quantity": qty,
+				"eligible": custody.ok, "destination_class": DEST_CAMP_FREE_STOCK,
+				"reason": custody.get("reason", ""), "dependency": "cancellation_custody" if not custody.ok else "",
 			}
 			continue
 

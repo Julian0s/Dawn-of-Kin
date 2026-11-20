@@ -761,6 +761,9 @@ func _validate_spatial_base(
 	)
 	var scoped_obstacles: Array[Dictionary] = []
 	for hit: Dictionary in obstacle_hits:
+		var collider: Object = hit.get("collider")
+		if is_instance_valid(collider) and collider.has_meta(&"_cancellation_region") and collider.get_meta(&"_cancellation_region") != context.region_id:
+			continue
 		var site := ConstructionSite.resolve_from_collider(hit.get("collider"))
 		if site != null and not site.occupies_construction_footprint():
 			continue
@@ -785,6 +788,10 @@ func _validate_spatial_base(
 		if is_instance_valid(building) and building.is_inside_tree() and building.region_id == context.region_id and ValidationContext._matches_world(building, context.world_3d) and building.get_footprint_rect().intersects(shrunk_candidate, true):
 			_fail_result(result, REASON_OBSTACLE_OVERLAP, "Completed building occupies this area.")
 			return result
+	if CancellationRecoveryTransaction.overlaps(context.world_3d, context.region_id, shrunk_candidate):
+		# Custody survives removal of the visual site node.
+		_fail_result(result, REASON_OBSTACLE_OVERLAP, "Cancellation materials occupy this area.")
+		return result
 	for existing_site: ConstructionSite in context.construction_sites:
 		if existing_site == null or not is_instance_valid(existing_site) or not existing_site.is_valid() or not existing_site.occupies_construction_footprint():
 			continue

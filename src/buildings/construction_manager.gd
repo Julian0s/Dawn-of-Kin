@@ -156,7 +156,7 @@ func has_building_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool
 
 
 func has_footprint_overlapping_rect(rect: Rect2, tolerance: float = 0.01) -> bool:
-	return has_site_overlapping_rect(rect, tolerance) or has_building_overlapping_rect(rect, tolerance)
+	return has_site_overlapping_rect(rect, tolerance) or has_building_overlapping_rect(rect, tolerance) or (is_instance_valid(_sites_root) and _sites_root.is_inside_tree() and CancellationRecoveryTransaction.overlaps(_sites_root.get_world_3d(), _region_id, rect.grow(-tolerance)))
 
 
 func _on_site_state_changed(site: ConstructionSite) -> void:

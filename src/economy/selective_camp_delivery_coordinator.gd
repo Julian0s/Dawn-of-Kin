@@ -209,6 +209,9 @@ func _commit_under_guards(
 		return _failure(String(checkpoint.get("reason", "checkpoint_failed")), "preparation")
 
 	var plan_digest := _plan_digest(fresh if plan.is_empty() else plan)
+	var custody_projection := CancellationRecoveryTransaction.prepare_delivery(scope.unit, scope.storage, fresh.selected_lots)
+	if not custody_projection.ok:
+		return _failure(custody_projection.reason, "cancellation_custody")
 
 	if _aborted("before_carry_debit"):
 		return _failure("aborted_before_carry_debit", "transaction")
@@ -221,6 +224,17 @@ func _commit_under_guards(
 	if not bool(apply_res.get("ok", false)):
 		TxHelpers.restore_silent(scope, checkpoint)
 		return _failure(String(apply_res.get("reason", "transaction_aborted")), "transaction")
+	if not CancellationRecoveryTransaction._apply_delivery(scope, custody_projection.changes):
+		TxHelpers.restore_silent(scope, checkpoint)
+		return _failure("unauthorized_scope", "cancellation_custody")
+	var custody_valid := true
+	for entry: Dictionary in custody_projection.changes.values():
+		custody_valid = custody_valid and CancellationRecoveryTransaction.validate_transit(entry.record, scope.unit, scope.storage)
+	if _aborted("after_custody_update") or not custody_valid:
+		TxHelpers.restore_silent(scope, checkpoint)
+		CancellationRecoveryTransaction._rollback_delivery(scope, custody_projection.changes)
+		return _failure("custody_commit_aborted", "cancellation_custody")
+	CancellationRecoveryTransaction._finalize_delivery(scope, custody_projection.changes)
 
 	# Irreversible commit boundary: disconnect exhausted transit listeners, advance revisions,
 	# record regional receipt, attach created piles & sync visuals, then publish notifications.

@@ -26,6 +26,7 @@ class DeliveryScope extends RefCounted:
 
 ## Capability for the one active selective camp delivery in this domain.
 class CampDeliveryScope extends RefCounted:
+	var _custody_commit_sealed: bool = false
 	var world: World3D
 	var region_id: StringName
 	var camp_zone: CampStorageZone
@@ -135,6 +136,14 @@ class CancellationCustodyRecord extends RefCounted:
 	var generation: int = 0
 	var region_id: StringName
 	var world_instance_id: int = 0
+	# Stable physical recovery anchor; no dependency on a live visual site.
+	var anchor_position := Vector3.ZERO
+	var footprint_size := Vector2.ZERO
+	var collider_height: float = 1.0
+	var resource_weights: Dictionary = {}
+	var visual_site: WeakRef
+	var inventory_ref: WeakRef
+	var custody_body: WeakRef
 	var work_progress_usec: int = 0
 	var total_work_usec: int = 1
 	var required_amounts: Dictionary = {}
@@ -188,6 +197,9 @@ class CancellationCustodyRecord extends RefCounted:
 			"generation": generation,
 			"region_id": region_id,
 			"world_instance_id": world_instance_id,
+			"anchor_position": anchor_position,
+			"footprint_size": footprint_size,
+			"resource_weights": resource_weights.duplicate(),
 			"work_progress_usec": work_progress_usec,
 			"total_work_usec": total_work_usec,
 			"state": state,
@@ -3014,6 +3026,10 @@ static func plan_custody_state_sequence_pure(has_pending_custody: bool) -> Dicti
 		if not bool(step.get("ok", false)) or not bool(step.get("changed", false)):
 			return {"ok": false, "reason": String(step.get("reason", "invalid_transition")), "states": []}
 	return {"ok": true, "states": sequence}
+
+
+static func recover_cancellation_materials(cancel_id: Variant, unit: Unit, requests: Variant, operation_id: Variant, region_id: StringName = &"default") -> Dictionary:
+	return CancellationRecoveryTransaction.recover(cancel_id, unit, requests, operation_id, region_id)
 
 
 static func transition_custody_record(
