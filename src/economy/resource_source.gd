@@ -14,6 +14,7 @@ enum TreeVisualState {
 
 signal amount_changed(source: ResourceSource, remaining_amount: int, delta: int)
 signal depleted(source: ResourceSource)
+signal worker_slot_released(source: ResourceSource)
 
 @export var source_id: StringName = &"":
 	set(value):

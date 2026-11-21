@@ -41,6 +41,14 @@ func get_region_id() -> StringName:
 	return _region_id
 
 
+func register_gather_group(_sources: Array[ResourceSource], _group_id: int = 0) -> Dictionary:
+	return {"ok": false, "group_id": 0, "created_tasks": [], "existing_tasks": [], "rejected_count": 0, "reason": "not_implemented"}
+
+
+func get_tasks_in_group(_group_id: int) -> Array[WorkTask]:
+	return []
+
+
 func register_gather_task(source: ResourceSource) -> Dictionary:
 	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}

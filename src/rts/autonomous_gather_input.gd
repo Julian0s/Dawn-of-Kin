@@ -12,6 +12,7 @@ const RING_COLOR_STONE: Color = Color(0.66, 0.78, 0.90, 0.85)
 const RING_COLOR_FOOD: Color = Color(0.92, 0.66, 0.34, 0.85)
 
 @export var supported_resource_ids: PackedStringArray = PackedStringArray(["wood"])
+@export var multi_source_enabled: bool = false
 
 var _board: CommunityWorkBoard = null
 var _dispatcher: CommunityTaskDispatcher = null

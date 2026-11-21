@@ -1,0 +1,76 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://src/main/main.tscn" id="1"]
+[ext_resource type="Script" path="res://src/rts/autonomous_gather_input.gd" id="2"]
+[ext_resource type="Script" path="res://src/rts/community_work_board.gd" id="3"]
+[ext_resource type="Script" path="res://src/rts/community_task_dispatcher.gd" id="4"]
+[ext_resource type="Script" path="res://src/ui/autonomous_gather_feedback.gd" id="5"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/tree_source.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/rock_source.tscn" id="7"]
+[ext_resource type="PackedScene" path="res://src/economy/sources/bush_source.tscn" id="8"]
+
+[node name="Main" instance=ExtResource("1")]
+
+[node name="RtsInputController" parent="."]
+script = ExtResource("2")
+supported_resource_ids = PackedStringArray("wood", "stone", "food")
+multi_source_enabled = true
+
+[node name="CommunityWorkBoard" type="Node" parent="."]
+script = ExtResource("3")
+
+[node name="CommunityTaskDispatcher" type="Node" parent="."]
+script = ExtResource("4")
+
+[node name="AutonomousGatherFeedback" type="PanelContainer" parent="UiLayer"]
+visible = false
+mouse_filter = 2
+script = ExtResource("5")
+
+[node name="WoodTree03" parent="TestMap/ResourceSources" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -1.0)
+source_id = &"wood_tree_03"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="WoodTree04" parent="TestMap/ResourceSources" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, 2.2)
+source_id = &"wood_tree_04"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="WoodTree05" parent="TestMap/ResourceSources" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.5, 0, 2.0)
+source_id = &"wood_tree_05"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="WoodTree06" parent="TestMap/ResourceSources" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.0, 0, 0.2)
+source_id = &"wood_tree_06"
+initial_amount = 24
+max_extract_per_operation = 2
+
+[node name="StoneRock03" parent="TestMap/ResourceSources" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.0, 0, 1.8)
+source_id = &"stone_rock_03"
+initial_amount = 18
+max_extract_per_operation = 1
+
+[node name="StoneRock04" parent="TestMap/ResourceSources" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.0, 0, -1.5)
+source_id = &"stone_rock_04"
+initial_amount = 18
+max_extract_per_operation = 1
+
+[node name="FoodBush03" parent="TestMap/ResourceSources" instance=ExtResource("8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 0, 8.5)
+source_id = &"food_bush_03"
+initial_amount = 30
+max_extract_per_operation = 2
+
+[node name="FoodBush04" parent="TestMap/ResourceSources" instance=ExtResource("8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.0, 0, 11.2)
+source_id = &"food_bush_04"
+initial_amount = 30
+max_extract_per_operation = 2

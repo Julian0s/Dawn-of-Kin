@@ -20,6 +20,7 @@ enum State {
 const REASON_ALL_WORKERS_EXCLUDED: String = "all_workers_manually_excluded"
 
 var task_id: int = 0
+var group_id: int = 0
 var kind: Kind = Kind.GATHER_WOOD
 var resource_id: StringName = &"wood"
 var resource_definition: ResourceDefinition = null
