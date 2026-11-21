@@ -448,3 +448,42 @@ func test_r6_invalid_depleted_removed_and_unreachable_sources_safe() -> void:
 		assert_eq(healthy_task.state, WorkTask.State.IN_PROGRESS, "Valid tree must dispatch cleanly after recovery")
 
 	await _teardown_fixture(view)
+
+
+func test_r7_preserves_existing_selection_and_skips_reserved_cargo_worker() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var camera := view.get_camera_3d()
+	var board := main.get_node("CommunityWorkBoard") as CommunityWorkBoard
+	var tree_1 := main.get_node("TestMap/ResourceSources/WoodTree01") as ResourceSource
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+
+	# Select LeaderA manually before clicking the tree; automatic gather must preserve SelectionManager.
+	main.get_selection_manager().select_single(leader_a)
+
+	# Give closer LeaderB a SITE_RESERVED provenance lot so it has an active construction material obligation.
+	var b_load: UnitCarryLoad = leader_b.get_carry_load()
+	var plan: Dictionary = b_load._prepare_provenance_add(&"op_rux1_res_test", &"lot_rux1_res_test", &"wood", 2, 2, CarryProvenanceLedger.SITE_RESERVED, &"site_dummy", 1)
+	assert_true(bool(plan.get("ok", false)), "Precondition: SITE_RESERVED lot prepared on LeaderB")
+	b_load._provenance_busy = true
+	b_load._provenance_applying = true
+	var applied: bool = b_load._apply_prepared_provenance_add(plan)
+	b_load._provenance_applying = false
+	b_load._provenance_busy = false
+	assert_true(applied, "Precondition: SITE_RESERVED lot applied on LeaderB")
+
+	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
+	await _left_click(view, tree_point)
+	await wait_process_frames(2)
+	await wait_physics_frames(1)
+
+	var task: WorkTask = board.get_active_task_for_source(tree_1)
+	assert_not_null(task, "Task must be registered")
+	if task != null:
+		assert_eq(task.state, WorkTask.State.IN_PROGRESS, "Eligible LeaderA must take task while LeaderB holds SITE_RESERVED cargo")
+		assert_eq(task.assigned_unit, leader_a, "Worker carrying SITE_RESERVED cargo must be skipped in favor of eligible worker")
+	assert_null(leader_b.get_current_order(), "Worker carrying SITE_RESERVED cargo must not receive automatic gather order")
+	assert_eq(main.get_selection_manager().get_selected_units(), [leader_a], "Existing RTS selection must remain intact")
+
+	await _teardown_fixture(view)

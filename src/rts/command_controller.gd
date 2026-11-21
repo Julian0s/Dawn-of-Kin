@@ -192,26 +192,66 @@ func command_at(pick: PickResult) -> bool:
 	return true
 
 
+func command_units_to_gather(
+	source: ResourceSource,
+	units: Array[Unit] = [],
+	show_marker: bool = true
+) -> Dictionary:
+	_resolve_dependencies()
+	_last_command_reason = ""
+	if source == null or not is_instance_valid(source) or not source.is_inside_tree():
+		_last_command_reason = "invalid_resource_source"
+		return _gather_command_result(false, _last_command_reason)
+	if _world_navigation == null or not is_instance_valid(_world_navigation):
+		_last_command_reason = "missing_navigation"
+		return _gather_command_result(false, _last_command_reason)
+	if not _world_navigation.is_navigation_ready():
+		_last_command_reason = "navigation_not_ready"
+		return _gather_command_result(false, _last_command_reason)
+
+	var target_units: Array[Unit] = []
+	for unit: Unit in units:
+		if unit != null and is_instance_valid(unit) and unit.is_inside_tree() and not target_units.has(unit):
+			target_units.append(unit)
+	if target_units.is_empty():
+		_last_command_reason = "no_commandable_units"
+		return _gather_command_result(false, _last_command_reason)
+
+	var pick := PickResult.from_resource_source(source, source.global_position, Vector3.UP)
+	return _execute_gather_resource(pick, target_units, show_marker)
+
+
 func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
+	var result: Dictionary = _execute_gather_resource(pick, units, true)
+	return bool(result.get("ok", false))
+
+
+func _execute_gather_resource(
+	pick: PickResult,
+	units: Array[Unit],
+	show_marker: bool
+) -> Dictionary:
 	if pick == null or not pick.is_resource_source() or not is_instance_valid(pick.resource_source):
 		_last_command_reason = "invalid_resource_source"
-		return false
+		return _gather_command_result(false, _last_command_reason)
 
 	var source: ResourceSource = pick.resource_source
 	if not _admit_economic_command(pick, units, source):
-		return false
+		return _gather_command_result(false, _last_command_reason)
 	if source.is_depleted():
 		_last_command_reason = "resource_source_depleted"
-		return false
+		return _gather_command_result(false, _last_command_reason)
 	if not source.is_available():
 		_last_command_reason = "invalid_resource_source"
-		return false
+		return _gather_command_result(false, _last_command_reason)
 
 	if _settlement_inventory == null or _camp_storage_zone == null or not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_valid():
 		_last_command_reason = GatherResourceOrder.REASON_MISSING_ECONOMY
-		return false
+		return _gather_command_result(false, _last_command_reason)
 
-	var started_count: int = 0
+	var assigned_units: Array[Unit] = []
+	var assigned_orders: Dictionary = {}
+	var rejected_reasons: Dictionary = {}
 	var first_failure_reason: String = ""
 
 	for unit: Unit in units:
@@ -219,6 +259,7 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 			unit.set_world_navigation(_world_navigation)
 
 		if not source.has_worker_slot(unit):
+			rejected_reasons[unit.get_instance_id()] = GatherResourceOrder.REASON_NO_WORKER_SLOT
 			if first_failure_reason.is_empty():
 				first_failure_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
 			continue
@@ -226,21 +267,41 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0, _use_provenance_economy, _economy_region_id)
 		unit.issue_order(order)
 		if _is_order_accepted(unit, order):
-			started_count += 1
-		elif first_failure_reason.is_empty():
-			first_failure_reason = _resolve_order_rejection_reason(unit, order)
+			assigned_units.append(unit)
+			assigned_orders[unit.get_instance_id()] = order
+		else:
+			var unit_reason: String = _resolve_order_rejection_reason(unit, order)
+			rejected_reasons[unit.get_instance_id()] = unit_reason
+			if first_failure_reason.is_empty():
+				first_failure_reason = unit_reason
 
-	if started_count <= 0:
+	if assigned_units.is_empty():
 		_last_command_reason = first_failure_reason if not first_failure_reason.is_empty() else GatherResourceOrder.REASON_NO_WORKER_SLOT
 		command_rejected.emit(pick, _last_command_reason)
-		return false
+		return _gather_command_result(false, _last_command_reason, assigned_units, assigned_orders, rejected_reasons)
 
 	var marker_pos: Vector3 = source.global_position
-	if _destination_marker != null and is_instance_valid(_destination_marker):
+	if show_marker and _destination_marker != null and is_instance_valid(_destination_marker):
 		_destination_marker.show_at(marker_pos, Vector3.UP, true)
 
-	command_issued.emit(pick, marker_pos, started_count, true)
-	return true
+	command_issued.emit(pick, marker_pos, assigned_units.size(), true)
+	return _gather_command_result(true, "", assigned_units, assigned_orders, rejected_reasons)
+
+
+static func _gather_command_result(
+	ok: bool,
+	reason: String,
+	assigned_units: Array[Unit] = [],
+	assigned_orders: Dictionary = {},
+	rejected_reasons: Dictionary = {}
+) -> Dictionary:
+	return {
+		"ok": ok,
+		"reason": reason,
+		"assigned_units": assigned_units,
+		"assigned_orders": assigned_orders,
+		"rejected_reasons": rejected_reasons,
+	}
 
 
 func command_units_to_site(site: ConstructionSite, units: Array[Unit] = []) -> bool:
