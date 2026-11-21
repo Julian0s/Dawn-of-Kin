@@ -265,47 +265,18 @@ func test_b3_box_selects_five_of_six_trees_leaving_sixth_intact() -> void:
 	tree_6.configure(tree_6.source_id, tree_6.get_definition(), 24, 2, 2)
 	var stock_before: int = inventory.get_physical_amount(&"wood")
 
-	# Focus camera on the grove and inspect screen coordinates to guarantee a clean 5-tree rectangle.
-	_focus_camera(main, Vector2(11.0, 2.0))
+	# Focus camera on the grove and drag ONE rectangle starting on WoodTree01 (top-right corner)
+	# across WoodTree01..05 to just past WoodTree02 (bottom-left corner), leaving WoodTree06 strictly outside.
+	_focus_camera(main, Vector2(10.5, 2.0))
 	await wait_process_frames(2)
 
-	# Start drag on WoodTree02 (bottom-leftmost in isometric view) and drag across WoodTree01..05, stopping short of WoodTree06.
 	var p_t1: Vector2 = _source_screen_point(view, tree_1)
 	var p_t2: Vector2 = _source_screen_point(view, tree_2)
-	var p_t3: Vector2 = _source_screen_point(view, tree_3)
-	var p_t4: Vector2 = _source_screen_point(view, tree_4)
-	var p_t5: Vector2 = _source_screen_point(view, tree_5)
 	var p_t6: Vector2 = _source_screen_point(view, tree_6)
-
-	# Choose origin tree among the 5 that is an extreme corner opposite to the other 4 so the drag box includes all 5 and excludes tree_6.
-	var chosen_origin: ResourceSource = null
-	var chosen_end: Vector2 = Vector2.ZERO
-	var points_five: Array[Vector2] = [p_t1, p_t2, p_t3, p_t4, p_t5]
-	for idx: int in range(selected_five.size()):
-		var origin_pt: Vector2 = points_five[idx]
-		var rect := Rect2(origin_pt, Vector2.ZERO)
-		for pt: Vector2 in points_five:
-			rect = rect.expand(pt)
-		# Candidate end corner opposite to origin_pt inside rect, grown slightly on the far side only.
-		var far_x: float = rect.end.x + 8.0 if absf(origin_pt.x - rect.position.x) < 1.0 else (rect.position.x - 8.0 if absf(origin_pt.x - rect.end.x) < 1.0 else INF)
-		var far_y: float = rect.end.y + 8.0 if absf(origin_pt.y - rect.position.y) < 1.0 else (rect.position.y - 8.0 if absf(origin_pt.y - rect.end.y) < 1.0 else INF)
-		if is_finite(far_x) and is_finite(far_y):
-			var test_box: Rect2 = SelectionBoxMath.normalize_rect(origin_pt, Vector2(far_x, far_y))
-			if not test_box.has_point(p_t6):
-				chosen_origin = selected_five[idx]
-				chosen_end = Vector2(far_x, far_y)
-				break
-
-	# Fallback: start drag on tree_2 (or tree_3) covering as many as possible; if isometric diamond has no axis-aligned corner among the 5, shift-add the 5th.
-	if chosen_origin != null:
-		await _left_drag(view, _source_screen_point(view, chosen_origin), chosen_end, false)
-	else:
-		# Start drag on tree_2 across trees 1,2,4,5 and check box directly; verify 5th is strictly inside a clean box from tree_1 to tree_4.
-		var bounds_5: Rect2 = _compute_screen_bounds(view, selected_five, 6.0)
-		assert_false(bounds_5.has_point(p_t6), "Precondition: 6th tree sits outside the 5-tree bounding box")
-		# Drag from tree_1 to opposite corner of bounds_5, then Shift-drag from tree_2 to top corner if needed.
-		await _left_drag(view, p_t1, bounds_5.end, false)
-		await _left_drag(view, p_t2, bounds_5.position, true)
+	var drag_end := Vector2(p_t2.x - 16.0, p_t2.y + 16.0)
+	var single_box: Rect2 = SelectionBoxMath.normalize_rect(p_t1, drag_end)
+	assert_false(single_box.has_point(p_t6), "Precondition: 6th tree sits strictly outside the single 5-tree drag box")
+	await _left_drag(view, p_t1, drag_end, false)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 

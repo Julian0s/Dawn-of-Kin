@@ -1,6 +1,6 @@
 class_name CommunityWorkBoard
 extends Node
-## Regional registry for community single-source gather tasks (wood, stone, food).
+## Regional registry for community single-source and logically grouped gather tasks (wood, stone, food).
 ## Event-driven, zero per-frame polling, and idempotent per ResourceSource.
 
 signal task_registered(task: WorkTask)
@@ -11,6 +11,7 @@ const SUPPORTED_RESOURCE_IDS: Array[StringName] = [&"wood", &"stone", &"food"]
 
 var _region_id: StringName = &"default"
 var _next_task_id: int = 1
+var _next_group_id: int = 1
 var _tasks: Array[WorkTask] = []
 var _active_by_source_id: Dictionary = {}
 var _source_callbacks: Dictionary = {}
@@ -41,15 +42,87 @@ func get_region_id() -> StringName:
 	return _region_id
 
 
-func register_gather_group(_sources: Array[ResourceSource], _group_id: int = 0) -> Dictionary:
-	return {"ok": false, "group_id": 0, "created_tasks": [], "existing_tasks": [], "rejected_count": 0, "reason": "not_implemented"}
+func allocate_group_id() -> int:
+	var gid: int = _next_group_id
+	_next_group_id += 1
+	return gid
 
 
-func get_tasks_in_group(_group_id: int) -> Array[WorkTask]:
-	return []
+func register_gather_group(sources: Array[ResourceSource], p_group_id: int = 0) -> Dictionary:
+	var created_tasks: Array[WorkTask] = []
+	var existing_tasks: Array[WorkTask] = []
+	var rejected_count: int = 0
+	var seen_ids: Dictionary = {}
+	var expected_resource_id: StringName = &""
+	var resolved_group_id: int = p_group_id
+
+	if resolved_group_id > 0:
+		expected_resource_id = get_group_resource_id(resolved_group_id)
+
+	var valid_candidates: Array[ResourceSource] = []
+	for source: ResourceSource in sources:
+		if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
+			rejected_count += 1
+			continue
+		var sid: int = source.get_instance_id()
+		if seen_ids.has(sid):
+			continue
+		seen_ids[sid] = true
+
+		var def: ResourceDefinition = source.get_definition()
+		var res_id: StringName = source.get_resource_id()
+		if def == null or not def.is_valid() or not SUPPORTED_RESOURCE_IDS.has(res_id):
+			rejected_count += 1
+			continue
+		if source.is_depleted() or not source.is_available():
+			rejected_count += 1
+			continue
+		if expected_resource_id.is_empty():
+			expected_resource_id = res_id
+		elif res_id != expected_resource_id:
+			rejected_count += 1
+			continue
+		valid_candidates.append(source)
+
+	if valid_candidates.is_empty():
+		return {
+			"ok": false,
+			"group_id": 0,
+			"resource_id": expected_resource_id,
+			"created_tasks": created_tasks,
+			"existing_tasks": existing_tasks,
+			"rejected_count": rejected_count,
+			"reason": "no_valid_sources",
+		}
+
+	if resolved_group_id <= 0:
+		resolved_group_id = allocate_group_id()
+
+	for source: ResourceSource in valid_candidates:
+		var reg: Dictionary = register_gather_task(source, resolved_group_id)
+		if bool(reg.get("ok", false)):
+			var task: WorkTask = reg.get("task") as WorkTask
+			if task != null:
+				if bool(reg.get("created", false)):
+					created_tasks.append(task)
+				else:
+					existing_tasks.append(task)
+		else:
+			rejected_count += 1
+
+	var ok: bool = not created_tasks.is_empty() or not existing_tasks.is_empty()
+	return {
+		"ok": ok,
+		"group_id": resolved_group_id if ok else 0,
+		"resource_id": expected_resource_id,
+		"created_tasks": created_tasks,
+		"existing_tasks": existing_tasks,
+		"rejected_count": rejected_count,
+		"reason": "" if ok else "no_valid_sources",
+	}
 
 
-func register_gather_task(source: ResourceSource) -> Dictionary:
+func register_gather_task(source: ResourceSource, p_group_id: int = 0) -> Dictionary:
 	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}
 	var def: ResourceDefinition = source.get_definition()
@@ -72,6 +145,7 @@ func register_gather_task(source: ResourceSource) -> Dictionary:
 	task.task_id = _next_task_id
 	task.created_seq = _next_task_id
 	_next_task_id += 1
+	task.group_id = p_group_id if p_group_id > 0 else allocate_group_id()
 	task.kind = WorkTask.kind_from_resource_id(res_id)
 	task.resource_id = res_id
 	task.resource_definition = def
@@ -106,6 +180,34 @@ func get_active_task_for_source(source: ResourceSource) -> WorkTask:
 		_active_by_source_id.erase(sid)
 		return null
 	return task
+
+
+func get_tasks_in_group(group_id: int) -> Array[WorkTask]:
+	var result: Array[WorkTask] = []
+	if group_id <= 0:
+		return result
+	for task: WorkTask in _tasks:
+		if task != null and task.is_active() and task.group_id == group_id:
+			result.append(task)
+	return result
+
+
+func has_active_tasks_in_group(group_id: int) -> bool:
+	if group_id <= 0:
+		return false
+	for task: WorkTask in _tasks:
+		if task != null and task.is_active() and task.group_id == group_id:
+			return true
+	return false
+
+
+func get_group_resource_id(group_id: int) -> StringName:
+	if group_id <= 0:
+		return &""
+	for task: WorkTask in _tasks:
+		if task != null and task.is_active() and task.group_id == group_id:
+			return task.resource_id
+	return &""
 
 
 func get_active_tasks() -> Array[WorkTask]:
@@ -151,7 +253,8 @@ func close_task(task: WorkTask, final_state: WorkTask.State, reason: String = ""
 	var sid: int = _find_source_id_for_task(task)
 	if sid != 0:
 		_active_by_source_id.erase(sid)
-		_unbind_source_signals(sid, task.source)
+		var safe_source: ResourceSource = task.source if is_instance_valid(task.source) else null
+		_unbind_source_signals(sid, safe_source)
 
 	task.state = final_state
 	task.last_reason = reason
@@ -164,14 +267,18 @@ func _bind_source_signals(source: ResourceSource, sid: int) -> void:
 		return
 	var on_exit: Callable = Callable(self, "_on_source_tree_exited").bind(sid)
 	var on_depleted: Callable = Callable(self, "_on_source_depleted").bind(sid)
+	var on_slot_released: Callable = Callable(self, "_on_source_worker_slot_released").bind(sid)
 	if not source.tree_exited.is_connected(on_exit):
 		source.tree_exited.connect(on_exit)
 	if not source.depleted.is_connected(on_depleted):
 		source.depleted.connect(on_depleted)
+	if not source.worker_slot_released.is_connected(on_slot_released):
+		source.worker_slot_released.connect(on_slot_released)
 	_source_callbacks[sid] = {
 		"source_ref": weakref(source),
 		"on_exit": on_exit,
 		"on_depleted": on_depleted,
+		"on_slot_released": on_slot_released,
 	}
 
 
@@ -192,10 +299,13 @@ func _disconnect_source_entry(source: ResourceSource, entry: Dictionary) -> void
 		return
 	var on_exit: Callable = entry.get("on_exit", Callable()) as Callable
 	var on_depleted: Callable = entry.get("on_depleted", Callable()) as Callable
+	var on_slot_released: Callable = entry.get("on_slot_released", Callable()) as Callable
 	if on_exit.is_valid() and source.tree_exited.is_connected(on_exit):
 		source.tree_exited.disconnect(on_exit)
 	if on_depleted.is_valid() and source.depleted.is_connected(on_depleted):
 		source.depleted.disconnect(on_depleted)
+	if on_slot_released.is_valid() and source.worker_slot_released.is_connected(on_slot_released):
+		source.worker_slot_released.disconnect(on_slot_released)
 
 
 func _on_source_tree_exited(sid: int) -> void:
@@ -210,7 +320,6 @@ func _on_source_tree_exited(sid: int) -> void:
 	if not task.has_assigned_worker():
 		close_task(task, WorkTask.State.FAILED, "invalid_source")
 	else:
-		# Let the active GatherResourceOrder deliver any carried resource or finish cleanly.
 		task_updated.emit(task)
 
 
@@ -224,8 +333,16 @@ func _on_source_depleted(_source: ResourceSource, sid: int) -> void:
 	if not task.has_assigned_worker():
 		close_task(task, WorkTask.State.FAILED, "source_depleted")
 	else:
-		# Active worker finishes physical delivery before task reaches COMPLETED.
 		task_updated.emit(task)
+
+
+func _on_source_worker_slot_released(_source: ResourceSource, sid: int) -> void:
+	if not _active_by_source_id.has(sid):
+		return
+	var task: WorkTask = _active_by_source_id[sid] as WorkTask
+	if task == null or task.state != WorkTask.State.PENDING_WORKERS:
+		return
+	task_updated.emit(task)
 
 
 func _find_source_id_for_task(task: WorkTask) -> int:

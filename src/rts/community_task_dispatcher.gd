@@ -1,8 +1,8 @@
 class_name CommunityTaskDispatcher
 extends Node
-## Unified event-driven community task dispatcher for wood, stone, and food sources.
-## Zero per-frame polling: reacts to board, unit, navigation, and inventory signals via deferred coalesced passes.
-## Never holds economic balances or overwrites active manual orders.
+## Unified event-driven community task dispatcher for single and logically grouped gather tasks (wood, stone, food).
+## Zero per-frame polling: reacts to board, unit, navigation, slot-release, and inventory signals via deferred coalesced passes.
+## Never holds economic balances, never overwrites active manual orders, and never silently unblocks BLOCKED_REAUTHORIZATION.
 
 signal task_assigned(task: WorkTask, unit: Unit, order: GatherResourceOrder)
 signal task_waiting(task: WorkTask, reason: String)
@@ -192,7 +192,7 @@ func _on_board_task_registered(_task: WorkTask) -> void:
 
 
 func _on_board_task_updated(task: WorkTask) -> void:
-	if task != null and task.state == WorkTask.State.BLOCKED_REAUTHORIZATION:
+	if task != null and task.is_blocked_reauthorization():
 		return
 	request_dispatch()
 
@@ -238,8 +238,6 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 		return
 
 	if finished_order.status == UnitOrder.Status.CANCELLED:
-		# A manual order replaced or explicitly cancelled this worker's task participation:
-		# never silently reassign the same interrupted task back onto this worker.
 		if finished_order.failure_reason == UnitOrder.REASON_REPLACED or finished_order.failure_reason == UnitOrder.REASON_CANCELLED:
 			task.excluded_unit_ids[uid] = true
 		if task.is_source_usable():
@@ -279,46 +277,184 @@ func _flush_dispatch() -> void:
 		return
 
 	_dispatching = true
-	var active_tasks: Array[WorkTask] = _board.get_active_tasks()
-	for task: WorkTask in active_tasks:
+
+	# Pass 1: validate active tasks (preserve valid running tasks, never silently unblock BLOCKED_REAUTHORIZATION, close unusable sources).
+	var pending_tasks: Array[WorkTask] = []
+	for task: WorkTask in _board.get_active_tasks():
 		if not task.is_active():
 			continue
-		_process_single_task(task)
+		if task.is_blocked_reauthorization():
+			if not task.is_source_usable():
+				var blocked_unusable: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
+				_board.close_task(task, WorkTask.State.FAILED, blocked_unusable)
+			continue
+		if task.assigned_unit != null:
+			var u: Unit = task.assigned_unit
+			var order_still_valid: bool = (
+				is_instance_valid(u)
+				and u.is_inside_tree()
+				and task.assigned_order != null
+				and task.assigned_order.is_active()
+				and u.get_current_order() == task.assigned_order
+				and u.get_order_revision() == task.assigned_order_revision
+			)
+			if order_still_valid:
+				continue
+			task.clear_assignment()
+			task.state = WorkTask.State.PENDING_WORKERS
+		if not task.is_source_usable():
+			var unusable_reason: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
+			_board.close_task(task, WorkTask.State.FAILED, unusable_reason)
+			continue
+		pending_tasks.append(task)
+
+	# Pass 2: deterministic fair group-FIFO + spatial nearest dispatch across pending tasks.
+	var ordered_groups: Array[Array] = _partition_pending_tasks_by_group_fifo(pending_tasks)
+	for group_tasks: Array in ordered_groups:
+		_dispatch_group_tasks(group_tasks)
+
 	_dispatching = false
 
 	if _flush_queued and is_inside_tree():
 		call_deferred("_flush_dispatch")
 
 
-func _process_single_task(task: WorkTask) -> void:
-	if task.assigned_unit != null:
-		var u: Unit = task.assigned_unit
-		var order_still_valid: bool = (
-			is_instance_valid(u)
-			and u.is_inside_tree()
-			and task.assigned_order != null
-			and task.assigned_order.is_active()
-			and u.get_current_order() == task.assigned_order
-			and u.get_order_revision() == task.assigned_order_revision
-		)
-		if order_still_valid:
-			return
-		task.clear_assignment()
-		task.state = WorkTask.State.PENDING_WORKERS
+func _partition_pending_tasks_by_group_fifo(pending_tasks: Array[WorkTask]) -> Array[Array]:
+	var buckets: Dictionary = {}
+	var group_order: Array[int] = []
+	for task: WorkTask in pending_tasks:
+		var gid: int = task.group_id if task.group_id > 0 else -task.task_id
+		if not buckets.has(gid):
+			var arr: Array[WorkTask] = []
+			buckets[gid] = arr
+			group_order.append(gid)
+		(buckets[gid] as Array[WorkTask]).append(task)
 
+	var result: Array[Array] = []
+	for gid: int in group_order:
+		result.append(buckets[gid] as Array)
+	return result
+
+
+func _dispatch_group_tasks(group_tasks: Array) -> void:
+	# Repeatedly pair the closest available (unit, pending task) inside the group so
+	# multiple workers naturally spread across distinct sources with zero starvation.
+	var remaining: Array[WorkTask] = []
+	for item: Variant in group_tasks:
+		if item is WorkTask:
+			var t: WorkTask = item as WorkTask
+			if t.is_active() and t.state == WorkTask.State.PENDING_WORKERS:
+				remaining.append(t)
+
+	while not remaining.is_empty():
+		var best_task: WorkTask = null
+		var best_unit: Unit = null
+		var best_dist_sq: float = INF
+		var evaluated_any_pair: bool = false
+
+		for task: WorkTask in remaining:
+			if not task.is_active() or task.state != WorkTask.State.PENDING_WORKERS:
+				continue
+			if not task.is_source_usable():
+				continue
+			if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
+				continue
+			if _is_economy_busy(task.source):
+				continue
+
+			var candidates: Array[Unit] = _collect_sorted_candidates(task.source.global_position)
+			for unit: Unit in candidates:
+				if not _check_pre_nav_eligibility(unit, task).is_empty():
+					continue
+				var dist_sq: float = unit.global_position.distance_squared_to(task.source.global_position)
+				if dist_sq >= best_dist_sq and best_task != null:
+					break
+				var occupied: Array[Vector3] = GatherSlotPlanner.collect_other_unit_positions(unit, true)
+				var slot: Dictionary = GatherSlotPlanner.compute_source_approach_slot(
+					unit.global_position,
+					task.source,
+					_world_nav,
+					occupied
+				)
+				if bool(slot.get("valid", false)):
+					evaluated_any_pair = true
+					if dist_sq < best_dist_sq or best_task == null:
+						best_dist_sq = dist_sq
+						best_task = task
+						best_unit = unit
+					break
+
+		if not evaluated_any_pair or best_task == null or best_unit == null:
+			break
+
+		var dispatched: bool = _try_dispatch_unit_to_task(best_task, best_unit)
+		remaining.erase(best_task)
+		if not dispatched and best_task.is_active() and best_task.state == WorkTask.State.PENDING_WORKERS:
+			# Fall through to final status evaluation below so this task records its wait/fail state cleanly.
+			_evaluate_unassigned_task(best_task)
+
+	# Any tasks in this group that did not receive a worker get their exact waiting / blocked / failed status.
+	for task: WorkTask in remaining:
+		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.assigned_unit == null:
+			_evaluate_unassigned_task(task)
+
+
+func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
+	if not _check_pre_nav_eligibility(chosen_unit, task).is_empty():
+		return false
+
+	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false)
+	if not bool(dispatch_res.get("ok", false)):
+		var reject_reason: String = String(dispatch_res.get("reason", "dispatch_rejected"))
+		if reject_reason in [
+			GatherResourceOrder.REASON_SOURCE_UNREACHABLE,
+			GatherResourceOrder.REASON_SOURCE_DEPLETED,
+			"resource_source_depleted",
+			"invalid_resource_source",
+		]:
+			_board.close_task(task, WorkTask.State.FAILED, reject_reason)
+		else:
+			_mark_task_waiting(task, reject_reason, "")
+		return false
+
+	var assigned_orders: Dictionary = dispatch_res.get("assigned_orders", {}) as Dictionary
+	var order: GatherResourceOrder = assigned_orders.get(chosen_unit.get_instance_id()) as GatherResourceOrder
+	if order == null:
+		_mark_task_waiting(task, "dispatch_rejected", "")
+		return false
+	if order.is_succeeded():
+		if not task.is_source_usable():
+			_board.close_task(task, WorkTask.State.COMPLETED, "")
+		return true
+	if not order.is_active():
+		_mark_task_waiting(task, order.failure_reason if not order.failure_reason.is_empty() else "order_not_active", "")
+		return false
+
+	task.assigned_unit = chosen_unit
+	task.assigned_order = order
+	task.assigned_order_revision = chosen_unit.get_order_revision()
+	task.state = WorkTask.State.IN_PROGRESS
+	task.last_reason = ""
+	_board.notify_task_updated(task)
+	task_assigned.emit(task, chosen_unit, order)
+
+	var unit_label: String = chosen_unit.get_definition().display_name if chosen_unit.get_definition() != null else String(chosen_unit.get_character_id())
+	task_feedback.emit(_dispatch_feedback(task.resource_id, unit_label))
+	return true
+
+
+func _evaluate_unassigned_task(task: WorkTask) -> void:
+	if not task.is_active() or task.is_blocked_reauthorization() or task.assigned_unit != null:
+		return
 	if not task.is_source_usable():
 		var unusable_reason: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
 		_board.close_task(task, WorkTask.State.FAILED, unusable_reason)
 		return
-
 	if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
-		if not task.is_blocked_reauthorization():
-			_mark_task_waiting(task, "navigation_not_ready", "")
+		_mark_task_waiting(task, "navigation_not_ready", "")
 		return
-
 	if _is_economy_busy(task.source):
-		if not task.is_blocked_reauthorization():
-			_mark_task_waiting(task, "economy_busy", "")
+		_mark_task_waiting(task, "economy_busy", "")
 		return
 
 	var candidates: Array[Unit] = _collect_sorted_candidates(task.source.global_position)
@@ -326,7 +462,6 @@ func _process_single_task(task: WorkTask) -> void:
 		_mark_task_waiting(task, "no_workers", "Aguardando trabalhador disponível.")
 		return
 
-	var chosen_unit: Unit = null
 	var has_temporary_wait: bool = false
 	var any_unreachable: bool = false
 	var excluded_count: int = 0
@@ -350,69 +485,22 @@ func _process_single_task(task: WorkTask) -> void:
 			_world_nav,
 			occupied
 		)
-		if bool(slot.get("valid", false)):
-			chosen_unit = unit
-			break
+		if not bool(slot.get("valid", false)):
+			any_unreachable = true
+			if first_reason.is_empty():
+				first_reason = "source_unreachable"
 
-		any_unreachable = true
-		if first_reason.is_empty():
-			first_reason = "source_unreachable"
-
-	if chosen_unit == null:
-		if any_unreachable and not has_temporary_wait:
-			_board.close_task(task, WorkTask.State.FAILED, "source_unreachable")
-			task_feedback.emit(_unreachable_feedback(task.resource_id))
-			return
-		if excluded_count > 0 and not has_temporary_wait:
-			_mark_task_blocked_reauthorization(task)
-			return
-		var wait_reason: String = first_reason if not first_reason.is_empty() else "no_eligible_worker"
-		var wait_msg: String = "Aguardando trabalhador disponível." if wait_reason in ["busy", "not_idle", "no_worker_slot"] else ""
-		_mark_task_waiting(task, wait_reason, wait_msg)
+	if any_unreachable and not has_temporary_wait:
+		_board.close_task(task, WorkTask.State.FAILED, "source_unreachable")
+		task_feedback.emit(_unreachable_feedback(task.resource_id))
+		return
+	if excluded_count > 0 and not has_temporary_wait:
+		_mark_task_blocked_reauthorization(task)
 		return
 
-	# Final revalidation immediately before issuing command (guards against reentrancy).
-	if not _check_pre_nav_eligibility(chosen_unit, task).is_empty():
-		_mark_task_waiting(task, "busy", "")
-		return
-
-	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false)
-	if not bool(dispatch_res.get("ok", false)):
-		var reject_reason: String = String(dispatch_res.get("reason", "dispatch_rejected"))
-		if reject_reason in [
-			GatherResourceOrder.REASON_SOURCE_UNREACHABLE,
-			GatherResourceOrder.REASON_SOURCE_DEPLETED,
-			"resource_source_depleted",
-			"invalid_resource_source",
-		]:
-			_board.close_task(task, WorkTask.State.FAILED, reject_reason)
-		else:
-			_mark_task_waiting(task, reject_reason, "")
-		return
-
-	var assigned_orders: Dictionary = dispatch_res.get("assigned_orders", {}) as Dictionary
-	var order: GatherResourceOrder = assigned_orders.get(chosen_unit.get_instance_id()) as GatherResourceOrder
-	if order == null:
-		_mark_task_waiting(task, "dispatch_rejected", "")
-		return
-	if order.is_succeeded():
-		if not task.is_source_usable():
-			_board.close_task(task, WorkTask.State.COMPLETED, "")
-		return
-	if not order.is_active():
-		_mark_task_waiting(task, order.failure_reason if not order.failure_reason.is_empty() else "order_not_active", "")
-		return
-
-	task.assigned_unit = chosen_unit
-	task.assigned_order = order
-	task.assigned_order_revision = chosen_unit.get_order_revision()
-	task.state = WorkTask.State.IN_PROGRESS
-	task.last_reason = ""
-	_board.notify_task_updated(task)
-	task_assigned.emit(task, chosen_unit, order)
-
-	var unit_label: String = chosen_unit.get_definition().display_name if chosen_unit.get_definition() != null else String(chosen_unit.get_character_id())
-	task_feedback.emit(_dispatch_feedback(task.resource_id, unit_label))
+	var wait_reason: String = first_reason if not first_reason.is_empty() else "no_eligible_worker"
+	var wait_msg: String = "Aguardando trabalhador disponível." if wait_reason in ["busy", "not_idle", "no_worker_slot"] else ""
+	_mark_task_waiting(task, wait_reason, wait_msg)
 
 
 func _mark_task_waiting(task: WorkTask, reason: String, feedback_text: String) -> void:

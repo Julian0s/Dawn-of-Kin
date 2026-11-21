@@ -28,25 +28,25 @@ mouse_filter = 2
 script = ExtResource("5")
 
 [node name="WoodTree03" parent="TestMap/ResourceSources" instance=ExtResource("6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -1.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, 0, 1.2)
 source_id = &"wood_tree_03"
 initial_amount = 24
 max_extract_per_operation = 2
 
 [node name="WoodTree04" parent="TestMap/ResourceSources" instance=ExtResource("6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, 2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, 0, 1.8)
 source_id = &"wood_tree_04"
 initial_amount = 24
 max_extract_per_operation = 2
 
 [node name="WoodTree05" parent="TestMap/ResourceSources" instance=ExtResource("6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.5, 0, 2.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.8, 0, 2.8)
 source_id = &"wood_tree_05"
 initial_amount = 24
 max_extract_per_operation = 2
 
 [node name="WoodTree06" parent="TestMap/ResourceSources" instance=ExtResource("6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.0, 0, 0.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.5, 0, 0.2)
 source_id = &"wood_tree_06"
 initial_amount = 24
 max_extract_per_operation = 2

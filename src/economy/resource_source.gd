@@ -278,11 +278,16 @@ func release_worker(worker: Node) -> void:
 	if worker == null:
 		return
 	var wid: int = worker.get_instance_id()
-	_reserved_worker_ids.erase(wid)
+	if _reserved_worker_ids.has(wid):
+		_reserved_worker_ids.erase(wid)
+		worker_slot_released.emit(self)
 
 
 func clear_worker_reservations() -> void:
+	var had_reservations: bool = not _reserved_worker_ids.is_empty()
 	_reserved_worker_ids.clear()
+	if had_reservations:
+		worker_slot_released.emit(self)
 
 
 func is_worker_reserved(worker: Node) -> bool:

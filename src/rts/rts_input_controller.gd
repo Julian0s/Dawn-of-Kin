@@ -103,6 +103,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_is_drag_gesture = false
 		_last_pointer_pos = press_pos
 		_has_pointer_pos = true
+		_on_left_press_started(press_pos)
 		if viewport != null:
 			viewport.set_input_as_handled()
 		return
@@ -269,6 +270,15 @@ func _cancel_active_drag() -> void:
 	_left_pressed = false
 	_is_drag_gesture = false
 	_clear_box_overlay()
+	_on_drag_cancelled()
+
+
+func _on_left_press_started(_press_pos: Vector2) -> void:
+	pass
+
+
+func _on_drag_cancelled() -> void:
+	pass
 
 
 func _update_hover_at(screen_pos: Vector2) -> void:
