@@ -220,3 +220,102 @@ func test_withdrawal_after_preview_makes_confirmation_stale() -> void:
 	assert_true(site.is_active())
 	assert_eq(worker.get_carry_load().provenance_snapshot(), snapshot)
 	assert_string_contains(ui._message.text, "nova prévia")
+
+
+func _economic_state(main: MainScene, record: ReservedWithdrawalCoordinator.CancellationCustodyRecord) -> Array:
+	var inventory := main.get_settlement_inventory()
+	var authority := CancellationRecoveryTransaction._authority(main.get_world_3d(), &"default")
+	var state := [record.to_snapshot_dict(), authority.receipts.duplicate(true),
+		inventory.get_all_physical_amounts(), inventory.get_reservation_amounts(record.reservation_id)]
+	for unit: Unit in main.get_units():
+		state.append(unit.get_carry_load().provenance_snapshot())
+	return state
+
+
+func test_interrupted_carrier_remains_visible_after_other_worker_unloads() -> void:
+	var fixture := preload("res://tests/integration/test_t3_6_3_b1_4_recovery_dispatch.gd").new()
+	add_test_child(fixture)
+	fixture.before_each()
+	var ctx := await fixture._prepared(2)
+	var main: MainScene = ctx.main
+	var ui := main.get_node("UiLayer/BuildingInspectorPanel") as BuildingInspectorPanel
+	ui.set_site(ctx.site)
+	ui._begin_d3()
+	ui._confirm_d3()
+	var id := ui._tracking_id
+	var record := CancellationRecoveryTransaction._record(main.get_world_3d(), &"default", id)
+	for worker: Unit in main.get_units():
+		assert_true(worker.get_carry_load().set_base_capacity(6))
+	var held := main.get_units()[1]
+	var other := main.get_units()[0]
+	assert_true(await fixture.fixture.fixture._until(func() -> bool:
+		return held.get_current_order() is RecoveryOrder and not held.get_carry_load().is_empty() and other.get_current_order() is RecoveryOrder
+	, 3000))
+	var load_before := held.get_carry_load().provenance_snapshot()
+	var delivered_before := record.delivered_to_camp.duplicate()
+	var manual := MoveOrder.new(Vector3(-10, 0, 3))
+	held.issue_order(manual)
+	assert_eq(held.get_current_order(), manual)
+	ui._refresh()
+	assert_string_contains(ui._state.text, "em andamento")
+	assert_string_contains(ui._message.text, String(held.get_character_id()))
+	assert_string_contains(ui._message.text, "ordem manual")
+	assert_true(await fixture.fixture.fixture._until(func() -> bool:
+		return record.delivered_to_camp != delivered_before and record.get_local_custody_total() == 0 and other.get_carry_load().is_empty() and manual.is_finished()
+	, 5000))
+	assert_true(manual.is_succeeded())
+	assert_null(held.get_current_order())
+	assert_eq(held.get_carry_load().provenance_snapshot(), load_before)
+	var before := _economic_state(main, record)
+	ui._open_recovery()
+	ui._refresh()
+	assert_eq(_economic_state(main, record), before)
+	assert_string_contains(ui._state.text, "bloqueada")
+	assert_string_contains(ui._message.text, String(held.get_character_id()))
+	assert_string_contains(ui._message.text, "ordem manual")
+	assert_true(main.get_construction_manager().assign_cancellation_recovery(id, [held]).ok)
+	ui._refresh()
+	assert_false(ui._message.text.contains("ordem manual"))
+	await fixture._settled(record)
+	ui._refresh()
+	assert_string_contains(ui._state.text, "concluída")
+	assert_false(ui._message.text.contains("ordem manual"))
+	fixture.after_each()
+
+
+func test_debug_and_recovery_geometry_and_clicks() -> void:
+	var ctx := await _scene()
+	var main: MainScene = ctx.main
+	var ui: BuildingInspectorPanel = ctx.ui
+	var vp: SubViewport = ctx.vp
+	var debug := main.get_node("UiLayer/DebugOverlay") as DebugOverlay
+	var stats := debug.get_node("Panel") as PanelContainer
+	var worker := main.get_units()[0]
+	main.get_selection_manager().select_single(worker)
+	ui.set_site(ctx.site)
+	ui._begin_d3()
+	ui._confirm_d3()
+	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
+		vp.size = size
+		debug.show()
+		await wait_process_frames(3)
+		var button := ui._recovery_open.get_global_rect()
+		assert_true(ui._recovery_open.is_visible_in_tree())
+		assert_false(stats.get_global_rect().intersects(button), str(size, " ", stats.get_global_rect(), " ", button))
+		assert_false(ui._panel.get_global_rect().intersects(button))
+		assert_true(Rect2(Vector2.ZERO, Vector2(size)).encloses(ui._panel.get_global_rect()))
+		var f3 := InputEventKey.new()
+		f3.physical_keycode = KEY_F3
+		f3.keycode = KEY_F3
+		f3.pressed = true
+		vp.push_input(f3, false)
+		await wait_process_frames(2)
+		assert_false(debug.visible)
+		assert_true(ui._recovery_open.position.y < button.position.y)
+		vp.push_input(f3, false)
+		await wait_process_frames(2)
+		assert_true(debug.visible)
+		await ctx.fixture._click(vp, ui._recovery_open.get_global_rect().get_center())
+		assert_true(main.get_selection_manager().is_selected(worker))
+		assert_null(worker.get_current_order())
+		assert_string_contains(ui._state.text, "concluída")
