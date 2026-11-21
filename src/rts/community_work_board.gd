@@ -1,11 +1,13 @@
 class_name CommunityWorkBoard
 extends Node
-## Minimal RUX-1 regional registry for community wood-gather tasks.
+## Regional registry for community single-source gather tasks (wood, stone, food).
 ## Event-driven, zero per-frame polling, and idempotent per ResourceSource.
 
 signal task_registered(task: WorkTask)
 signal task_updated(task: WorkTask)
 signal task_closed(task: WorkTask)
+
+const SUPPORTED_RESOURCE_IDS: Array[StringName] = [&"wood", &"stone", &"food"]
 
 var _region_id: StringName = &"default"
 var _next_task_id: int = 1
@@ -40,13 +42,11 @@ func get_region_id() -> StringName:
 
 
 func register_gather_task(source: ResourceSource) -> Dictionary:
-	return register_wood_gather_task(source)
-
-
-func register_wood_gather_task(source: ResourceSource) -> Dictionary:
 	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}
-	if source.get_resource_id() != &"wood":
+	var def: ResourceDefinition = source.get_definition()
+	var res_id: StringName = source.get_resource_id()
+	if def == null or not def.is_valid() or not SUPPORTED_RESOURCE_IDS.has(res_id):
 		return {"ok": false, "created": false, "task": null, "reason": "unsupported_resource"}
 	if source.is_depleted():
 		return {"ok": false, "created": false, "task": null, "reason": "source_depleted"}
@@ -64,7 +64,9 @@ func register_wood_gather_task(source: ResourceSource) -> Dictionary:
 	task.task_id = _next_task_id
 	task.created_seq = _next_task_id
 	_next_task_id += 1
-	task.kind = WorkTask.Kind.GATHER_WOOD
+	task.kind = WorkTask.kind_from_resource_id(res_id)
+	task.resource_id = res_id
+	task.resource_definition = def
 	task.region_id = _region_id
 	task.source = source
 	task.source_id = source.get_source_id()
@@ -75,6 +77,14 @@ func register_wood_gather_task(source: ResourceSource) -> Dictionary:
 	_bind_source_signals(source, sid)
 	task_registered.emit(task)
 	return {"ok": true, "created": true, "task": task, "reason": ""}
+
+
+func register_wood_gather_task(source: ResourceSource) -> Dictionary:
+	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
+		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}
+	if source.get_resource_id() != &"wood":
+		return {"ok": false, "created": false, "task": null, "reason": "unsupported_resource"}
+	return register_gather_task(source)
 
 
 func get_active_task_for_source(source: ResourceSource) -> WorkTask:
@@ -104,6 +114,14 @@ func get_pending_tasks() -> Array[WorkTask]:
 		if task != null and task.state == WorkTask.State.PENDING_WORKERS:
 			pending.append(task)
 	return pending
+
+
+func get_blocked_tasks() -> Array[WorkTask]:
+	var blocked: Array[WorkTask] = []
+	for task: WorkTask in _tasks:
+		if task != null and task.state == WorkTask.State.BLOCKED_REAUTHORIZATION:
+			blocked.append(task)
+	return blocked
 
 
 func get_all_tasks() -> Array[WorkTask]:
@@ -184,7 +202,7 @@ func _on_source_tree_exited(sid: int) -> void:
 	if not task.has_assigned_worker():
 		close_task(task, WorkTask.State.FAILED, "invalid_source")
 	else:
-		# Let the active GatherResourceOrder deliver any carried wood or finish cleanly.
+		# Let the active GatherResourceOrder deliver any carried resource or finish cleanly.
 		task_updated.emit(task)
 
 

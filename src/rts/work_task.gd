@@ -1,6 +1,6 @@
 class_name WorkTask
 extends RefCounted
-## Minimal RUX-1 community work task targeting a single wood ResourceSource.
+## Community work task targeting a single ResourceSource (wood, stone, or food).
 
 enum Kind {
 	GATHER_WOOD,
@@ -35,8 +35,26 @@ var last_reason: String = ""
 var excluded_unit_ids: Dictionary = {}
 
 
+static func kind_from_resource_id(p_resource_id: StringName) -> Kind:
+	match p_resource_id:
+		&"stone":
+			return Kind.GATHER_STONE
+		&"food":
+			return Kind.GATHER_FOOD
+		_:
+			return Kind.GATHER_WOOD
+
+
 func is_active() -> bool:
-	return state == State.PENDING_WORKERS or state == State.IN_PROGRESS
+	return (
+		state == State.PENDING_WORKERS
+		or state == State.IN_PROGRESS
+		or state == State.BLOCKED_REAUTHORIZATION
+	)
+
+
+func is_blocked_reauthorization() -> bool:
+	return state == State.BLOCKED_REAUTHORIZATION
 
 
 func is_source_valid() -> bool:

@@ -1,12 +1,15 @@
 class_name AutonomousGatherInput
 extends RtsInputController
-## Isolated RUX-1 input adapter for automatic single-tree wood gathering.
-## Installed only in tests/visual/rux_1_auto_gather.tscn; keeps MainScene and UX-1 untouched.
+## Isolated RUX-1/RUX-2A input adapter for automatic single-source gathering.
+## Defaults to ["wood"] so tests/visual/rux_1_auto_gather.tscn preserves its wood-only scope;
+## tests/visual/rux_2a_auto_resources.tscn enables ["wood", "stone", "food"].
 
 const RING_SEGMENTS: int = 24
 const RING_INNER_RADIUS: float = 0.72
 const RING_OUTER_RADIUS: float = 0.90
-const RING_COLOR: Color = Color(0.55, 0.86, 0.42, 0.85)
+const RING_COLOR_WOOD: Color = Color(0.55, 0.86, 0.42, 0.85)
+const RING_COLOR_STONE: Color = Color(0.66, 0.78, 0.90, 0.85)
+const RING_COLOR_FOOD: Color = Color(0.92, 0.66, 0.34, 0.85)
 
 @export var supported_resource_ids: PackedStringArray = PackedStringArray(["wood"])
 
@@ -15,7 +18,7 @@ var _dispatcher: CommunityTaskDispatcher = null
 var _feedback: AutonomousGatherFeedback = null
 var _wired: bool = false
 var _shared_ring_mesh: ArrayMesh = null
-var _shared_ring_material: StandardMaterial3D = null
+var _shared_ring_materials: Dictionary = {}
 var _task_highlights: Dictionary = {}
 
 
@@ -86,21 +89,30 @@ func _disconnect_signals() -> void:
 func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 	_ensure_wired()
 	var pick: PickResult = pick_at_screen_pos(screen_pos)
-	if pick.is_resource_source() and pick.resource_source.get_resource_id() == &"wood":
+	if pick.is_resource_source() and _supports_resource_id(pick.resource_source.get_resource_id()):
 		construction_site_picked.emit(null)
 		if _board == null:
 			return
-		var res: Dictionary = _board.register_wood_gather_task(pick.resource_source)
+		var res_id: StringName = pick.resource_source.get_resource_id()
+		var res: Dictionary = _board.register_gather_task(pick.resource_source)
 		if not bool(res.get("ok", false)):
 			var reason: String = String(res.get("reason", ""))
 			if reason == "source_depleted":
-				_show_feedback("Árvore esgotada.")
+				_show_feedback(_depleted_feedback(res_id))
 			else:
 				_show_feedback("Fonte indisponível.")
 		elif not bool(res.get("created", false)):
-			_show_feedback("Tarefa já registrada para esta árvore.")
+			var existing: WorkTask = res.get("task") as WorkTask
+			if existing != null and existing.is_blocked_reauthorization():
+				_show_feedback("Tarefa aguardando nova autorização.")
+			else:
+				_show_feedback(_already_registered_feedback(res_id))
 		return
 	super._handle_left_click(screen_pos, shift_held)
+
+
+func _supports_resource_id(resource_id: StringName) -> bool:
+	return supported_resource_ids.has(String(resource_id))
 
 
 func _on_task_registered(task: WorkTask) -> void:
@@ -127,11 +139,11 @@ func _show_feedback(message: String) -> void:
 func _attach_highlight(task: WorkTask) -> void:
 	if _task_highlights.has(task.task_id):
 		return
-	_ensure_shared_ring_resources()
+	_ensure_shared_ring_mesh()
 	var mesh_inst := MeshInstance3D.new()
-	mesh_inst.name = "Rux1TaskRing_%d" % task.task_id
+	mesh_inst.name = "AutoGatherTaskRing_%d" % task.task_id
 	mesh_inst.mesh = _shared_ring_mesh
-	mesh_inst.material_override = _shared_ring_material
+	mesh_inst.material_override = _get_shared_ring_material(task.resource_id)
 	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mesh_inst.position = Vector3(0.0, 0.05, 0.0)
 	var radius_scale: float = maxf(task.source.get_solid_radius() + 0.65, 1.15)
@@ -157,36 +169,68 @@ func _clear_all_highlights() -> void:
 	_task_highlights.clear()
 
 
-func _ensure_shared_ring_resources() -> void:
-	if _shared_ring_material == null:
-		_shared_ring_material = StandardMaterial3D.new()
-		_shared_ring_material.albedo_color = RING_COLOR
-		_shared_ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_shared_ring_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_shared_ring_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+func _get_shared_ring_material(resource_id: StringName) -> StandardMaterial3D:
+	if _shared_ring_materials.has(resource_id):
+		return _shared_ring_materials[resource_id] as StandardMaterial3D
+	var mat := StandardMaterial3D.new()
+	match resource_id:
+		&"stone":
+			mat.albedo_color = RING_COLOR_STONE
+		&"food":
+			mat.albedo_color = RING_COLOR_FOOD
+		_:
+			mat.albedo_color = RING_COLOR_WOOD
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_shared_ring_materials[resource_id] = mat
+	return mat
 
-	if _shared_ring_mesh == null:
-		var vertices := PackedVector3Array()
-		var normals := PackedVector3Array()
-		var indices := PackedInt32Array()
-		for step: int in range(RING_SEGMENTS + 1):
-			var angle: float = (float(step) / float(RING_SEGMENTS)) * TAU
-			var c: float = cos(angle)
-			var s: float = sin(angle)
-			vertices.append(Vector3(c * RING_INNER_RADIUS, 0.0, s * RING_INNER_RADIUS))
-			vertices.append(Vector3(c * RING_OUTER_RADIUS, 0.0, s * RING_OUTER_RADIUS))
-			normals.append(Vector3.UP)
-			normals.append(Vector3.UP)
-		for step: int in range(RING_SEGMENTS):
-			var i0: int = step * 2
-			var i1: int = i0 + 1
-			var i2: int = i0 + 2
-			var i3: int = i0 + 3
-			indices.append_array([i0, i2, i1, i1, i2, i3])
-		var arrays: Array = []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = vertices
-		arrays[Mesh.ARRAY_NORMAL] = normals
-		arrays[Mesh.ARRAY_INDEX] = indices
-		_shared_ring_mesh = ArrayMesh.new()
-		_shared_ring_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+func _ensure_shared_ring_mesh() -> void:
+	if _shared_ring_mesh != null:
+		return
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for step: int in range(RING_SEGMENTS + 1):
+		var angle: float = (float(step) / float(RING_SEGMENTS)) * TAU
+		var c: float = cos(angle)
+		var s: float = sin(angle)
+		vertices.append(Vector3(c * RING_INNER_RADIUS, 0.0, s * RING_INNER_RADIUS))
+		vertices.append(Vector3(c * RING_OUTER_RADIUS, 0.0, s * RING_OUTER_RADIUS))
+		normals.append(Vector3.UP)
+		normals.append(Vector3.UP)
+	for step: int in range(RING_SEGMENTS):
+		var i0: int = step * 2
+		var i1: int = i0 + 1
+		var i2: int = i0 + 2
+		var i3: int = i0 + 3
+		indices.append_array([i0, i2, i1, i1, i2, i3])
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	_shared_ring_mesh = ArrayMesh.new()
+	_shared_ring_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+static func _depleted_feedback(resource_id: StringName) -> String:
+	match resource_id:
+		&"stone":
+			return "Rocha esgotada."
+		&"food":
+			return "Arbusto esgotado."
+		_:
+			return "Árvore esgotada."
+
+
+static func _already_registered_feedback(resource_id: StringName) -> String:
+	match resource_id:
+		&"stone":
+			return "Tarefa já registrada para esta rocha."
+		&"food":
+			return "Tarefa já registrada para este arbusto."
+		_:
+			return "Tarefa já registrada para esta árvore."

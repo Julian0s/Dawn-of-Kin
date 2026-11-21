@@ -1,11 +1,12 @@
 class_name CommunityTaskDispatcher
 extends Node
-## Minimal RUX-1 event-driven community task dispatcher.
-## Zero per-frame polling: reacts to board, unit, and navigation signals via deferred coalesced passes.
+## Unified event-driven community task dispatcher for wood, stone, and food sources.
+## Zero per-frame polling: reacts to board, unit, navigation, and inventory signals via deferred coalesced passes.
 ## Never holds economic balances or overwrites active manual orders.
 
 signal task_assigned(task: WorkTask, unit: Unit, order: GatherResourceOrder)
 signal task_waiting(task: WorkTask, reason: String)
+signal task_blocked(task: WorkTask, reason: String)
 signal task_feedback(message: String)
 
 var _board: CommunityWorkBoard = null
@@ -190,7 +191,9 @@ func _on_board_task_registered(_task: WorkTask) -> void:
 	request_dispatch()
 
 
-func _on_board_task_updated(_task: WorkTask) -> void:
+func _on_board_task_updated(task: WorkTask) -> void:
+	if task != null and task.state == WorkTask.State.BLOCKED_REAUTHORIZATION:
+		return
 	request_dispatch()
 
 
@@ -227,7 +230,7 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 	if finished_order.is_succeeded():
 		if not task.is_source_usable():
 			_board.close_task(task, WorkTask.State.COMPLETED, "")
-			task_feedback.emit("Corte de madeira concluído.")
+			task_feedback.emit(_completed_feedback(task.resource_id))
 		else:
 			task.state = WorkTask.State.PENDING_WORKERS
 			task.last_reason = ""
@@ -256,7 +259,7 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 	):
 		_board.close_task(task, WorkTask.State.FAILED, reason)
 		if reason == GatherResourceOrder.REASON_SOURCE_UNREACHABLE or reason == UnitOrder.REASON_STUCK:
-			task_feedback.emit("Árvore inacessível.")
+			task_feedback.emit(_unreachable_feedback(task.resource_id))
 		return
 
 	if not task.is_source_usable():
@@ -309,11 +312,13 @@ func _process_single_task(task: WorkTask) -> void:
 		return
 
 	if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
-		_mark_task_waiting(task, "navigation_not_ready", "")
+		if not task.is_blocked_reauthorization():
+			_mark_task_waiting(task, "navigation_not_ready", "")
 		return
 
 	if _is_economy_busy(task.source):
-		_mark_task_waiting(task, "economy_busy", "")
+		if not task.is_blocked_reauthorization():
+			_mark_task_waiting(task, "economy_busy", "")
 		return
 
 	var candidates: Array[Unit] = _collect_sorted_candidates(task.source.global_position)
@@ -324,12 +329,15 @@ func _process_single_task(task: WorkTask) -> void:
 	var chosen_unit: Unit = null
 	var has_temporary_wait: bool = false
 	var any_unreachable: bool = false
+	var excluded_count: int = 0
 	var first_reason: String = ""
 
 	for unit: Unit in candidates:
 		var pre_reason: String = _check_pre_nav_eligibility(unit, task)
 		if not pre_reason.is_empty():
-			if pre_reason in ["busy", "not_idle", "transaction_locked", "no_worker_slot"]:
+			if pre_reason == "manually_overridden":
+				excluded_count += 1
+			elif pre_reason in ["busy", "not_idle", "transaction_locked", "no_worker_slot", "reserved_or_recovery_cargo"]:
 				has_temporary_wait = true
 			if first_reason.is_empty():
 				first_reason = pre_reason
@@ -353,7 +361,10 @@ func _process_single_task(task: WorkTask) -> void:
 	if chosen_unit == null:
 		if any_unreachable and not has_temporary_wait:
 			_board.close_task(task, WorkTask.State.FAILED, "source_unreachable")
-			task_feedback.emit("Árvore inacessível.")
+			task_feedback.emit(_unreachable_feedback(task.resource_id))
+			return
+		if excluded_count > 0 and not has_temporary_wait:
+			_mark_task_blocked_reauthorization(task)
 			return
 		var wait_reason: String = first_reason if not first_reason.is_empty() else "no_eligible_worker"
 		var wait_msg: String = "Aguardando trabalhador disponível." if wait_reason in ["busy", "not_idle", "no_worker_slot"] else ""
@@ -401,7 +412,7 @@ func _process_single_task(task: WorkTask) -> void:
 	task_assigned.emit(task, chosen_unit, order)
 
 	var unit_label: String = chosen_unit.get_definition().display_name if chosen_unit.get_definition() != null else String(chosen_unit.get_character_id())
-	task_feedback.emit("%s indo cortar madeira." % unit_label)
+	task_feedback.emit(_dispatch_feedback(task.resource_id, unit_label))
 
 
 func _mark_task_waiting(task: WorkTask, reason: String, feedback_text: String) -> void:
@@ -412,6 +423,17 @@ func _mark_task_waiting(task: WorkTask, reason: String, feedback_text: String) -
 		task_waiting.emit(task, reason)
 		if not feedback_text.is_empty():
 			task_feedback.emit(feedback_text)
+
+
+func _mark_task_blocked_reauthorization(task: WorkTask) -> void:
+	var reason: String = WorkTask.REASON_ALL_WORKERS_EXCLUDED
+	var changed: bool = task.state != WorkTask.State.BLOCKED_REAUTHORIZATION or task.last_reason != reason
+	task.state = WorkTask.State.BLOCKED_REAUTHORIZATION
+	task.last_reason = reason
+	if changed:
+		_board.notify_task_updated(task)
+		task_blocked.emit(task, reason)
+		task_feedback.emit("Tarefa aguardando nova autorização.")
 
 
 func _collect_sorted_candidates(target_pos: Vector3) -> Array[Unit]:
@@ -506,3 +528,33 @@ static func _has_non_free_provenance_lots(carry_load: UnitCarryLoad) -> bool:
 		if StringName(lot.get("origin", &"")) != CarryProvenanceLedger.FREE_GATHERED:
 			return true
 	return false
+
+
+static func _dispatch_feedback(resource_id: StringName, unit_label: String) -> String:
+	match resource_id:
+		&"stone":
+			return "%s indo extrair pedra." % unit_label
+		&"food":
+			return "%s indo colher frutos." % unit_label
+		_:
+			return "%s indo cortar madeira." % unit_label
+
+
+static func _completed_feedback(resource_id: StringName) -> String:
+	match resource_id:
+		&"stone":
+			return "Extração de pedra concluída."
+		&"food":
+			return "Colheita de frutos concluída."
+		_:
+			return "Corte de madeira concluído."
+
+
+static func _unreachable_feedback(resource_id: StringName) -> String:
+	match resource_id:
+		&"stone":
+			return "Rocha inacessível."
+		&"food":
+			return "Arbusto inacessível."
+		_:
+			return "Árvore inacessível."
