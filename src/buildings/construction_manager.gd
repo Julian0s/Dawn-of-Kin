@@ -71,6 +71,30 @@ func enable_cancellation_recovery() -> void:
 	_recovery_dispatcher.configure(_inventory, _camp_zone, _world_navigation, _region_id)
 
 
+func can_offer_site_cancellation(site: ConstructionSite) -> bool:
+	if not is_instance_valid(_recovery_dispatcher) or not _recovery_dispatcher.is_inside_tree():
+		return false
+	if not is_instance_valid(site) or site.is_queued_for_deletion() or not site.is_inside_tree() or not site.is_active():
+		return false
+	if not _sites.has(site) or site.get_parent() != _sites_root or site.get_inventory() != _inventory or site.region_id != _region_id:
+		return false
+	if _creation_in_progress or _completion_in_progress or _cancellation_in_progress or site.is_transaction_busy():
+		return false
+	var storage := _inventory.get_storage_source() as GroundPileManager
+	var world := site.get_world_3d()
+	return (
+		storage != null and not storage.is_shut_down()
+		and (storage.get_bound_withdrawal_world() == null or storage.get_bound_withdrawal_world() == world)
+		and (storage.get_bound_withdrawal_region().is_empty() or storage.get_bound_withdrawal_region() == _region_id)
+		and is_instance_valid(_camp_zone) and _camp_zone.is_inside_tree() and _camp_zone.is_valid()
+		and storage.get_camp_zone() == _camp_zone and _camp_zone.get_world_3d() == world
+		and is_instance_valid(_world_navigation) and _world_navigation.is_inside_tree()
+		and _world_navigation.get_world_3d() == world
+		and not _inventory.is_transaction_busy()
+		and not ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, _region_id)
+	)
+
+
 func assign_cancellation_recovery(cancel_id: StringName, units: Array[Unit]) -> Dictionary:
 	if _recovery_dispatcher == null:
 		return {"ok": false, "reason": "recovery_dispatch_disabled", "assigned": 0}

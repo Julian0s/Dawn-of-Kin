@@ -3087,3 +3087,16 @@ static func get_cancellation_custody_readonly(
 	if rec == null:
 		return {"ok": false, "reason": "not_found"}
 	return {"ok": true, "snapshot": rec.to_snapshot_dict()}
+
+
+
+static func get_open_cancellation_ids_readonly(world: World3D, region_id: StringName) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	var authority := _receipt_authority_in_domain(world, region_id, &"custody_query")
+	if authority == null:
+		return ids
+	for record: CancellationCustodyRecord in authority.cancellation_custodies.values():
+		if record != null and record.get_obligation_status() != &"settled":
+			ids.append(record.cancel_id)
+	ids.sort()
+	return ids
