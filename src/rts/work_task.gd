@@ -4,18 +4,25 @@ extends RefCounted
 
 enum Kind {
 	GATHER_WOOD,
+	GATHER_STONE,
+	GATHER_FOOD,
 }
 
 enum State {
 	PENDING_WORKERS,
 	IN_PROGRESS,
+	BLOCKED_REAUTHORIZATION,
 	COMPLETED,
 	FAILED,
 	CANCELLED,
 }
 
+const REASON_ALL_WORKERS_EXCLUDED: String = "all_workers_manually_excluded"
+
 var task_id: int = 0
 var kind: Kind = Kind.GATHER_WOOD
+var resource_id: StringName = &"wood"
+var resource_definition: ResourceDefinition = null
 var region_id: StringName = &"default"
 var created_seq: int = 0
 var source: ResourceSource = null

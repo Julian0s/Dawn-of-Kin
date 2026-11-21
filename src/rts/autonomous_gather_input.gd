@@ -8,6 +8,8 @@ const RING_INNER_RADIUS: float = 0.72
 const RING_OUTER_RADIUS: float = 0.90
 const RING_COLOR: Color = Color(0.55, 0.86, 0.42, 0.85)
 
+@export var supported_resource_ids: PackedStringArray = PackedStringArray(["wood"])
+
 var _board: CommunityWorkBoard = null
 var _dispatcher: CommunityTaskDispatcher = null
 var _feedback: AutonomousGatherFeedback = null

@@ -39,6 +39,10 @@ func get_region_id() -> StringName:
 	return _region_id
 
 
+func register_gather_task(source: ResourceSource) -> Dictionary:
+	return register_wood_gather_task(source)
+
+
 func register_wood_gather_task(source: ResourceSource) -> Dictionary:
 	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}
