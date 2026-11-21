@@ -24,6 +24,7 @@ var _recovery_timer: Timer
 var _manager: ConstructionManager
 var _d3_begin: Button
 var _d3_confirm: Button
+var _debug_panel: Control
 var _recovery_open: Button
 var _recoveries: OptionButton
 var _d3_plan: Dictionary = {}
@@ -45,7 +46,6 @@ func _ready() -> void:
 	add_child(_refresh_timer)
 	_panel = PanelContainer.new()
 	_panel.name = "Inspector"
-	_panel.position = Vector2(16, 150)
 	_panel.custom_minimum_size = Vector2(350, 0)
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_panel.mouse_force_pass_scroll_events = false
@@ -91,7 +91,8 @@ func _ready() -> void:
 	var close := _button(column, "Fechar")
 	close.pressed.connect(func() -> void: set_site(null))
 	_recovery_open = _button(self, "Recuperações")
-	_recovery_open.position = Vector2(16, 116)
+	_recovery_open.visibility_changed.connect(_layout_left_hud)
+	_recovery_open.resized.connect(_layout_left_hud)
 	_recovery_open.hide()
 	_recovery_open.pressed.connect(_open_recovery)
 	_recovery_timer = Timer.new()
@@ -105,7 +106,12 @@ func _ready() -> void:
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
-func configure(input_controller: RtsInputController, selection: SelectionManager, d3_manager: ConstructionManager = null) -> void:
+func configure(input_controller: RtsInputController, selection: SelectionManager, d3_manager: ConstructionManager = null, debug_panel: Control = null) -> void:
+	_debug_panel = debug_panel
+	if is_instance_valid(_debug_panel):
+		_debug_panel.item_rect_changed.connect(_layout_left_hud)
+		_debug_panel.visibility_changed.connect(_layout_left_hud)
+	_layout_left_hud()
 	_manager = d3_manager
 	_input_controller = input_controller
 	_selection = selection
@@ -113,6 +119,19 @@ func configure(input_controller: RtsInputController, selection: SelectionManager
 		_input_controller.construction_site_picked.connect(set_site)
 	if is_instance_valid(_selection):
 		_selection.selection_changed.connect(_selection_changed)
+
+
+func _layout_left_hud() -> void:
+	if not is_inside_tree() or not is_instance_valid(_recovery_open):
+		return
+	var top := 14.0
+	const GAP := 6.0
+	if is_instance_valid(_debug_panel) and _debug_panel.is_visible_in_tree():
+		top = _debug_panel.get_global_rect().end.y - global_position.y + GAP
+	_recovery_open.position = Vector2(16, top)
+	if _recovery_open.visible:
+		top += _recovery_open.size.y + GAP
+	_panel.position = Vector2(16, top)
 
 
 func _exit_tree() -> void:
@@ -386,7 +405,6 @@ func _refresh_recovery() -> void:
 	_panel.show()
 	_panel.reset_size()
 	_title.text = "Recuperação • %s" % result.snapshot.site_id
-	_state.text = _recovery_state_text(result.snapshot.state)
 	_progress.hide()
 	_workers.hide()
 	_complement.hide()
@@ -403,7 +421,30 @@ func _refresh_recovery() -> void:
 			_resource_name(id), int(snap.local_buffer_remaining.get(id, 0)) + int(snap.local_incorporated_remaining.get(id, 0)),
 			snap.in_transit_remaining.get(id, 0), snap.delivered_to_camp.get(id, 0), snap.demolition_loss.get(id, 0)])
 	_materials.text = "\n".join(lines)
-	_message.text = _recovery_diagnostic(snap.diagnostic_reason) if snap.state == ConstructionCancellationMath.State.RETURN_BLOCKED else ""
+	_show_recovery_status(snap)
+
+
+func _show_recovery_status(snap: Dictionary) -> void:
+	_state.text = _recovery_state_text(snap.state)
+	var blocked: bool = snap.state == ConstructionCancellationMath.State.RETURN_BLOCKED
+	_message.text = _recovery_diagnostic(snap.diagnostic_reason) if blocked else ""
+	if snap.state == ConstructionCancellationMath.State.SETTLED:
+		return
+	var activity := _manager.get_recovery_carrier_activity_readonly(snap.cancel_id)
+	var interrupted: PackedStringArray = activity.interrupted
+	var active: PackedStringArray = activity.active
+	if not interrupted.is_empty():
+		var details := ["Carga pendente por ordem manual: %s." % ", ".join(interrupted)]
+		_state.text = "Recuperação bloqueada"
+		if not active.is_empty():
+			_state.text = "Recuperação em andamento"
+			details.append("Em recuperação: %s." % ", ".join(active))
+		if blocked and snap.diagnostic_reason != "manual_override":
+			details.append(_message.text)
+		_message.text = "\n".join(details)
+	elif blocked and snap.diagnostic_reason == "manual_override" and not active.is_empty():
+		_state.text = _recovery_state_text(ConstructionCancellationMath.State.RETURNING)
+		_message.text = ""
 
 
 func _resource_name(id: StringName) -> String:

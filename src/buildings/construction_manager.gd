@@ -95,6 +95,12 @@ func can_offer_site_cancellation(site: ConstructionSite) -> bool:
 	)
 
 
+func get_recovery_carrier_activity_readonly(cancel_id: StringName) -> Dictionary:
+	if not is_instance_valid(_recovery_dispatcher):
+		return {"interrupted": PackedStringArray(), "active": PackedStringArray()}
+	return _recovery_dispatcher.get_carrier_activity_readonly(cancel_id)
+
+
 func assign_cancellation_recovery(cancel_id: StringName, units: Array[Unit]) -> Dictionary:
 	if _recovery_dispatcher == null:
 		return {"ok": false, "reason": "recovery_dispatch_disabled", "assigned": 0}

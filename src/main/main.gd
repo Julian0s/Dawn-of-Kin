@@ -131,7 +131,7 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 	inspector.name = "BuildingInspectorPanel"
 	$UiLayer.add_child(inspector)
 	var d3_manager := _construction_manager if use_provenance_economy and _economy_admission_reason.is_empty() else null
-	inspector.configure(_input_controller, _selection_manager, d3_manager)
+	inspector.configure(_input_controller, _selection_manager, d3_manager, get_node_or_null("UiLayer/DebugOverlay/Panel") as Control)
 
 
 func _setup_construction(world_nav: WorldNavigation) -> void:

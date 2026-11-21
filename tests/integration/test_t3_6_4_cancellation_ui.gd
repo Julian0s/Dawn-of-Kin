@@ -226,7 +226,8 @@ func _economic_state(main: MainScene, record: ReservedWithdrawalCoordinator.Canc
 	var inventory := main.get_settlement_inventory()
 	var authority := CancellationRecoveryTransaction._authority(main.get_world_3d(), &"default")
 	var state := [record.to_snapshot_dict(), authority.receipts.duplicate(true),
-		inventory.get_all_physical_amounts(), inventory.get_reservation_amounts(record.reservation_id)]
+		inventory.get_all_physical_amounts(), inventory.get_all_available_amounts(),
+		inventory.get_all_reserved_amounts(), inventory.get_reservation_amounts(record.reservation_id)]
 	for unit: Unit in main.get_units():
 		state.append(unit.get_carry_load().provenance_snapshot())
 	return state
@@ -258,6 +259,7 @@ func test_interrupted_carrier_remains_visible_after_other_worker_unloads() -> vo
 	assert_eq(held.get_current_order(), manual)
 	ui._refresh()
 	assert_string_contains(ui._state.text, "em andamento")
+	assert_string_contains(ui._message.text, String(other.get_character_id()))
 	assert_string_contains(ui._message.text, String(held.get_character_id()))
 	assert_string_contains(ui._message.text, "ordem manual")
 	assert_true(await fixture.fixture.fixture._until(func() -> bool:
@@ -304,6 +306,23 @@ func test_debug_and_recovery_geometry_and_clicks() -> void:
 		assert_false(stats.get_global_rect().intersects(button), str(size, " ", stats.get_global_rect(), " ", button))
 		assert_false(ui._panel.get_global_rect().intersects(button))
 		assert_true(Rect2(Vector2.ZERO, Vector2(size)).encloses(ui._panel.get_global_rect()))
+		# Grow the real Debug control while it stays visible.
+		var original_min := stats.custom_minimum_size
+		stats.custom_minimum_size.y = stats.size.y + 24.0
+		await wait_process_frames(2)
+		assert_true(ui._recovery_open.position.y >= stats.get_global_rect().end.y)
+		assert_true(ui._recovery_open.position.y > button.position.y)
+		for neighbor: Control in [main.get_resource_hud().get_stockpile_panel(),
+				main.get_node("UiLayer/ResourceHud/SelectedUnitPanel"), main.get_node("UiLayer/ConstructionHud/Catalog"),
+				main.get_node("UiLayer/ConstructionHud/BuildButton"), main.get_placement_test_overlay().get_node("TemporaryPlacementBar")]:
+			var was_visible := neighbor.visible
+			neighbor.show()
+			await wait_process_frames(2)
+			assert_false(neighbor.get_global_rect().intersects(ui._recovery_open.get_global_rect()), neighbor.name)
+			assert_false(neighbor.get_global_rect().intersects(ui._panel.get_global_rect()), neighbor.name)
+			neighbor.visible = was_visible
+		stats.custom_minimum_size = original_min
+		stats.reset_size()
 		var f3 := InputEventKey.new()
 		f3.physical_keycode = KEY_F3
 		f3.keycode = KEY_F3
@@ -315,7 +334,10 @@ func test_debug_and_recovery_geometry_and_clicks() -> void:
 		vp.push_input(f3, false)
 		await wait_process_frames(2)
 		assert_true(debug.visible)
+		ui.set_site(null)
+		assert_false(ui._panel.visible)
 		await ctx.fixture._click(vp, ui._recovery_open.get_global_rect().get_center())
+		assert_true(ui._panel.visible)
 		assert_true(main.get_selection_manager().is_selected(worker))
 		assert_null(worker.get_current_order())
 		assert_string_contains(ui._state.text, "concluída")

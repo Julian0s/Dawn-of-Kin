@@ -54,6 +54,30 @@ func _record(cancel_id: StringName) -> ReservedWithdrawalCoordinator.Cancellatio
 	return CancellationRecoveryTransaction._record(_camp.get_world_3d(), _region, cancel_id)
 
 
+## Intersect dispatch state with outstanding custody. An idle order waiting for a
+## different carrier to unload is not making progress on its own.
+func get_carrier_activity_readonly(cancel_id: StringName) -> Dictionary:
+	var interrupted := PackedStringArray()
+	var active := PackedStringArray()
+	var record := _record(cancel_id)
+	if record != null and record.has_unsettled_custody():
+		var has_pickups := record.get_local_custody_total() > 0
+		for uid: StringName in _entries:
+			var entry: Dictionary = _entries[uid]
+			if entry.cancel_id != cancel_id:
+				continue
+			var in_transit := record.transit_lots_by_unit.has(uid)
+			var unit := entry.unit.get_ref() as Unit
+			var label := String(uid)
+			if is_instance_valid(unit) and unit.get_definition() != null:
+				label = "%s (%s)" % [unit.get_definition().display_name, uid]
+			if entry.manual and in_transit:
+				interrupted.append(label)
+			elif entry.order is RecoveryOrder and entry.order.is_active() and (in_transit or has_pickups):
+				active.append(label)
+	return {"interrupted": interrupted, "active": active}
+
+
 func _busy() -> bool:
 	return not is_instance_valid(_camp) or not _camp.is_inside_tree() or ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(_camp.get_world_3d(), _region) or _inventory.is_transaction_busy()
 
