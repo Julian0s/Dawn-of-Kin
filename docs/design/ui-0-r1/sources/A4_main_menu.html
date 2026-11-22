@@ -1,0 +1,194 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Conceito A — Menu Principal</title><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0f110e; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.bg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ic { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ic svg { width: 100%; height: 100%; }
+
+:root {
+  --font-title: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --ivory: #F4E9D2;
+  --parch: #CDBEA0;
+  --muted: #9D8F74;
+  --brass: #D6B06C;
+  --iron: #363839;
+  --cedar-dark: #251911;
+  --scale: 1;
+}
+.res-720 { --scale: 0.78; }
+body { font-family: var(--font-ui); color: var(--ivory); }
+
+/* Carved timber panel using our REAL painted 9-slice wood & iron texture */
+.wood-panel {
+  position: relative;
+  background-image: linear-gradient(180deg, rgba(28,19,12,0.72), rgba(18,12,8,0.82)), url('../assets/tex_a_wood_iron.png');
+  background-size: 100% 100%;
+  border: 2px solid #59432B;
+  box-shadow: inset 0 0 0 1px rgba(214,176,108,0.28), 0 8px 24px rgba(0,0,0,0.58);
+  border-radius: 3px;
+}
+/* Hand-forged iron chamfered silhouette (NOT generic rounded rect!) */
+.iron-chamfer {
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+}
+.iron-rivet {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F2D79B, #8C6833);
+  border: 1px solid #2A1E13;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  flex-shrink: 0;
+}
+
+/* Concept A Unique Layout: Top-Center Carved Lintel Beam */
+.a-lintel {
+  position: absolute;
+  top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 26px;
+  background-image: linear-gradient(180deg, rgba(46,31,19,0.92), rgba(26,18,11,0.96)), url('../assets/tex_a_wood_iron.png');
+  background-size: cover;
+  border: 2px solid #6E5436;
+  box-shadow: inset 0 2px 0 rgba(228,194,132,0.28), inset 0 -2px 0 rgba(0,0,0,0.55), 0 10px 28px rgba(0,0,0,0.55);
+  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 16px 100%, 0 50%);
+}
+.res-720 .a-lintel { gap: 10px; padding: 7px 18px; top: 10px; }
+.a-niche {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 11px;
+  background: rgba(15,10,6,0.72);
+  border: 1px solid rgba(182,144,86,0.42);
+  border-radius: 2px;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.65);
+}
+.a-niche .val { font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--ivory); }
+.res-720 .a-niche .val { font-size: 13.5px; }
+.a-dial-wrap {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px;
+}
+.a-dial { width: 46px; height: 46px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.65)); }
+.res-720 .a-dial { width: 36px; height: 36px; }
+.a-speed {
+  display: flex; gap: 3px;
+  background: rgba(12,8,5,0.8); padding: 3px; border: 1px solid rgba(182,144,86,0.45);
+}
+.a-speed span {
+  padding: 2px 7px; font-size: 11px; font-weight: 700; color: var(--muted);
+}
+.a-speed span.on {
+  background: linear-gradient(180deg, #9C7942, #6D5229);
+  color: #FFF7E4; border: 1px solid #E3C282;
+}
+.a-seal-exposed {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  background: linear-gradient(180deg, #7A491E, #4E2D12);
+  border: 1px solid #E2AD62; color: #FFE3AF;
+}
+
+/* Top-Right Menu Medallion (iron-framed standalone crest) */
+.a-menu-btn {
+  position: absolute; top: 18px; right: 20px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, #3C3024, #1E1610);
+  border: 2px solid #8A6B41;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+}
+
+/* Bottom-Left: Vertical Carved Founder Stakes (Shields driven into earth, no outer box!) */
+.a-stakes {
+  position: absolute; bottom: 20px; left: 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.res-720 .a-stakes { bottom: 14px; left: 14px; gap: 8px; }
+.a-stake-card {
+  display: flex; align-items: center; gap: 11px;
+  padding: 6px 16px 6px 6px;
+  background: linear-gradient(90deg, rgba(44,30,19,0.94) 0%, rgba(28,19,12,0.88) 78%, rgba(28,19,12,0.4) 100%);
+  border-left: 3px solid var(--brass);
+  border-top: 1px solid rgba(214,176,108,0.45);
+  border-bottom: 1px solid rgba(214,176,108,0.35);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.48);
+}
+.a-shield-portrait {
+  width: 50px; height: 54px; overflow: hidden; flex-shrink: 0;
+  border: 2px solid #C8A15E;
+  clip-path: polygon(50% 0, 100% 16%, 100% 74%, 50% 100%, 0 74%, 0 16%);
+  background: #1C150F;
+}
+.res-720 .a-shield-portrait { width: 42px; height: 46px; }
+.a-shield-portrait img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Bottom-Right: Forged Octagonal Craft Tool Buttons (distinct non-rectangular cluster!) */
+.a-tools {
+  position: absolute; bottom: 20px; right: 20px;
+  display: flex; align-items: flex-end; gap: 12px;
+}
+.res-720 .a-tools { bottom: 14px; right: 14px; gap: 8px; }
+.a-tool-btn {
+  width: 78px; height: 78px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: linear-gradient(160deg, #433223 0%, #241910 70%, #19110B 100%);
+  border: 2px solid #9E7C48;
+  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
+  box-shadow: inset 0 0 0 2px rgba(232,199,136,0.18), 0 8px 20px rgba(0,0,0,0.58);
+}
+.res-720 .a-tool-btn { width: 66px; height: 66px; }
+.a-tool-btn.primary {
+  width: 88px; height: 88px;
+  background: linear-gradient(160deg, #694D2B 0%, #3A2715 70%, #24180D 100%);
+  border-color: #E2BE7C;
+}
+.res-720 .a-tool-btn.primary { width: 74px; height: 74px; }
+.a-tool-lbl { font-family: var(--font-title); font-size: 12px; font-weight: 700; color: var(--ivory); letter-spacing: 0.04em; }
+.a-tool-key { font-size: 10px; color: var(--brass); opacity: 0.85; }
+</style></head><body><div class="stage"><img class="bg-scene" id="bg" src="../../ui-0/captures/base_m5_menu_1920x1080.jpg" />
+<div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(16,11,7,0.92) 0%, rgba(16,11,7,0.68) 34%, rgba(16,11,7,0.12) 68%, rgba(16,11,7,0.28) 100%);"></div>
+<div class="wood-panel" style="position:absolute;top:24px;bottom:24px;left:34px;width:440px;padding:42px 38px;display:flex;flex-direction:column;justify-content:space-between;clip-path:polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 28px));">
+  <div style="text-align:center;">
+    <img src="../assets/emblem_dawn_of_kin.png" style="width:116px;height:116px;margin:0 auto 12px;display:block;filter:drop-shadow(0 6px 14px rgba(0,0,0,0.65));"/>
+    <div style="font-size:11px;letter-spacing:0.26em;color:var(--brass);text-transform:uppercase;">Conceito A · A Era dos Fundadores</div>
+    <div style="font-family:var(--font-title);font-size:42px;font-weight:700;letter-spacing:0.08em;color:var(--ivory);margin-top:6px;">DAWN OF KIN</div>
+    <div style="font-size:13px;color:var(--parch);margin-top:6px;line-height:1.45;">Da madeira talhada e da pedra bruta nasce a primeira linhagem.</div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:linear-gradient(90deg,#6E512D,#49341B);border:2px solid #E3BF7D;clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,10px 100%,0 50%);font-family:var(--font-title);font-size:17px;font-weight:700;">
+      <span>Iniciar Novo Assentamento</span><span style="font-size:11px;color:#F8E1AC;">CAP. I</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(16,11,7,0.78);border:1.5px dashed rgba(186,149,88,0.55);font-family:var(--font-title);font-size:15px;color:var(--parch);">
+      <span>Continuar Assentamento</span><span style="font-family:var(--font-ui);font-size:10px;padding:2px 7px;border:1px solid var(--brass);color:var(--brass);">PROPOSTA T3.8</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(16,11,7,0.78);border:1.5px dashed rgba(186,149,88,0.55);font-family:var(--font-title);font-size:15px;color:var(--parch);">
+      <span>Carregar Partida</span><span style="font-family:var(--font-ui);font-size:10px;padding:2px 7px;border:1px solid var(--brass);color:var(--brass);">PROPOSTA T3.8</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(24,17,11,0.86);border:1.5px solid rgba(186,149,88,0.55);font-family:var(--font-title);font-size:15px;">
+      <span>Configurações</span><span style="font-family:var(--font-ui);font-size:11px;color:var(--muted);">Vídeo · Escala · Controles</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(44,18,14,0.72);border:1.5px solid rgba(206,105,86,0.55);font-family:var(--font-title);font-size:15px;color:#F0BCB2;">
+      <span>Sair do Jogo</span>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px solid rgba(214,176,108,0.28);padding-top:12px;">
+    <span class="iron-rivet"></span>
+    <span>UI-0 R1 · Materiais Artesanais · Godot 4.7.2</span>
+    <span class="iron-rivet"></span>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  const bg = document.getElementById('bg');
+  if (bg && 'base_m5_menu') bg.src = '../../ui-0/captures/base_m5_menu_' + res + '.jpg';
+})();
+</script>
+</body></html>

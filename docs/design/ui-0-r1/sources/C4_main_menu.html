@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Conceito C — Menu Principal</title><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0f110e; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.bg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ic { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ic svg { width: 100%; height: 100%; }
+
+:root {
+  --font-title: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --ivory: #F4EFE1;
+  --gold: #DFC285;
+  --gold-dim: rgba(212,181,116,0.48);
+  --slate: #1C2124;
+  --slate-deep: #131719;
+  --sage: #8BB077;
+}
+body { font-family: var(--font-ui); color: var(--ivory); }
+
+.slate-panel {
+  background-image: linear-gradient(180deg, rgba(26,31,34,0.88), rgba(18,22,24,0.94)), url('../assets/tex_c_slate_filigree.png');
+  background-size: 100% 100%;
+  border: 1.5px solid rgba(212,181,116,0.62);
+  box-shadow: inset 0 0 0 1px rgba(244,239,225,0.08), 0 10px 30px rgba(0,0,0,0.52);
+  border-radius: 10px;
+}
+
+/* Concept C Unique Layout: TOP-LEFT 100% OPEN! Only a floating solar seal at top-right */
+.c-solar-seal {
+  position: absolute; top: 18px; right: 22px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 14px 7px 9px;
+  background: rgba(22,27,30,0.86);
+  border: 1px solid rgba(212,181,116,0.58);
+  border-radius: 99px;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.45);
+}
+.res-720 .c-solar-seal { top: 12px; right: 14px; gap: 8px; padding: 5px 11px 5px 7px; }
+.c-emblem-mini { width: 32px; height: 32px; }
+.res-720 .c-emblem-mini { width: 26px; height: 26px; }
+.c-speed-dots { display: flex; gap: 4px; }
+.c-speed-dots span {
+  padding: 2px 7px; border-radius: 99px; font-size: 11px; color: #9DA4A6;
+  border: 1px solid transparent;
+}
+.c-speed-dots span.on {
+  border-color: var(--gold); color: var(--ivory); background: rgba(212,181,116,0.18);
+}
+
+/* Bottom-Center Unified Lineage Altar Arc (Signature Silhouette!) */
+.c-altar-wrap {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.res-720 .c-altar-wrap { bottom: 10px; }
+.c-altar {
+  position: relative;
+  display: flex; align-items: center; gap: 22px;
+  padding: 10px 32px;
+  background: linear-gradient(180deg, rgba(28,34,37,0.93) 0%, rgba(18,22,25,0.96) 100%);
+  border: 1.5px solid rgba(212,181,116,0.68);
+  border-radius: 44px 44px 16px 16px;
+  box-shadow: inset 0 1px 0 rgba(244,239,225,0.18), 0 12px 34px rgba(0,0,0,0.58);
+}
+.res-720 .c-altar { gap: 14px; padding: 8px 22px; }
+.c-res-cluster { display: flex; align-items: center; gap: 14px; }
+.c-res-orb {
+  display: flex; align-items: center; gap: 6px;
+}
+.c-res-orb .val { font-family: var(--font-title); font-size: 16px; font-weight: 600; color: var(--ivory); }
+.res-720 .c-res-orb .val { font-size: 13.5px; }
+
+.c-lineage-core {
+  display: flex; align-items: center; gap: 0;
+  padding: 0 10px;
+  position: relative;
+}
+.c-founder-ring {
+  width: 58px; height: 58px; border-radius: 50%; overflow: hidden;
+  border: 2.5px solid var(--gold);
+  box-shadow: 0 0 0 3px rgba(19,23,25,0.9), 0 4px 14px rgba(0,0,0,0.55);
+  background: #14181A; z-index: 2;
+}
+.res-720 .c-founder-ring { width: 46px; height: 46px; }
+.c-founder-ring img { width: 100%; height: 100%; object-fit: cover; }
+.c-gold-thread {
+  width: 44px; height: 44px; margin: 0 -6px; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, #252B2E 0%, #14181A 100%);
+  border: 1.5px solid var(--gold);
+}
+.res-720 .c-gold-thread { width: 34px; height: 34px; }
+.c-gold-thread img { width: 28px; height: 28px; }
+.res-720 .c-gold-thread img { width: 22px; height: 22px; }
+
+.c-medallion-actions { display: flex; align-items: center; gap: 10px; }
+.c-medallion-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 12px; border-radius: 24px;
+  background: rgba(15,19,21,0.75);
+  border: 1px solid rgba(212,181,116,0.48);
+  color: var(--ivory); font-size: 11px; font-family: var(--font-title); letter-spacing: 0.04em;
+}
+.res-720 .c-medallion-btn { padding: 5px 9px; font-size: 10px; }
+.c-medallion-btn.active {
+  background: rgba(212,181,116,0.22); border-color: var(--gold); color: #FFF8E6;
+}
+</style></head><body><div class="stage"><img class="bg-scene" id="bg" src="../../ui-0/captures/base_m5_menu_1920x1080.jpg" />
+<!-- Cinematic radial framing keeping the living camp & founders visible at the heart of the screen! -->
+<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 46%, rgba(16,20,22,0.16) 0%, rgba(14,18,20,0.68) 64%, rgba(11,14,16,0.92) 100%);"></div>
+
+<!-- Top-Center Monumental Emblem & Title -->
+<div style="position:absolute;top:56px;left:50%;transform:translateX(-50%);text-align:center;display:flex;flex-direction:column;align-items:center;">
+  <img src="../assets/emblem_dawn_of_kin.png" style="width:132px;height:132px;filter:drop-shadow(0 8px 24px rgba(0,0,0,0.65));"/>
+  <div style="font-size:11.5px;letter-spacing:0.34em;color:var(--gold);text-transform:uppercase;margin-top:8px;">Conceito C · O Legado</div>
+  <div style="font-family:var(--font-title);font-size:64px;font-weight:600;letter-spacing:0.18em;color:var(--ivory);margin-top:4px;text-shadow:0 6px 26px rgba(0,0,0,0.65);">DAWN OF KIN</div>
+  <div style="width:320px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:10px 0 12px;"></div>
+  <div style="font-family:var(--font-title);font-size:16px;color:#DCD5C3;letter-spacing:0.05em;">Dois fundadores. Uma linhagem. O despertar de um novo mundo.</div>
+</div>
+
+<!-- Bottom-Center Ethereal Horizontal Navigation Arc (Zero Heavy Side Box!) -->
+<div style="position:absolute;bottom:56px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:14px;">
+  <div class="slate-panel" style="display:flex;align-items:center;gap:12px;padding:12px 22px;border-radius:99px;">
+    <div style="padding:11px 28px;border-radius:99px;background:linear-gradient(180deg,rgba(212,181,116,0.34),rgba(148,118,64,0.34));border:1.5px solid var(--gold);font-family:var(--font-title);font-size:16px;font-weight:700;color:#FFF9EB;letter-spacing:0.05em;">Iniciar Novo Assentamento</div>
+    <div style="padding:10px 18px;border-radius:99px;border:1px dashed rgba(212,181,116,0.45);font-family:var(--font-title);font-size:14px;color:#C5BFA8;">Continuar <span style="font-family:var(--font-ui);font-size:9.5px;color:var(--gold);">(PROPOSTA T3.8)</span></div>
+    <div style="padding:10px 18px;border-radius:99px;border:1px dashed rgba(212,181,116,0.45);font-family:var(--font-title);font-size:14px;color:#C5BFA8;">Carregar <span style="font-family:var(--font-ui);font-size:9.5px;color:var(--gold);">(PROPOSTA T3.8)</span></div>
+    <div style="padding:10px 18px;border-radius:99px;border:1px solid rgba(212,181,116,0.45);font-family:var(--font-title);font-size:14px;color:var(--ivory);">Configurações</div>
+    <div style="padding:10px 18px;border-radius:99px;border:1px solid rgba(206,105,86,0.5);font-family:var(--font-title);font-size:14px;color:#F0BCB2;">Sair</div>
+  </div>
+  <div style="font-size:11.5px;color:#A5ADA9;letter-spacing:0.08em;">UI-0 R1 · Cenário 3D ao vivo como protagonista · Godot 4.7.2</div>
+</div>
+</div>
+<script>
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  const bg = document.getElementById('bg');
+  if (bg && 'base_m5_menu') bg.src = '../../ui-0/captures/base_m5_menu_' + res + '.jpg';
+})();
+</script>
+</body></html>

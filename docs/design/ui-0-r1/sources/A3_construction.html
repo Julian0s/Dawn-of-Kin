@@ -1,0 +1,270 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Conceito A — Construção</title><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0f110e; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.bg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ic { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ic svg { width: 100%; height: 100%; }
+
+:root {
+  --font-title: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --ivory: #F4E9D2;
+  --parch: #CDBEA0;
+  --muted: #9D8F74;
+  --brass: #D6B06C;
+  --iron: #363839;
+  --cedar-dark: #251911;
+  --scale: 1;
+}
+.res-720 { --scale: 0.78; }
+body { font-family: var(--font-ui); color: var(--ivory); }
+
+/* Carved timber panel using our REAL painted 9-slice wood & iron texture */
+.wood-panel {
+  position: relative;
+  background-image: linear-gradient(180deg, rgba(28,19,12,0.72), rgba(18,12,8,0.82)), url('../assets/tex_a_wood_iron.png');
+  background-size: 100% 100%;
+  border: 2px solid #59432B;
+  box-shadow: inset 0 0 0 1px rgba(214,176,108,0.28), 0 8px 24px rgba(0,0,0,0.58);
+  border-radius: 3px;
+}
+/* Hand-forged iron chamfered silhouette (NOT generic rounded rect!) */
+.iron-chamfer {
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+}
+.iron-rivet {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F2D79B, #8C6833);
+  border: 1px solid #2A1E13;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  flex-shrink: 0;
+}
+
+/* Concept A Unique Layout: Top-Center Carved Lintel Beam */
+.a-lintel {
+  position: absolute;
+  top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 26px;
+  background-image: linear-gradient(180deg, rgba(46,31,19,0.92), rgba(26,18,11,0.96)), url('../assets/tex_a_wood_iron.png');
+  background-size: cover;
+  border: 2px solid #6E5436;
+  box-shadow: inset 0 2px 0 rgba(228,194,132,0.28), inset 0 -2px 0 rgba(0,0,0,0.55), 0 10px 28px rgba(0,0,0,0.55);
+  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 16px 100%, 0 50%);
+}
+.res-720 .a-lintel { gap: 10px; padding: 7px 18px; top: 10px; }
+.a-niche {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 11px;
+  background: rgba(15,10,6,0.72);
+  border: 1px solid rgba(182,144,86,0.42);
+  border-radius: 2px;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.65);
+}
+.a-niche .val { font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--ivory); }
+.res-720 .a-niche .val { font-size: 13.5px; }
+.a-dial-wrap {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px;
+}
+.a-dial { width: 46px; height: 46px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.65)); }
+.res-720 .a-dial { width: 36px; height: 36px; }
+.a-speed {
+  display: flex; gap: 3px;
+  background: rgba(12,8,5,0.8); padding: 3px; border: 1px solid rgba(182,144,86,0.45);
+}
+.a-speed span {
+  padding: 2px 7px; font-size: 11px; font-weight: 700; color: var(--muted);
+}
+.a-speed span.on {
+  background: linear-gradient(180deg, #9C7942, #6D5229);
+  color: #FFF7E4; border: 1px solid #E3C282;
+}
+.a-seal-exposed {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  background: linear-gradient(180deg, #7A491E, #4E2D12);
+  border: 1px solid #E2AD62; color: #FFE3AF;
+}
+
+/* Top-Right Menu Medallion (iron-framed standalone crest) */
+.a-menu-btn {
+  position: absolute; top: 18px; right: 20px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, #3C3024, #1E1610);
+  border: 2px solid #8A6B41;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+}
+
+/* Bottom-Left: Vertical Carved Founder Stakes (Shields driven into earth, no outer box!) */
+.a-stakes {
+  position: absolute; bottom: 20px; left: 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.res-720 .a-stakes { bottom: 14px; left: 14px; gap: 8px; }
+.a-stake-card {
+  display: flex; align-items: center; gap: 11px;
+  padding: 6px 16px 6px 6px;
+  background: linear-gradient(90deg, rgba(44,30,19,0.94) 0%, rgba(28,19,12,0.88) 78%, rgba(28,19,12,0.4) 100%);
+  border-left: 3px solid var(--brass);
+  border-top: 1px solid rgba(214,176,108,0.45);
+  border-bottom: 1px solid rgba(214,176,108,0.35);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.48);
+}
+.a-shield-portrait {
+  width: 50px; height: 54px; overflow: hidden; flex-shrink: 0;
+  border: 2px solid #C8A15E;
+  clip-path: polygon(50% 0, 100% 16%, 100% 74%, 50% 100%, 0 74%, 0 16%);
+  background: #1C150F;
+}
+.res-720 .a-shield-portrait { width: 42px; height: 46px; }
+.a-shield-portrait img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Bottom-Right: Forged Octagonal Craft Tool Buttons (distinct non-rectangular cluster!) */
+.a-tools {
+  position: absolute; bottom: 20px; right: 20px;
+  display: flex; align-items: flex-end; gap: 12px;
+}
+.res-720 .a-tools { bottom: 14px; right: 14px; gap: 8px; }
+.a-tool-btn {
+  width: 78px; height: 78px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: linear-gradient(160deg, #433223 0%, #241910 70%, #19110B 100%);
+  border: 2px solid #9E7C48;
+  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
+  box-shadow: inset 0 0 0 2px rgba(232,199,136,0.18), 0 8px 20px rgba(0,0,0,0.58);
+}
+.res-720 .a-tool-btn { width: 66px; height: 66px; }
+.a-tool-btn.primary {
+  width: 88px; height: 88px;
+  background: linear-gradient(160deg, #694D2B 0%, #3A2715 70%, #24180D 100%);
+  border-color: #E2BE7C;
+}
+.res-720 .a-tool-btn.primary { width: 74px; height: 74px; }
+.a-tool-lbl { font-family: var(--font-title); font-size: 12px; font-weight: 700; color: var(--ivory); letter-spacing: 0.04em; }
+.a-tool-key { font-size: 10px; color: var(--brass); opacity: 0.85; }
+</style></head><body><div class="stage"><img class="bg-scene" id="bg" src="../../ui-0/captures/base_m3_build_1920x1080.jpg" />
+<div class="a-lintel">
+  <span class="iron-rivet"></span>
+  <div class="a-niche"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 9.5C4 7.8 5.2 6.5 6.8 6.5H17.2C18.8 6.5 20 7.8 20 9.5V14.5C20 16.2 18.8 17.5 17.2 17.5H6.8C5.2 17.5 4 16.2 4 14.5V9.5Z" fill="#7D4F2A" stroke="#E5BA7D" stroke-width="1.6"/><ellipse cx="17" cy="12" rx="2.4" ry="4.5" fill="#B57E48" stroke="#F0D4A4" stroke-width="1.4"/><path d="M7.5 10.5H12.5M8.5 13.8H11.8" stroke="#E8C796" stroke-width="1.3" stroke-linecap="round"/></svg></span><span class="val">24</span></div>
+  <div class="a-niche"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="4,17 7,7 13,5 20,9 18,17" fill="#6D7478" stroke="#D5DCE0" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 5L11.5 12L18 17M11.5 12L4 17" stroke="#E8EEF2" stroke-width="1.2" opacity="0.7"/></svg></span><span class="val">14</span></div>
+  <div class="a-niche"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="9.2" cy="14" r="4.2" fill="#B5652C" stroke="#F3C382" stroke-width="1.5"/><circle cx="15" cy="14.5" r="3.6" fill="#C97636" stroke="#F3C382" stroke-width="1.5"/><path d="M11 9.5C11.8 6 14.5 4.5 17.5 4.8C16.6 7.5 14.4 9.2 11 9.5Z" fill="#638249" stroke="#C5DBA6" stroke-width="1.4"/></svg></span><span class="val">18</span></div>
+  <div class="a-dial-wrap">
+    <img class="a-dial" src="../assets/compass_medallion.png" />
+    <div>
+      <div style="font-family:var(--font-title);font-size:13px;font-weight:700;letter-spacing:0.05em;">PRIMAVERA · ANO 1</div>
+      <div style="font-size:10.5px;color:var(--parch);display:flex;align-items:center;gap:6px;">
+        <span>Clareira Inicial</span><span style="opacity:.5;">·</span>
+        <span class="ic" style="width:14px;height:14px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8.5" r="3" fill="#B5915B" stroke="#F7EAD0" stroke-width="1.4"/><path d="M4 18.5C4.6 14.8 6.4 13.3 9 13.3C11.6 13.3 13.4 14.8 14 18.5" stroke="#F7EAD0" stroke-width="1.6" stroke-linecap="round"/><circle cx="16.2" cy="9.5" r="2.3" stroke="#D5C4A1" stroke-width="1.4"/><path d="M14.8 14C17.2 14.2 19.2 15.6 19.8 18.5" stroke="#D5C4A1" stroke-width="1.5" stroke-linecap="round"/></svg></span><span>2 livres</span>
+      </div>
+    </div>
+  </div>
+  <div class="a-speed"><span>||</span><span class="on">1×</span><span>2×</span><span>4×</span></div>
+  <div class="a-seal-exposed"><span class="ic" style="width:15px;height:15px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5L19 7V13C19 16.8 15.8 19.3 12 20.5C8.2 19.3 5 16.8 5 13V7L12 3.5Z" fill="#6F441E" stroke="#F0BD6E" stroke-width="1.6"/><path d="M12 8.5V13.2M12 16V16.2" stroke="#FCE0A8" stroke-width="2" stroke-linecap="round"/></svg></span>Exposto</div>
+  <span class="iron-rivet"></span>
+</div>
+<div class="a-menu-btn"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7H19M5 12H19M5 17H19" stroke="#EFE1C2" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+<div class="a-stakes">
+  <div class="a-stake-card">
+    <div class="a-shield-portrait"><img src="../assets/portrait_alden.jpg"/></div>
+    <div>
+      <div style="font-family:var(--font-title);font-size:15px;font-weight:700;">Alden</div>
+      <div style="font-size:11px;color:var(--brass);">Fundador · Livre</div>
+    </div>
+  </div>
+  <div class="a-stake-card">
+    <div class="a-shield-portrait"><img src="../assets/portrait_brena.jpg"/></div>
+    <div>
+      <div style="font-family:var(--font-title);font-size:15px;font-weight:700;">Brena</div>
+      <div style="font-size:11px;color:#A8C98E;">Fundadora · Coletando</div>
+    </div>
+  </div>
+</div>
+<div class="a-tools">
+  <div class="a-tool-btn"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5L19 7.2V13.8C19 17.2 15.8 19.6 12 20.8C8.2 19.6 5 17.2 5 13.8V7.2L12 3.5Z" fill="#4E3B28" stroke="#E2BE80" stroke-width="1.7"/><path d="M8.5 12.5L12 9.5L15.5 12.5M10 12.5V16H14V12.5" stroke="#F7EBD2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="a-tool-lbl">Linhagem</span><span class="a-tool-key">H</span></div>
+  <div class="a-tool-btn"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M6 19L16 9" stroke="#D7B27B" stroke-width="2.2" stroke-linecap="round"/><path d="M13.5 5.5C16.5 6.2 18.8 8.5 19.2 11.5L14 10.5L13.5 5.5Z" fill="#A0A8AC" stroke="#F4E8CE" stroke-width="1.5" stroke-linejoin="round"/></svg></span><span class="a-tool-lbl">Tarefas</span><span class="a-tool-key">T</span></div>
+  <div class="a-tool-btn primary"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><path d="M6 18L14 10" stroke="#D7B27B" stroke-width="2.4" stroke-linecap="round"/><path d="M11.5 6.5L17.5 12.5L20 10L15 5L12.5 5.5L11.5 6.5Z" fill="#8E969A" stroke="#F1E5CC" stroke-width="1.5" stroke-linejoin="round"/></svg></span><span class="a-tool-lbl">Construir</span><span class="a-tool-key">B</span></div>
+</div>
+
+<div style="position:absolute;top:84px;left:50%;transform:translateX(-50%);padding:8px 22px;background:rgba(28,39,22,0.92);border:1.5px solid #8FB273;clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,10px 100%,0 50%);font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,0.48);">
+  <strong style="color:#C8E6AE;">POSICIONAR DEPÓSITO RÚSTICO</strong> · Terreno plano e acessível · <span style="color:#D8D2C0;">Clique esq. confirmar · Esc cancelar</span>
+</div>
+
+<!-- Left: Carved Timber Construction Site Plaque -->
+<div class="wood-panel iron-chamfer" style="position:absolute;top:96px;left:22px;width:330px;padding:18px 20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(214,176,108,0.35);padding-bottom:10px;margin-bottom:12px;">
+    <div>
+      <div style="font-family:var(--font-title);font-size:19px;font-weight:700;color:var(--ivory);">Abrigo Básico</div>
+      <div style="font-size:11px;color:var(--brass);letter-spacing:0.06em;text-transform:uppercase;">Canteiro em Montagem</div>
+    </div>
+    <div style="font-family:var(--font-title);font-size:20px;font-weight:700;color:#B4D49A;">42%</div>
+  </div>
+  <div style="height:10px;background:#120C07;border:1px solid #7C603B;padding:2px;margin-bottom:12px;">
+    <div style="width:42%;height:100%;background:linear-gradient(90deg,#5C7B45,#9EC27F);"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+    <div class="a-niche" style="justify-content:space-between;"><span class="ic" style="width:18px;height:18px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 9.5C4 7.8 5.2 6.5 6.8 6.5H17.2C18.8 6.5 20 7.8 20 9.5V14.5C20 16.2 18.8 17.5 17.2 17.5H6.8C5.2 17.5 4 16.2 4 14.5V9.5Z" fill="#7D4F2A" stroke="#E5BA7D" stroke-width="1.6"/><ellipse cx="17" cy="12" rx="2.4" ry="4.5" fill="#B57E48" stroke="#F0D4A4" stroke-width="1.4"/><path d="M7.5 10.5H12.5M8.5 13.8H11.8" stroke="#E8C796" stroke-width="1.3" stroke-linecap="round"/></svg></span><span style="font-size:13px;font-weight:700;">12 / 12</span></div>
+    <div class="a-niche" style="justify-content:space-between;"><span class="ic" style="width:18px;height:18px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="4,17 7,7 13,5 20,9 18,17" fill="#6D7478" stroke="#D5DCE0" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 5L11.5 12L18 17M11.5 12L4 17" stroke="#E8EEF2" stroke-width="1.2" opacity="0.7"/></svg></span><span style="font-size:13px;font-weight:700;">6 / 6</span></div>
+  </div>
+  <div style="font-size:12px;color:var(--parch);margin-bottom:14px;">Construtores: <strong style="color:var(--ivory);">1 / 2 (Alden)</strong></div>
+  <div style="display:flex;gap:8px;">
+    <div style="flex:1;text-align:center;padding:8px;background:linear-gradient(180deg,#6E2B22,#491B15);border:1px solid #D47868;font-family:var(--font-title);font-size:12.5px;font-weight:700;">Cancelar Obra</div>
+    <div style="padding:8px 14px;background:rgba(16,11,7,0.75);border:1px solid #8A6D45;font-size:12.5px;">Fechar</div>
+  </div>
+</div>
+
+<!-- Right: Carpenter's Workbench Drawer -->
+<div class="wood-panel iron-chamfer" style="position:absolute;bottom:118px;right:20px;width:360px;padding:18px 20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(214,176,108,0.35);padding-bottom:10px;margin-bottom:12px;">
+    <div>
+      <div style="font-family:var(--font-title);font-size:19px;font-weight:700;">Ofício de Construção</div>
+      <div style="font-size:11px;color:var(--brass);text-transform:uppercase;letter-spacing:0.06em;">Nível I · Acampamento</div>
+    </div>
+    <span class="iron-rivet"></span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:12px;font-size:11.5px;">
+    <span style="padding:4px 10px;background:#6E512E;border:1px solid #DFBD7D;font-weight:700;">Essenciais</span>
+    <span style="padding:4px 10px;background:rgba(14,10,6,0.65);border:1px solid rgba(154,122,74,0.35);color:var(--muted);">Oficinas (T4+)</span>
+    <span style="padding:4px 10px;background:rgba(14,10,6,0.65);border:1px solid rgba(154,122,74,0.35);color:var(--muted);">Defesa (T6+)</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <div style="padding:11px 12px;background:rgba(15,10,6,0.75);border:1px solid rgba(182,144,86,0.45);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-family:var(--font-title);font-size:15px;">Abrigo Básico</strong>
+        <span style="font-size:11px;color:var(--muted);">4×4 m · 30 s</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--parch);margin:4px 0 8px;">Residência da Casa Fundadora.</div>
+      <div style="display:flex;gap:14px;font-size:12.5px;color:#B4D49A;font-weight:700;">
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="ic" style="width:16px;height:16px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 9.5C4 7.8 5.2 6.5 6.8 6.5H17.2C18.8 6.5 20 7.8 20 9.5V14.5C20 16.2 18.8 17.5 17.2 17.5H6.8C5.2 17.5 4 16.2 4 14.5V9.5Z" fill="#7D4F2A" stroke="#E5BA7D" stroke-width="1.6"/><ellipse cx="17" cy="12" rx="2.4" ry="4.5" fill="#B57E48" stroke="#F0D4A4" stroke-width="1.4"/><path d="M7.5 10.5H12.5M8.5 13.8H11.8" stroke="#E8C796" stroke-width="1.3" stroke-linecap="round"/></svg></span>12</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="ic" style="width:16px;height:16px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="4,17 7,7 13,5 20,9 18,17" fill="#6D7478" stroke="#D5DCE0" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 5L11.5 12L18 17M11.5 12L4 17" stroke="#E8EEF2" stroke-width="1.2" opacity="0.7"/></svg></span>6</span>
+      </div>
+    </div>
+    <div style="padding:11px 12px;background:rgba(46,62,34,0.52);border:1.5px solid #9CC27E;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-family:var(--font-title);font-size:15px;color:#F8F0DB;">Depósito Rústico</strong>
+        <span style="font-size:10px;padding:2px 7px;background:#4A6637;border:1px solid #A4CA87;font-weight:700;">POSICIONANDO</span>
+      </div>
+      <div style="font-size:11.5px;color:#DFEAD5;margin:4px 0 8px;">Protege 50 madeiras, 50 pedras e 30 frutos.</div>
+      <div style="display:flex;gap:14px;font-size:12.5px;color:#C5E5A9;font-weight:700;">
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="ic" style="width:16px;height:16px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 9.5C4 7.8 5.2 6.5 6.8 6.5H17.2C18.8 6.5 20 7.8 20 9.5V14.5C20 16.2 18.8 17.5 17.2 17.5H6.8C5.2 17.5 4 16.2 4 14.5V9.5Z" fill="#7D4F2A" stroke="#E5BA7D" stroke-width="1.6"/><ellipse cx="17" cy="12" rx="2.4" ry="4.5" fill="#B57E48" stroke="#F0D4A4" stroke-width="1.4"/><path d="M7.5 10.5H12.5M8.5 13.8H11.8" stroke="#E8C796" stroke-width="1.3" stroke-linecap="round"/></svg></span>18</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="ic" style="width:16px;height:16px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="4,17 7,7 13,5 20,9 18,17" fill="#6D7478" stroke="#D5DCE0" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 5L11.5 12L18 17M11.5 12L4 17" stroke="#E8EEF2" stroke-width="1.2" opacity="0.7"/></svg></span>10</span>
+        <span style="margin-left:auto;color:var(--parch);font-weight:400;font-size:11px;">5×4 m · 45 s</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  const bg = document.getElementById('bg');
+  if (bg && 'base_m3_build') bg.src = '../../ui-0/captures/base_m3_build_' + res + '.jpg';
+})();
+</script>
+</body></html>

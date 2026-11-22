@@ -1,0 +1,174 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Conceito B — Menu Principal</title><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0f110e; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.bg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ic { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ic svg { width: 100%; height: 100%; }
+
+:root {
+  --font-title: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --ink: #241B14;
+  --ink-mid: #534234;
+  --ink-light: #7F6D5B;
+  --paper: #F4ECDD;
+  --wax-red: #8F3226;
+  --wax-olive: #4B663A;
+  --brass: #9F7C44;
+}
+body { font-family: var(--font-ui); color: var(--ink); }
+
+.paper-sheet {
+  position: relative;
+  background-image: linear-gradient(180deg, rgba(247,240,226,0.92), rgba(238,228,208,0.95)), url('../assets/tex_b_paper_map.png');
+  background-size: 100% 100%;
+  border: 1.5px solid #8A7152;
+  box-shadow: inset 0 0 0 3px rgba(247,240,226,0.75), inset 0 0 0 4px rgba(122,95,64,0.45), 0 8px 26px rgba(24,18,12,0.34);
+  border-radius: 2px;
+}
+
+/* Concept B Unique Layout: Top-Left Brass Compass + Folded Cartography Strip */
+.b-compass-banner {
+  position: absolute; top: 18px; left: 22px;
+  display: flex; align-items: center;
+}
+.res-720 .b-compass-banner { top: 12px; left: 14px; }
+.b-compass-orb {
+  width: 78px; height: 78px; z-index: 2;
+  filter: drop-shadow(0 5px 12px rgba(20,14,8,0.48));
+}
+.res-720 .b-compass-orb { width: 62px; height: 62px; }
+.b-map-ribbon {
+  margin-left: -24px; padding: 9px 26px 9px 36px;
+  background: linear-gradient(90deg, rgba(245,237,222,0.96), rgba(238,228,208,0.92));
+  border: 1.5px solid #8A7152;
+  box-shadow: inset 0 0 0 2px rgba(255,250,240,0.6), 0 6px 18px rgba(24,18,12,0.32);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 50%, 100% 100%, 0 100%);
+}
+.res-720 .b-map-ribbon { padding: 6px 22px 6px 32px; }
+.b-region { font-family: var(--font-title); font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: 0.05em; text-transform: uppercase; }
+.res-720 .b-region { font-size: 13px; }
+.b-subrow { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-mid); margin-top: 2px; }
+.b-speed-ink { display: inline-flex; gap: 3px; }
+.b-speed-ink span { padding: 1px 6px; border: 1px solid rgba(110,86,58,0.4); font-size: 11px; font-weight: 700; color: var(--ink-mid); }
+.b-speed-ink span.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* Top-Right: Tied Linen Field Tags (light paper tags + wax seal!) */
+.b-ledger {
+  position: absolute; top: 18px; right: 20px;
+  display: flex; align-items: center; gap: 10px;
+}
+.res-720 .b-ledger { top: 12px; right: 14px; gap: 7px; }
+.b-tag {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px;
+  background: rgba(246,238,223,0.94);
+  border: 1.5px solid #8D7455;
+  box-shadow: 0 5px 14px rgba(22,16,10,0.28);
+  border-radius: 2px;
+}
+.res-720 .b-tag { padding: 5px 10px; gap: 5px; }
+.b-tag .num { font-family: var(--font-title); font-size: 17px; font-weight: 700; color: var(--ink); }
+.res-720 .b-tag .num { font-size: 14px; }
+.b-wax {
+  padding: 6px 14px; border-radius: 99px;
+  background: radial-gradient(circle at 35% 30%, #B44535, #76251B);
+  border: 2px solid #D9B07C;
+  color: #FDF3E2; font-family: var(--font-title); font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  box-shadow: 0 4px 10px rgba(30,10,6,0.42);
+}
+.b-wax.olive { background: radial-gradient(circle at 35% 30%, #61804B, #3C522E); }
+
+/* Bottom-Left: Inked Journal Medallions */
+.b-journal-founders {
+  position: absolute; bottom: 20px; left: 22px;
+  display: flex; align-items: center; gap: 14px;
+}
+.b-portrait-ring {
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 14px 5px 5px;
+  background: rgba(245,237,222,0.93);
+  border: 1.5px solid #8A7152;
+  border-radius: 99px;
+  box-shadow: 0 6px 16px rgba(22,16,10,0.32);
+}
+.b-circle-av {
+  width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+  border: 2px solid #59432B; flex-shrink: 0;
+}
+.res-720 .b-circle-av { width: 36px; height: 36px; }
+.b-circle-av img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Bottom-Right: Field Notebook Action Tabs */
+.b-folio-tabs {
+  position: absolute; bottom: 20px; right: 20px;
+  display: flex; gap: 8px;
+}
+.b-tab-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: rgba(245,237,222,0.95);
+  border: 1.5px solid #7E6548;
+  border-bottom: 4px solid #7E6548;
+  color: var(--ink);
+  font-family: var(--font-title); font-size: 14px; font-weight: 700; letter-spacing: 0.03em;
+  box-shadow: 0 6px 16px rgba(22,16,10,0.34);
+}
+.res-720 .b-tab-btn { padding: 7px 12px; font-size: 12.5px; }
+.b-tab-btn.wax-active {
+  background: #2C2118; color: #F5ECDC; border-color: #C7A36A; border-bottom-color: #C7A36A;
+}
+</style></head><body><div class="stage"><img class="bg-scene" id="bg" src="../../ui-0/captures/base_m5_menu_1920x1080.jpg" />
+<!-- Cartographic subtle coordinate grid overlay over live 3D world -->
+<div style="position:absolute;inset:0;background:linear-gradient(270deg, rgba(28,21,15,0.68) 0%, rgba(28,21,15,0.12) 55%, rgba(28,21,15,0.28) 100%);pointer-events:none;"></div>
+<div style="position:absolute;inset:24px;border:1px solid rgba(244,236,221,0.35);pointer-events:none;"></div>
+<img src="../assets/compass_medallion.png" style="position:absolute;bottom:42px;left:42px;width:96px;height:96px;opacity:0.9;filter:drop-shadow(0 6px 14px rgba(0,0,0,0.45));"/>
+
+<!-- Right-side Atlas Title Folio (inverted axis vs Concept A!) -->
+<div class="paper-sheet" style="position:absolute;top:40px;bottom:40px;right:48px;width:470px;padding:44px 42px;display:flex;flex-direction:column;justify-content:space-between;">
+  <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #8A7152;padding-bottom:10px;margin-bottom:22px;">
+      <span style="font-size:11px;letter-spacing:0.2em;color:var(--ink-mid);text-transform:uppercase;">Conceito B · Crônicas do Novo Mundo</span>
+      <span style="font-family:var(--font-title);font-size:12px;color:var(--ink-light);">FÓLIO I</span>
+    </div>
+    <div style="font-family:var(--font-title);font-size:48px;font-weight:700;letter-spacing:0.06em;line-height:1.02;color:var(--ink);">DAWN OF KIN</div>
+    <div style="font-family:var(--font-title);font-style:italic;font-size:15px;color:var(--ink-mid);margin-top:10px;">
+      "Das terras ignotas do arquipélago, registramos o primeiro abrigo e os nomes dos que vieram depois."
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#261C14;color:#F5ECDC;border:1.5px solid #261C14;font-family:var(--font-title);font-size:17px;font-weight:700;">
+      <span>I. Iniciar Novo Assentamento</span><span style="font-size:11px;color:#DFC187;">CAP. I</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px dashed #8A7152;font-family:var(--font-title);font-size:16px;color:var(--ink-mid);">
+      <span>II. Retomar Crônica</span><span style="font-family:var(--font-ui);font-size:10px;padding:2px 7px;border:1px solid #8A7152;color:var(--ink-mid);">PROPOSTA T3.8</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px dashed #8A7152;font-family:var(--font-title);font-size:16px;color:var(--ink-mid);">
+      <span>III. Carregar Registro</span><span style="font-family:var(--font-ui);font-size:10px;padding:2px 7px;border:1px solid #8A7152;color:var(--ink-mid);">PROPOSTA T3.8</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(138,113,82,0.5);font-family:var(--font-title);font-size:16px;color:var(--ink);">
+      <span>IV. Configurações</span><span style="font-family:var(--font-ui);font-size:11px;color:var(--ink-light);">Vídeo · Escala · Controles</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-family:var(--font-title);font-size:16px;color:#8F3226;font-weight:700;">
+      <span>V. Encerrar Expedição</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #8A7152;padding-top:12px;font-size:11px;color:var(--ink-light);">
+    <span>UI-0 R1 · Atlas de Campo</span>
+    <span class="b-wax" style="padding:3px 10px;font-size:10px;">Godot 4.7.2</span>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  const bg = document.getElementById('bg');
+  if (bg && 'base_m5_menu') bg.src = '../../ui-0/captures/base_m5_menu_' + res + '.jpg';
+})();
+</script>
+</body></html>

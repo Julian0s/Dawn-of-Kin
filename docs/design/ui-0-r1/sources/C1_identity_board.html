@@ -1,0 +1,92 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Prancha C1 — O Legado</title>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0f110e; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.bg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ic { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ic svg { width: 100%; height: 100%; }
+
+body { background:#131719; color:#F4EFE1; font-family:"Segoe UI", system-ui, sans-serif; }
+.board { width:1920px; height:1080px; padding:42px 54px; display:flex; flex-direction:column; gap:26px; }
+.hdr { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #DFC285; padding-bottom:16px; }
+.hdr h1 { font-family:"Palatino Linotype", Georgia, serif; font-size:38px; letter-spacing:0.05em; }
+.hdr p { font-size:15px; color:#B6BEB9; margin-top:4px; }
+.grid { display:grid; grid-template-columns: 420px 1fr 480px; gap:28px; flex:1; }
+.col { display:flex; flex-direction:column; gap:22px; }
+.sec { padding:20px 22px; border:1px solid rgba(180,150,100,0.35); border-radius:6px; background:rgba(128,128,128,0.06); }
+.sec-t { font-family:"Palatino Linotype", Georgia, serif; font-size:16px; letter-spacing:0.08em; text-transform:uppercase; color:#DFC285; margin-bottom:14px; }
+</style></head><body>
+<div class="board">
+  <div class="hdr">
+    <div>
+      <div style="font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:#DFC285;">DAWN OF KIN · UI-0 R1 · PRANCHA DE IDENTIDADE VISUAL</div>
+      <h1>Conceito C — O Legado</h1>
+      <p>Pedra ardósia polida, incrustação de cerâmica marfim e arcos de fio dourado celebrando a família fundadora e as gerações.</p>
+    </div>
+    <div style="text-align:right;font-size:13px;color:#B6BEB9;">Assets 100% originais · Validado em Godot 4.7.2<br/>1280×720 &amp; 1920×1080 · Intel UHD Graphics 620</div>
+  </div>
+  <div class="grid">
+    <!-- Col 1: Material 9-slice + Palette -->
+    <div class="col">
+      <div class="sec">
+        <div class="sec-t">1. Material Principal (9-Slice Godot)</div>
+        <img src="../assets/tex_c_slate_filigree.png" style="width:100%;height:260px;object-fit:cover;border-radius:4px;border:1px solid #DFC285;"/>
+        <div style="font-size:12.5px;color:#B6BEB9;margin-top:10px;line-height:1.45;">Superfície 9-slice em ardósia polida com arcos de filigrana dourada e cerâmica marfim nos cantos — validada em Godot 4.7.2 com apenas +16 draw calls.</div>
+      </div>
+      <div class="sec" style="flex:1;">
+        <div class="sec-t">2. Paleta Cromática</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;"><div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:4px;background:#1E2427;border:1px solid rgba(255,255,255,0.22);"></div><div style="font-size:12px;font-weight:700;">Ardósia</div><div style="font-size:11px;opacity:0.75;">#1E2427</div></div><div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:4px;background:#DFC285;border:1px solid rgba(255,255,255,0.22);"></div><div style="font-size:12px;font-weight:700;">Fio Ouro</div><div style="font-size:11px;opacity:0.75;">#DFC285</div></div><div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:4px;background:#F4EFE1;border:1px solid rgba(255,255,255,0.22);"></div><div style="font-size:12px;font-weight:700;">Cerâmica</div><div style="font-size:11px;opacity:0.75;">#F4EFE1</div></div><div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:4px;background:#8BB077;border:1px solid rgba(255,255,255,0.22);"></div><div style="font-size:12px;font-weight:700;">Sálvia</div><div style="font-size:11px;opacity:0.75;">#8BB077</div></div></div>
+      </div>
+    </div>
+    <!-- Col 2: Typography + Iconography + Interactive Button States -->
+    <div class="col">
+      <div class="sec">
+        <div class="sec-t">3. Hierarquia Tipográfica</div>
+        <div style="font-family:'Palatino Linotype',Georgia,serif;font-size:34px;font-weight:700;letter-spacing:0.06em;">DAWN OF KIN — Título / Linhagem</div>
+        <div style="font-family:'Palatino Linotype',Georgia,serif;font-size:20px;margin-top:8px;color:#DFC285;">Abrigo Básico · Casa Fundadora · Primavera</div>
+        <div style="font-size:14.5px;margin-top:8px;color:#B6BEB9;">Texto funcional e contadores tabulares: <strong>Madeira 24 · Pedra 14 · Alimentos 18 · 42% (1 / 2)</strong></div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">4. Iconografia Original e Coerente</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="#C8A96B" stroke-width="1.1" stroke-opacity="0.5"/><path d="M12 6.5V17.5M12 11L8.5 8.5M12 13L15.5 10.5" stroke="#E0B679" stroke-width="1.6" stroke-linecap="round"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">wood</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="#C8A96B" stroke-width="1.1" stroke-opacity="0.5"/><polygon points="12,6.5 17,12 12,17.5 7,12" stroke="#C5CFD6" stroke-width="1.5" fill="#C5CFD6" fill-opacity="0.16"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">stone</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="#C8A96B" stroke-width="1.1" stroke-opacity="0.5"/><path d="M8.5 14.5C9.2 10 12 7.5 16 7.5C15.5 11.8 12.8 14.5 8.5 14.5Z" stroke="#E5B063" stroke-width="1.5" fill="#E5B063" fill-opacity="0.22"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">food</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5.5 12L12 6.2L18.5 12M7.8 10.8V17.8H16.2V10.8" stroke="#E8D2A0" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="14" r="1.4" fill="#E8D2A0"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">build</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="6.5" stroke="#E8D2A0" stroke-width="1.4" stroke-dasharray="3 2"/><path d="M12 8.2V12L14.8 13.8" stroke="#E8D2A0" stroke-width="1.5" stroke-linecap="round"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">tasks</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:1px solid rgba(180,150,100,0.3);border-radius:4px;"><span class="ic" style="width:32px;height:32px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7.5" r="2.2" stroke="#E8D2A0" stroke-width="1.5"/><circle cx="7.5" cy="16" r="2" stroke="#C7BA99" stroke-width="1.4"/><circle cx="16.5" cy="16" r="2" stroke="#C7BA99" stroke-width="1.4"/><path d="M12 9.7V12.5M12 12.5L7.5 14M12 12.5L16.5 14" stroke="#D3B474" stroke-width="1.3"/></svg></span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.85;">house</span></div></div>
+      </div>
+      <div class="sec" style="flex:1;">
+        <div class="sec-t">5. Botões e Estados de Interação (Normal · Hover · Ativo · Desabilitado)</div>
+        
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:12px;">
+  <div style="text-align:center;padding:14px 10px;border-radius:99px;background:rgba(20,25,28,0.9);border:1.5px solid rgba(212,181,116,0.52);font-family:'Palatino Linotype',serif;font-weight:600;color:#F4EFE1;">Normal</div>
+  <div style="text-align:center;padding:14px 10px;border-radius:99px;background:rgba(212,181,116,0.18);border:1.5px solid #E5C88B;font-family:'Palatino Linotype',serif;font-weight:600;color:#FFF9EB;">Hover</div>
+  <div style="text-align:center;padding:14px 10px;border-radius:99px;background:linear-gradient(180deg,rgba(212,181,116,0.34),rgba(138,110,60,0.34));border:1.5px solid #F0D69B;font-family:'Palatino Linotype',serif;font-weight:700;color:#FFFDF5;">Ativo (Fio Ouro)</div>
+  <div style="text-align:center;padding:14px 10px;border-radius:99px;background:#161A1C;border:1px solid #3A4042;color:#6E7577;font-family:'Palatino Linotype',serif;">Desabilitado</div>
+</div>
+
+      </div>
+    </div>
+    <!-- Col 3: Founding House Portraits + Signature Artifact -->
+    <div class="col">
+      <div class="sec">
+        <div class="sec-t">6. Casa Fundadora &amp; Emblema</div>
+        <div style="display:flex;align-items:center;justify-content:space-around;gap:14px;">
+          <div style="text-align:center;"><img src="../assets/portrait_alden.jpg" style="width:108px;height:108px;object-fit:cover;border-radius:50%;border:2px solid #DFC285;"/><div style="margin-top:6px;font-family:'Palatino Linotype',Georgia,serif;font-weight:700;">Alden</div></div>
+          <img src="../assets/emblem_dawn_of_kin.png" style="width:94px;height:94px;object-fit:contain;"/>
+          <div style="text-align:center;"><img src="../assets/portrait_brena.jpg" style="width:108px;height:108px;object-fit:cover;border-radius:50%;border:2px solid #DFC285;"/><div style="margin-top:6px;font-family:'Palatino Linotype',Georgia,serif;font-weight:700;">Brena</div></div>
+        </div>
+      </div>
+      <div class="sec" style="flex:1;">
+        <div class="sec-t">7. Peça Assinatura &amp; Silhueta Espacial</div>
+        
+<div style="display:flex;align-items:center;gap:16px;margin-top:10px;">
+  <img src="../assets/emblem_dawn_of_kin.png" style="width:128px;height:128px;"/>
+  <div style="font-size:13.5px;color:#C2C7C2;line-height:1.55;">
+    <strong>Arco da Linhagem na Base Central + Topo Esquerdo 100% Livre.</strong><br/>
+    Coloca o casal fundador e seus futuros descendentes no centro geométrico da interface, unidos pelo fio de ouro e pelo emblema solar, deixando toda a paisagem superior aberta.
+  </div>
+</div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
