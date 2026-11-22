@@ -1,13 +1,16 @@
 # DAWN OF KIN — DESIGN SYSTEM MESTRE
 ## Referência Visual Aprovada D2.2: "Marcos de Pedra e Eclipse"
 
-> **Status:** `CANDIDATO DOCUMENTAL (UI-0 R2.3.1)` — Auditoria e correção factual do candidato documental R2.3, baseado na restauração fiel da Direção D2 aprovada visualmente pelo proprietário em 22/11/2026 (`design/ui-0-r2-2-d2-visual-fidelity` @ commit `1ab8ffb78c269f3a659712491de91ab1f317e919`). **Aguarda avaliação expressa e homologação do proprietário.**  
-> **Hierarquia e Limites:**  
+> **Status:** `HOMOLOGADO DOCUMENTALMENTE (UI-0 R2.3.2)` — Design System Mestre homologado pelo proprietário em 22/11/2026 após cumprimento integral das duas correções condicionantes sobre a R2.3.1 (classificação do armazenamento e procedência/licenças), com ressalvas de procedência registradas na Seção 6. Baseado na Direção D2 restaurada e aprovada visualmente (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb78c269f3a659712491de91ab1f317e919`).  
+> **Distinção de Autoridade:**  
+> - **Identidade Artística D2.2:** `APROVADA VISUALMENTE` (imutável sem ordem expressa do proprietário).  
+> - **Manual & Prancha R2.3.2:** `HOMOLOGADO DOCUMENTALMENTE` (referência normativa de padronização visual e VCG).  
+> - **Implementação de Produção (`UI-1`):** `BLOQUEADA` — a homologação documental **não autoriza** implementação de HUD/menus, código de produção, merges ou tags.  
+> **Hierarquia Normativa:**  
 > 1. GDD Consolidado e decisões vigentes: autoridade máxima sobre regras de gameplay, simulação e narrativa.  
 > 2. Direção Artística D2 Original (`design/ui-0-r2-identity` @ `f138177`): fonte primária de composição, silhueta e atmosfera estética.  
 > 3. Reprodução D2.2 na Godot (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb`): **identidade visual aprovada** e referência técnica de renderização.  
-> 4. Este Design System (`R2.3.1 — Candidato Documental`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.  
-> **Restrição mandatória:** **UI-1 permanece BLOQUEADA.** Este documento não autoriza alterações em código de produção, gameplay, `MainScene` ou arquitetura técnica.
+> 4. Este Design System (`R2.3.2 — Homologado Documentalmente`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.
 
 ---
 
@@ -377,8 +380,11 @@ Quando sistemas futuros (`PLANEJADO` ou `PROPOSTA` no GDD) forem expressamente a
 |    01. População / Clã         • Monólito vertical de basalto à esquerda, similar ao Menu          |
 |        (PLANEJADO T3.5/T5)     • Mini-estelas para habitantes com retratos circulares entalhados   |
 |                                                                                                    |
-|    02. Estoque / Depósito      • Lajes horizontais divididas em compartimentos chanfrados          |
-|        (IMPLEMENTADO/T3.7)     • Fundo grafite vulcânico com divisores kintsugi sutis              |
+|    02. Armazenamento Inicial     • Lajes horizontais divididas em compartimentos chanfrados          |
+|        (IMPLEMENTADO T2)         • Fundo grafite vulcânico com divisores kintsugi sutis              |
+|        vs Depósito Rústico     • Armazenamento inicial: pilhas na CampStorageZone, saldo coletivo   |
+|        (DECIDIDO / PLANEJADO     e transporte físico (IMPLEMENTADO). Proteção `D5`, múltiplos      |
+|        T3.7 / T4+)               depósitos e armazenamento regional `D8` = PLANEJADO (T3.7/T4+).    |
 |                                                                                                    |
 |    03. Linhagem e Genealogia   • Expansão da Lâmina Contextual para um altar de três corpos        |
 |        (PLANEJADO T5)          • Nós genealógicos conectados por veios dourados ramificados        |
@@ -397,23 +403,26 @@ Quando sistemas futuros (`PLANEJADO` ou `PROPOSTA` no GDD) forem expressamente a
 
 ---
 
-## 6. Inventário de Assets Autorizados e Atlas
+## 6. Inventário de Assets, Procedência e Ressalvas de Licença
 
-Todos os recursos gráficos constitutivos da identidade visual oficial estão consolidados na pasta `docs/design/ui-0-r2-2/assets/`:
+Todos os recursos gráficos visuais da identidade D2.2 estão consolidados em `docs/design/ui-0-r2-2/assets/` e não devem ser alterados, removidos ou substituídos nesta etapa.
 
-| Arquivo de Asset | Dimensões | Formato | Peso | Função e Conteúdo | Procedência e Licença |
+| Arquivo de Asset | Dimensões | Formato | Peso | Função e Conteúdo | Categoria de Procedência Verificável e Condições |
 |---|---|---|---:|---|---|
-| [`d2_2_faithful_atlas.png`](../design/ui-0-r2-2/assets/d2_2_faithful_atlas.png) | `1024 × 1024` | PNG 8-bit | `208 KB` | Atlas mestre com 12 peças poligonais pré-assadas em 2× supersampling + 5 ícones | Obra original do projeto. Livre de royalties e sem restrições. |
-| [`d2_2_menu_monolith.png`](../design/ui-0-r2-2/assets/d2_2_menu_monolith.png) | `1024 × 1024` | PNG 8-bit | `206 KB` | Monólito monumental chanfrado com sutura kintsugi para menu | Obra original do projeto. Livre de royalties e sem restrições. |
-| [`atlas_manifest.json`](../design/ui-0-r2-2/assets/atlas_manifest.json) | — | JSON | `3 KB` | Mapeamento exato de retângulos, content sizes e offsets de padding | Metadados do projeto. |
-| [`portrait_alden.jpg`](../design/ui-0-r2-2/assets/portrait_alden.jpg) | `256 × 256` | JPEG | `16 KB` | Retrato do patriarca fundador Alden | Obra original de estúdio. Sem royalties. |
-| [`portrait_brena.jpg`](../design/ui-0-r2-2/assets/portrait_brena.jpg) | `256 × 256` | JPEG | `17 KB` | Retrato da matriarca fundadora Brena | Obra original de estúdio. Sem royalties. |
-| [`emblem_dawn_of_kin.png`](../design/ui-0-r2-2/assets/emblem_dawn_of_kin.png) | `512 × 512` | PNG | `128 KB` | Emblema solar místico gravado em ouro | Obra original de estúdio. Sem royalties. |
-| [`d1_shelter_mini.png`](../design/ui-0-r2-2/assets/d1_shelter_mini.png) | `512 × 512` | PNG | `204 KB` | Miniatura arquitetônica do Abrigo Básico (`shelter_basic`) | Obra original de estúdio. Sem royalties. |
-| [`d1_depot_mini.png`](../design/ui-0-r2-2/assets/d1_depot_mini.png) | `512 × 512` | PNG | `207 KB` | Miniatura arquitetônica do Depósito Rústico (`storage_depot`) | Obra original de estúdio. Sem royalties. |
-| [`d2_kintsugi_basalt.png`](../design/ui-0-r2-2/assets/d2_kintsugi_basalt.png) | `1024 × 1024` | PNG | `347 KB` | Textura base de basalto mineral com veios dourados para assamento | Obra original de estúdio. Sem royalties. |
+| [`d2_2_faithful_atlas.png`](../design/ui-0-r2-2/assets/d2_2_faithful_atlas.png) | `1024 × 1024` | PNG 8-bit | `208 KB` | Atlas mestre com 12 peças poligonais pré-assadas em 2× supersampling + 5 ícones | **Derivado composto no projeto** (script Python `build_ui0_r2_2_faithful_assets.py` sobre `d2_kintsugi_basalt.png` + geometria/ícones D2.2). Sujeito às condições da textura base. |
+| [`d2_2_menu_monolith.png`](../design/ui-0-r2-2/assets/d2_2_menu_monolith.png) | `1024 × 1024` | PNG 8-bit | `206 KB` | Monólito monumental chanfrado com sutura kintsugi para menu | **Derivado composto no projeto** (script Python `build_ui0_r2_2_faithful_assets.py` sobre `d2_kintsugi_basalt.png`). Sujeito às condições da textura base. |
+| [`atlas_manifest.json`](../design/ui-0-r2-2/assets/atlas_manifest.json) | — | JSON | `3 KB` | Mapeamento exato de retângulos, content sizes e offsets de padding | **Produzido para o projeto** (gerado pelo script `build_ui0_r2_2_faithful_assets.py` como metadado técnico). |
+| [`portrait_alden.jpg`](../design/ui-0-r2-2/assets/portrait_alden.jpg) | `256 × 256` | JPEG | `16 KB` | Retrato do patriarca fundador Alden | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`). Recurso incluído no projeto com procedência técnica registrada; condições de uso e redistribuição sujeitas aos termos aplicáveis e verificação jurídica. |
+| [`portrait_brena.jpg`](../design/ui-0-r2-2/assets/portrait_brena.jpg) | `256 × 256` | JPEG | `17 KB` | Retrato da matriarca fundadora Brena | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`). Recurso incluído no projeto com procedência técnica registrada; condições de uso e redistribuição sujeitas aos termos aplicáveis e verificação jurídica. |
+| [`emblem_dawn_of_kin.png`](../design/ui-0-r2-2/assets/emblem_dawn_of_kin.png) | `512 × 512` | PNG | `128 KB` | Emblema solar gravado em ouro | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`), recortado/mascarado por script do projeto. Condições sujeitas aos termos aplicáveis e verificação jurídica. |
+| [`d1_shelter_mini.png`](../design/ui-0-r2-2/assets/d1_shelter_mini.png) | `512 × 512` | PNG | `204 KB` | Miniatura arquitetônica do Abrigo Básico (`shelter_basic`) | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`). Condições de uso e redistribuição sujeitas aos termos aplicáveis e verificação jurídica. |
+| [`d1_depot_mini.png`](../design/ui-0-r2-2/assets/d1_depot_mini.png) | `512 × 512` | PNG | `207 KB` | Miniatura arquitetônica do Depósito Rústico (`storage_depot`) | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`). Condições de uso e redistribuição sujeitas aos termos aplicáveis e verificação jurídica. |
+| [`d2_kintsugi_basalt.png`](../design/ui-0-r2-2/assets/d2_kintsugi_basalt.png) | `1024 × 1024` | PNG | `347 KB` | Textura base de basalto mineral com veios dourados para assamento | **Gerado por ferramenta de IA** no fluxo `UI-0` (`image-generator`). Condições de uso e redistribuição sujeitas aos termos aplicáveis e verificação jurídica. |
 
-*Declaração de Conformidade Legal:* Nenhum dos arquivos acima infringe direitos autorais, contém marcas registradas de terceiros ou impõe restrições para distribuição em código aberto comercial.
+### 6.1 Ressalvas Formais de Procedência e Licenciamento
+1. **Assets Gerados por IA e Derivados:** Os seis arquivos raster base gerados por ferramenta de IA durante a etapa `UI-0` (`d2_kintsugi_basalt.png`, `emblem_dawn_of_kin.png`, `portrait_alden.jpg`, `portrait_brena.jpg`, `d1_shelter_mini.png`, `d1_depot_mini.png`) e os dois atlas compostos deles derivados (`d2_2_faithful_atlas.png`, `d2_2_menu_monolith.png`) possuem origem técnica rastreada nos logs do projeto, porém **não contam com documentação jurídica externa de licença anexada ao repositório**. Qualquer redistribuição pública ou comercial fica sujeita aos termos da ferramenta utilizada e a eventual verificação jurídica pelo proprietário.
+2. **Assets de Bancos Terceiros:** Nenhum asset gráfico de catálogo terceiro externo foi importado para `docs/design/ui-0-r2-2/assets/`.
+3. **Fontes Tipográficas de Sistema (§2.2):** As famílias de sistema citadas como referência visual (`Palatino Linotype`, `Georgia`, `Segoe UI`) pertencem aos respectivos sistemas operacionais e **não estão incluídas no repositório**. Antes de empacotamento em builds na futura `UI-1`, deverá ser definida fonte com licença aberta verificada (ex.: SIL OFL) ou licenciamento compatível documentado.
 
 ---
 
