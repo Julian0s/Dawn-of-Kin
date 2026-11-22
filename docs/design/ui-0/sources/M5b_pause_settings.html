@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — M5b Pausa e Configurações</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+
+.pause-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 14, 11, 0.56);
+}
+.pause-shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+.pause-menu { width: 280px; }
+.settings-panel { width: 490px; }
+.res-720 .pause-menu { width: 228px; }
+.res-720 .settings-panel { width: 410px; }
+.pause-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.pause-btn.active {
+  border-color: var(--border-bronze-strong);
+  background: rgba(154, 128, 86, 0.22);
+}
+.pause-btn.future { border-style: dashed; color: var(--text-secondary); }
+.seg-group {
+  display: flex;
+  gap: 4px;
+}
+.seg {
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-size: var(--fs-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+}
+.seg.active {
+  border-color: var(--accent-olive-bright);
+  background: rgba(109, 139, 85, 0.24);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.toggle-pill {
+  width: 36px;
+  height: 18px;
+  border-radius: 10px;
+  background: rgba(109, 139, 85, 0.55);
+  border: 1px solid var(--accent-olive-bright);
+  position: relative;
+}
+.toggle-pill::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #F4EEDB;
+}
+
+</style>
+</head>
+<body class="">
+<div class="stage" id="stage">
+  <img class="bg-scene" id="bgScene" src="../captures/base_m5_menu_1920x1080.jpg" alt="Cenário real Dawn of Kin" />
+  <div class="scene-vignette"></div>
+  
+    <div class="panel top-left-bar">
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="res-val">24</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><span class="res-val">14</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><span class="res-val">18</span></div>
+      <div class="v-sep"></div>
+      <span class="badge badge-exposed"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3L16 5.6V10.4C16 14 13.4 16.4 10 17.6C6.6 16.4 4 14 4 10.4V5.6L10 3Z" stroke="#D19A4B" stroke-width="1.5" fill="#D19A4B" fill-opacity="0.14"/><path d="M10 7.2V11.2M10 13.7V13.8" stroke="#E5B66C" stroke-width="1.7" stroke-linecap="round"/></svg></span>Exposto</span>
+      <div class="v-sep"></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="7" r="2.6" stroke="#DDD1B4" stroke-width="1.5"/><path d="M3.2 15.5C3.6 12.7 5.3 11.4 7.5 11.4C9.7 11.4 11.4 12.7 11.8 15.5" stroke="#DDD1B4" stroke-width="1.5" stroke-linecap="round"/><circle cx="13.5" cy="8" r="2.1" stroke="#A69B84" stroke-width="1.4"/><path d="M12.2 11.8C14.1 12 15.8 13.1 16.3 15.5" stroke="#A69B84" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="res-val">2</span><span class="res-lbl">(2 livres)</span></div>
+    </div>
+    
+    <div class="panel top-right-bar">
+      <div class="world-meta">
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="6.8" stroke="#B69B6D" stroke-width="1.4"/><path d="M12.8 7.2L11.2 11.2L7.2 12.8L8.8 8.8L12.8 7.2Z" stroke="#DFC79A" stroke-width="1.3" fill="#B69B6D" fill-opacity="0.28"/></svg></span><span><strong>Clareira Inicial</strong></span>
+        <div class="v-sep"></div>
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4.5 15.2C5.2 9.2 9.4 5.2 15.8 4.6C15.1 10.8 11.2 14.8 4.5 15.2Z" stroke="#8FB273" stroke-width="1.5" fill="#8FB273" fill-opacity="0.22"/><path d="M4.5 15.2L11.5 8.6" stroke="#C5DBA9" stroke-width="1.3" stroke-linecap="round"/></svg></span><span>Primavera · Ano 1</span>
+      </div>
+      <div class="v-sep"></div>
+      <div class="speed-group">
+        <span class="speed-btn active"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="5.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/><rect x="11.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/></svg></span></span>
+        <span class="speed-btn ">1×</span>
+        <span class="speed-btn ">2×</span>
+        <span class="speed-btn ">4×</span>
+      </div>
+      <span class="icon-btn active"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 6H16M4 10H16M4 14H16" stroke="#DED4BD" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+    </div>
+    
+    <div class="pause-scrim"></div>
+    <div class="pause-shell">
+      <div class="panel pause-menu">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Jogo Pausado</div>
+            <div class="panel-subtitle">Esc para retomar</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="pause-btn" style="border-color:var(--accent-olive-bright);background:rgba(109,139,85,0.22);">
+            <span>Retomar Partida</span><span class="hotkey">Esc</span>
+          </div>
+          <div class="pause-btn future"><span>Salvar Partida</span><span class="badge badge-proposal">T3.8</span></div>
+          <div class="pause-btn future"><span>Carregar Partida</span><span class="badge badge-proposal">T3.8</span></div>
+          <div class="pause-btn active"><span>Configurações</span><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.8" stroke="#DFC79A" stroke-width="1.5"/><path d="M10 3.2V5.1M10 14.9V16.8M3.2 10H5.1M14.9 10H16.8M5.2 5.2L6.5 6.5M13.5 13.5L14.8 14.8M14.8 5.2L13.5 6.5M6.5 13.5L5.2 14.8" stroke="#B69B6D" stroke-width="1.5" stroke-linecap="round"/></svg></span></div>
+          <div class="divider"></div>
+          <div class="pause-btn"><span>Voltar ao Menu Inicial</span></div>
+          <div class="pause-btn" style="border-color:rgba(197,93,75,0.45);color:#F0B4A8;"><span>Sair com Segurança</span></div>
+        </div>
+      </div>
+
+      <div class="panel settings-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.8" stroke="#DFC79A" stroke-width="1.5"/><path d="M10 3.2V5.1M10 14.9V16.8M3.2 10H5.1M14.9 10H16.8M5.2 5.2L6.5 6.5M13.5 13.5L14.8 14.8M14.8 5.2L13.5 6.5M6.5 13.5L5.2 14.8" stroke="#B69B6D" stroke-width="1.5" stroke-linecap="round"/></svg></span>Configurações · Vídeo e Interface</div>
+            <div class="panel-subtitle">Aplicado em tempo real sem reiniciar a partida</div>
+          </div>
+          <span class="icon-btn"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 5.5L14.5 14.5M14.5 5.5L5.5 14.5" stroke="#B8B09E" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+        </div>
+        <div class="panel-body">
+          <div class="subcard">
+            <div class="kv-row">
+              <span><strong>Resolução da janela</strong> <span style="font-size:var(--fs-xs);color:var(--text-muted);">(DisplayResolutionService)</span></span>
+              <div class="seg-group">
+                <span class="seg">1280×720</span>
+                <span class="seg active">1920×1080</span>
+              </div>
+            </div>
+            <div class="kv-row">
+              <span><strong>Modo de exibição</strong></span>
+              <div class="seg-group">
+                <span class="seg active">Janela</span>
+                <span class="seg">Tela cheia sem borda</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="subcard">
+            <div class="kv-row">
+              <span><strong>Escala da interface (UI Scale)</strong></span>
+              <div class="seg-group">
+                <span class="seg">85%</span>
+                <span class="seg active">100%</span>
+                <span class="seg">115%</span>
+                <span class="seg">125%</span>
+              </div>
+            </div>
+            <div class="kv-row">
+              <span><strong>Alto contraste de textos e bordas</strong></span>
+              <span class="toggle-pill"></span>
+            </div>
+            <div class="kv-row">
+              <span><strong>Rolagem de câmera nas bordas (Edge Pan)</strong></span>
+              <span class="toggle-pill"></span>
+            </div>
+          </div>
+
+          <div class="subcard" style="border-style:dashed;">
+            <div class="kv-row">
+              <span><strong>Áudio e Volume</strong></span>
+              <span class="badge badge-proposal">Proposta Futura</span>
+            </div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted);">
+              Encerramento seguro validará obrigações econômicas pendentes (<code>preflight_economic_teardown</code>) antes de fechar.
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;">
+            <span class="btn btn-ghost">Restaurar padrão</span>
+            <span class="btn btn-primary">Aplicar alterações</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+</div>
+<script>
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  if (p.get('theme') === 'b') document.body.classList.add('theme-b');
+  const bg = document.getElementById('bgScene');
+  if (bg && 'base_m5_menu') {
+    bg.src = '../captures/base_m5_menu_' + res + '.jpg';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — M5a Menu Inicial</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(13, 15, 12, 0.90) 0%, rgba(13, 15, 12, 0.72) 34%, rgba(13, 15, 12, 0.14) 68%, rgba(13, 15, 12, 0.28) 100%);
+}
+.main-menu-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 440px;
+  padding: 58px 46px 36px 46px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid var(--border-bronze);
+  background: rgba(18, 20, 17, 0.78);
+}
+.res-720 .main-menu-rail { width: 350px; padding: 36px 30px 24px 30px; }
+.brand-kicker {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-gold);
+  margin-bottom: 8px;
+}
+.brand-title {
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.04;
+  color: var(--text-primary);
+}
+.res-720 .brand-title { font-size: 34px; }
+.brand-sub {
+  margin-top: 10px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 34px;
+}
+.res-720 .menu-nav { gap: 7px; margin-top: 22px; }
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(29, 32, 27, 0.72);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+.res-720 .menu-item { padding: 9px 12px; font-size: 14px; }
+.menu-item.featured {
+  background: linear-gradient(90deg, rgba(154, 128, 86, 0.30), rgba(109, 139, 85, 0.20));
+  border-color: var(--border-bronze-strong);
+}
+.menu-item.future {
+  color: var(--text-secondary);
+  border-style: dashed;
+}
+.menu-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+</style>
+</head>
+<body class="">
+<div class="stage" id="stage">
+  <img class="bg-scene" id="bgScene" src="../captures/base_m5_menu_1920x1080.jpg" alt="Cenário real Dawn of Kin" />
+  <div class="scene-vignette"></div>
+  
+<div class="menu-backdrop"></div>
+<div class="main-menu-rail">
+  <div>
+    <div class="brand-kicker">Sobrevivência · Linhagem · Assentamento</div>
+    <div class="brand-title">DAWN OF KIN</div>
+    <div class="brand-sub">Da sobrevivência de dois fundadores ao despertar de uma comunidade viva.</div>
+    <div class="divider" style="margin:20px 0 0 0;"></div>
+
+    <div class="menu-nav">
+      <div class="menu-item featured">
+        <span>Iniciar Novo Assentamento</span>
+        <span style="font-family:var(--font-ui);font-size:var(--fs-xs);color:var(--text-gold);">Cap. 1</span>
+      </div>
+      <div class="menu-item future">
+        <span>Continuar Última Partida</span>
+        <span class="badge badge-proposal">Proposta T3.8</span>
+      </div>
+      <div class="menu-item future">
+        <span>Carregar Partida</span>
+        <span class="badge badge-proposal">Proposta T3.8</span>
+      </div>
+      <div class="menu-item">
+        <span>Configurações</span>
+        <span style="font-family:var(--font-ui);font-size:var(--fs-xs);color:var(--text-muted);">Vídeo · Escala · Controles</span>
+      </div>
+      <div class="menu-item" style="border-color:rgba(197,93,75,0.35);color:#E5BCB4;">
+        <span>Sair do Jogo</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-footer">
+    <div class="divider"></div>
+    <div class="kv-row" style="font-size:var(--fs-xs);">
+      <span>Proposta Visual UI-0 · Medieval Contemporâneo</span>
+      <span>Godot 4.7.2</span>
+    </div>
+    <div>Cenário 3D real ao vivo em segundo plano · Sem efeitos pesados de pós-processamento</div>
+  </div>
+</div>
+
+</div>
+<script>
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  if (p.get('theme') === 'b') document.body.classList.add('theme-b');
+  const bg = document.getElementById('bgScene');
+  if (bg && 'base_m5_menu') {
+    bg.src = '../captures/base_m5_menu_' + res + '.jpg';
+  }
+})();
+</script>
+</body>
+</html>

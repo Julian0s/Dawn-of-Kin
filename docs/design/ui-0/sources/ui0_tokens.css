@@ -1,0 +1,592 @@
+/* Dawn of Kin — UI-0 Design System Tokens (Medieval Contemporâneo)
+ * Variação A (Padrão / Recomendada): "Ardósia e Bronze"
+ * Variação B (.theme-b): "Pergaminho de Pedra"
+ * Zero efeitos caros de GPU (sem blur contínuo ou bloom), 100% reproduzível via StyleBoxFlat no Godot 4.7.2.
+ */
+
+:root {
+  /* Palette — Variation A: Ardósia e Bronze */
+  --bg-panel: rgba(22, 24, 21, 0.89);
+  --bg-panel-solid: #171916;
+  --bg-elevated: rgba(33, 36, 30, 0.94);
+  --bg-header: rgba(29, 32, 27, 0.96);
+  --bg-inset: rgba(13, 15, 12, 0.78);
+  --bg-hover: rgba(154, 128, 86, 0.16);
+  --bg-active: rgba(102, 128, 79, 0.24);
+
+  --border-bronze: rgba(154, 128, 86, 0.54);
+  --border-bronze-strong: rgba(196, 165, 107, 0.78);
+  --border-subtle: rgba(154, 128, 86, 0.22);
+  --inner-hairline: rgba(228, 206, 162, 0.09);
+
+  --text-primary: #F1EBD9;
+  --text-secondary: #C2BBA8;
+  --text-muted: #8E8878;
+  --text-gold: #DFC48E;
+
+  --accent-olive: #6D8B55;
+  --accent-olive-bright: #8FB273;
+  --accent-bronze: #B6955E;
+  --accent-amber: #D59B49;
+  --accent-danger: #C55D4B;
+  --accent-stone: #A5AEB3;
+  --accent-wood: #C59058;
+  --accent-food: #D9984A;
+
+  --font-display: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Scale variables (1920x1080 default) */
+  --edge: 18px;
+  --gap: 10px;
+  --radius: 4px;
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 16.5px;
+  --fs-xl: 22px;
+  --bar-h: 44px;
+  --dock-h: 44px;
+  --panel-w: 316px;
+}
+
+.res-720 {
+  --edge: 12px;
+  --gap: 8px;
+  --fs-xs: 10.5px;
+  --fs-sm: 11.5px;
+  --fs-md: 12.5px;
+  --fs-lg: 14.5px;
+  --fs-xl: 18px;
+  --bar-h: 38px;
+  --dock-h: 38px;
+  --panel-w: 274px;
+}
+
+/* Variation B: Pergaminho de Pedra (mais quente/oliva-pedra, cabeçalhos mais marcados) */
+.theme-b {
+  --bg-panel: rgba(36, 39, 32, 0.91);
+  --bg-panel-solid: #242720;
+  --bg-elevated: rgba(48, 51, 41, 0.95);
+  --bg-header: rgba(56, 58, 46, 0.96);
+  --bg-inset: rgba(24, 26, 21, 0.78);
+  --bg-hover: rgba(190, 160, 104, 0.18);
+  --border-bronze: rgba(188, 159, 105, 0.68);
+  --border-bronze-strong: rgba(218, 189, 130, 0.88);
+  --border-subtle: rgba(188, 159, 105, 0.30);
+  --inner-hairline: rgba(245, 231, 198, 0.13);
+  --text-primary: #F6F0DF;
+  --text-secondary: #D0C8B3;
+  --text-muted: #9D9683;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0f110e;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+.bg-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Subtle natural edge vignette so top/bottom HUD always reads cleanly on bright grass or future snow */
+.scene-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(14, 16, 13, 0.38) 0%, rgba(14, 16, 13, 0.0) 11%, rgba(14, 16, 13, 0.0) 86%, rgba(14, 16, 13, 0.34) 100%);
+}
+
+/* Core Surface: Medieval Contemporâneo Panel */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bronze);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 1px var(--inner-hairline),
+    0 6px 20px rgba(0, 0, 0, 0.38);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+}
+
+.panel-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-subtitle {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--border-bronze) 20%, var(--border-bronze) 80%, transparent 100%);
+  opacity: 0.55;
+  margin: 8px 0;
+}
+
+.v-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.res-720 .icon { width: 16px; height: 16px; }
+.icon svg { width: 100%; height: 100%; }
+
+/* Top-Left: Compact Resource & Settlement Strip */
+.top-left-bar {
+  position: absolute;
+  top: var(--edge);
+  left: var(--edge);
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+}
+.res-720 .top-left-bar { gap: 10px; padding: 0 11px; }
+
+.res-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.res-val {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.res-lbl {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.badge-exposed {
+  background: rgba(213, 155, 73, 0.14);
+  border-color: rgba(213, 155, 73, 0.42);
+  color: #E8BA72;
+}
+.badge-protected {
+  background: rgba(109, 139, 85, 0.18);
+  border-color: rgba(143, 178, 115, 0.45);
+  color: #B4D49A;
+}
+.badge-proposal {
+  background: rgba(182, 149, 94, 0.14);
+  border-color: rgba(182, 149, 94, 0.42);
+  color: #DFC48E;
+  font-size: 9.5px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.badge-control-personal {
+  background: rgba(182, 149, 94, 0.22);
+  border-color: rgba(215, 183, 122, 0.55);
+  color: #EFE0BC;
+}
+.badge-control-auto {
+  background: rgba(109, 139, 85, 0.2);
+  border-color: rgba(143, 178, 115, 0.48);
+  color: #BCD9A4;
+}
+
+/* Top-Right: World Context (Future Slot) + Time/Speed + Menu */
+.top-right-bar {
+  position: absolute;
+  top: var(--edge);
+  right: var(--edge);
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 13px;
+}
+.res-720 .top-right-bar { gap: 8px; padding: 0 8px 0 10px; }
+
+.world-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.world-meta strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.speed-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 2px;
+}
+.speed-btn {
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: 2px;
+}
+.res-720 .speed-btn { height: 22px; min-width: 23px; padding: 0 4px; }
+.speed-btn.active {
+  background: rgba(154, 128, 86, 0.28);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bronze);
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.res-720 .icon-btn { width: 26px; height: 26px; }
+.icon-btn.active {
+  border-color: var(--border-bronze-strong);
+  background: rgba(154, 128, 86, 0.25);
+}
+
+/* Notifications (Toasts): positioned cleanly below top bar so they NEVER collide with top-left/top-right in 720p or 125% UI scale */
+.toast-stack {
+  position: absolute;
+  top: calc(var(--edge) + var(--bar-h) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  max-width: 560px;
+}
+.toast-stack.top-right {
+  left: auto;
+  right: var(--edge);
+  transform: none;
+  align-items: flex-end;
+  max-width: 440px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bronze);
+  border-left: 3px solid var(--accent-bronze);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.36);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.toast.ok { border-left-color: var(--accent-olive-bright); }
+.toast.warn { border-left-color: var(--accent-amber); }
+.toast.err { border-left-color: var(--accent-danger); }
+.toast .toast-sub { color: var(--text-muted); font-size: var(--fs-xs); margin-left: 4px; }
+
+/* Bottom-Left: Founding House Mini-Dock & Selected Card */
+.bottom-left-dock {
+  position: absolute;
+  bottom: var(--edge);
+  left: var(--edge);
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.founder-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.portrait-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+}
+.portrait-chip.selected {
+  border-color: var(--border-bronze-strong);
+  background: rgba(154, 128, 86, 0.18);
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: #FAF4E6;
+  border: 1px solid rgba(255,255,255,0.22);
+  position: relative;
+  flex-shrink: 0;
+}
+.res-720 .avatar { width: 26px; height: 26px; font-size: 11.5px; }
+.avatar-a { background: linear-gradient(145deg, #A7472C, #6E2C1A); }
+.avatar-b { background: linear-gradient(145deg, #2D6F91, #1B465E); }
+.avatar-child { background: linear-gradient(145deg, #6A7D54, #415034); }
+.status-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid #161815;
+}
+.dot-idle { background: #C2BBA8; }
+.dot-work { background: #8FB273; }
+.dot-manual { background: #E3B86A; }
+
+.chip-info { display: flex; flex-direction: column; line-height: 1.18; }
+.chip-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text-primary); }
+.chip-state { font-size: var(--fs-xs); color: var(--text-muted); }
+
+/* Bottom-Right: Compact Action Dock */
+.bottom-right-dock {
+  position: absolute;
+  bottom: var(--edge);
+  right: var(--edge);
+  height: var(--dock-h);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+}
+
+.action-btn {
+  height: calc(var(--dock-h) - 10px);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  position: relative;
+}
+.res-720 .action-btn { padding: 0 9px; gap: 5px; }
+.action-btn.primary {
+  background: linear-gradient(180deg, rgba(154, 128, 86, 0.34), rgba(114, 92, 58, 0.34));
+  border-color: var(--border-bronze-strong);
+  color: #FAF3E2;
+}
+.action-btn.active {
+  background: rgba(109, 139, 85, 0.28);
+  border-color: var(--accent-olive-bright);
+}
+.hotkey {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  padding: 0 4px;
+  line-height: 15px;
+}
+.count-pill {
+  background: var(--accent-olive);
+  color: #F7F3E6;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 8px;
+  line-height: 16px;
+}
+
+/* Standard Buttons inside Panels */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 3px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border: 1px solid var(--border-bronze);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.btn-primary {
+  background: linear-gradient(180deg, rgba(115, 145, 88, 0.36), rgba(82, 108, 62, 0.36));
+  border-color: rgba(143, 178, 115, 0.65);
+}
+.btn-danger {
+  background: rgba(197, 93, 75, 0.16);
+  border-color: rgba(197, 93, 75, 0.55);
+  color: #F0B4A8;
+}
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* Progress bar */
+.progress-track {
+  width: 100%;
+  height: 7px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5F7D49, #8FB273);
+  border-radius: 2px;
+}
+.progress-fill.amber { background: linear-gradient(90deg, #B57F35, #DFA44F); }
+
+/* Side Contextual Panels */
+.left-drawer {
+  position: absolute;
+  top: calc(var(--edge) + var(--bar-h) + var(--gap));
+  left: var(--edge);
+  width: var(--panel-w);
+}
+.right-drawer {
+  position: absolute;
+  bottom: calc(var(--edge) + var(--dock-h) + var(--gap));
+  right: var(--edge);
+  width: var(--panel-w);
+}
+.panel-body { padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+.res-720 .panel-body { padding: 9px 10px; gap: 7px; }
+
+.kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.kv-row strong { color: var(--text-primary); font-weight: 600; }
+
+/* Card items inside drawers */
+.subcard {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.subcard.selected {
+  border-color: var(--border-bronze-strong);
+  background: rgba(154, 128, 86, 0.12);
+}
+
+/* Tooltip */
+.tooltip {
+  position: absolute;
+  width: 244px;
+  background: rgba(17, 19, 16, 0.95);
+  border: 1px solid var(--border-bronze-strong);
+  border-radius: 4px;
+  padding: 9px 11px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.52);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.tooltip-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-gold);
+  margin-bottom: 4px;
+}
+
+/* Subtle mockup watermark tag (only bottom-center unobtrusive metadata strip? NO: keep mockups 100% pure game viewport!) */

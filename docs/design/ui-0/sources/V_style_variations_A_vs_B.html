@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — Variações Visuais A vs B (Medieval Contemporâneo)</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+.split-board {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #10120f;
+}
+.half {
+  position: relative;
+  overflow: hidden;
+  border-right: 2px solid rgba(196, 165, 107, 0.55);
+}
+.half:last-child { border-right: none; }
+.half-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.half-label {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(14, 16, 13, 0.92);
+  border: 1px solid rgba(196, 165, 107, 0.65);
+  border-radius: 4px;
+}
+.half-label h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: #F4EEDB;
+  letter-spacing: 0.03em;
+}
+.half-label p {
+  font-size: 12.5px;
+  color: #C2BBA8;
+  margin-top: 2px;
+}
+.demo-stack {
+  position: absolute;
+  top: 112px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.swatch-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.swatch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  font-size: 11px;
+  color: #EAE3D0;
+}
+.dot { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.28); }
+.bottom-verdict {
+  position: absolute;
+  bottom: 22px;
+  left: 24px;
+  right: 24px;
+  padding: 12px 14px;
+}
+</style>
+</head>
+<body>
+<div class="split-board">
+  <!-- LEFT: VARIATION A (RECOMMENDED) -->
+  <div class="half">
+    <img class="half-bg" src="../captures/base_m1_clean_1920x1080.jpg" />
+    <div class="scene-vignette"></div>
+    <div class="half-label">
+      <div>
+        <h2>Variação A — Ardósia e Bronze</h2>
+        <p>Carvão-ardósia quente (#171916 · 89%) · Borda bronze sutil · Contraste máximo sobre grama, dunas e neve</p>
+      </div>
+      <span class="badge badge-protected" style="font-size:12px;padding:4px 10px;">RECOMENDADA</span>
+    </div>
+
+    <div class="demo-stack">
+      <div class="panel" style="height:44px;display:flex;align-items:center;gap:14px;padding:0 14px;width:fit-content;">
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="res-val">24</span></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><span class="res-val">14</span></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><span class="res-val">18</span></div>
+        <div class="v-sep"></div>
+        <span class="badge badge-exposed"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3L16 5.6V10.4C16 14 13.4 16.4 10 17.6C6.6 16.4 4 14 4 10.4V5.6L10 3Z" stroke="#D19A4B" stroke-width="1.5" fill="#D19A4B" fill-opacity="0.14"/><path d="M10 7.2V11.2M10 13.7V13.8" stroke="#E5B66C" stroke-width="1.7" stroke-linecap="round"/></svg></span>Exposto</span>
+        <div class="v-sep"></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="7" r="2.6" stroke="#DDD1B4" stroke-width="1.5"/><path d="M3.2 15.5C3.6 12.7 5.3 11.4 7.5 11.4C9.7 11.4 11.4 12.7 11.8 15.5" stroke="#DDD1B4" stroke-width="1.5" stroke-linecap="round"/><circle cx="13.5" cy="8" r="2.1" stroke="#A69B84" stroke-width="1.4"/><path d="M12.2 11.8C14.1 12 15.8 13.1 16.3 15.5" stroke="#A69B84" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="res-val">2</span></div>
+      </div>
+
+      <div class="panel" style="width:360px;">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9.8L10 4.2L16.5 9.8" stroke="#E6D7B7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 8.6V15.8H14.5V8.6" stroke="#C8AE7D" stroke-width="1.5" fill="#C8AE7D" fill-opacity="0.12"/><path d="M8.8 15.8V11.8H11.2V15.8" stroke="#E6D7B7" stroke-width="1.4"/></svg></span>Abrigo Básico</div>
+            <div class="panel-subtitle">Montagem em andamento · 1 / 2 construtores</div>
+          </div>
+          <span class="badge badge-control-auto">42%</span>
+        </div>
+        <div class="panel-body">
+          <div class="progress-track"><div class="progress-fill" style="width:42%;"></div></div>
+          <div class="subcard">
+            <div class="kv-row"><span><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span> Madeira</span><strong>12 / 12</strong></div>
+            <div class="kv-row"><span><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span> Pedra</span><strong>6 / 6</strong></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <span class="btn btn-primary" style="flex:1;">Focar canteiro</span>
+            <span class="btn btn-danger">Cancelar</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast ok" style="width:fit-content;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 14.5L13.2 6.8" stroke="#DFC79A" stroke-width="1.6" stroke-linecap="round"/><path d="M11.2 4.8L15.4 5.6L14.6 9.8L11.2 4.8Z" stroke="#C59058" stroke-width="1.5" fill="#C59058" fill-opacity="0.24"/><path d="M4.2 15.8H8.6" stroke="#9F957F" stroke-width="1.4" stroke-linecap="round"/></svg></span><span><strong>5 árvores marcadas</strong> · 2 trabalhadores alocados</span></div>
+    </div>
+
+    <div class="panel bottom-verdict">
+      <div style="font-family:var(--font-display);font-size:15px;color:var(--text-gold);margin-bottom:4px;">Por que recomendamos a Variação A</div>
+      <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.45;">
+        Mais discreta e silenciosa (espírito <em>Manor Lords</em>); garante leitura ≥ 12:1 mesmo nos biomas futuros claros (neve do Norte e dunas tipo Tottori), mantendo o cenário 3D como protagonista absoluto sem blur de GPU.
+      </div>
+      <div class="swatch-row">
+        <span class="swatch"><span class="dot" style="background:#171916;"></span>#171916 Carvão</span>
+        <span class="swatch"><span class="dot" style="background:#8F754C;"></span>#8F754C Bronze</span>
+        <span class="swatch"><span class="dot" style="background:#6D8B55;"></span>#6D8B55 Oliva</span>
+        <span class="swatch"><span class="dot" style="background:#F1EBD9;"></span>#F1EBD9 Marfim</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: VARIATION B (ALTERNATIVE) -->
+  <div class="half theme-b">
+    <img class="half-bg" src="../captures/base_m1_clean_1920x1080.jpg" />
+    <div class="scene-vignette"></div>
+    <div class="half-label">
+      <div>
+        <h2>Variação B — Pergaminho de Pedra</h2>
+        <p>Oliva-pedra mais quente (#242720 · 91%) · Cabeçalhos mais contrastados · Moldura ouro velho</p>
+      </div>
+      <span class="badge badge-proposal" style="font-size:11px;padding:4px 10px;">ALTERNATIVA</span>
+    </div>
+
+    <div class="demo-stack">
+      <div class="panel" style="height:44px;display:flex;align-items:center;gap:14px;padding:0 14px;width:fit-content;">
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="res-val">24</span></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><span class="res-val">14</span></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><span class="res-val">18</span></div>
+        <div class="v-sep"></div>
+        <span class="badge badge-exposed"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3L16 5.6V10.4C16 14 13.4 16.4 10 17.6C6.6 16.4 4 14 4 10.4V5.6L10 3Z" stroke="#D19A4B" stroke-width="1.5" fill="#D19A4B" fill-opacity="0.14"/><path d="M10 7.2V11.2M10 13.7V13.8" stroke="#E5B66C" stroke-width="1.7" stroke-linecap="round"/></svg></span>Exposto</span>
+        <div class="v-sep"></div>
+        <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="7" r="2.6" stroke="#DDD1B4" stroke-width="1.5"/><path d="M3.2 15.5C3.6 12.7 5.3 11.4 7.5 11.4C9.7 11.4 11.4 12.7 11.8 15.5" stroke="#DDD1B4" stroke-width="1.5" stroke-linecap="round"/><circle cx="13.5" cy="8" r="2.1" stroke="#A69B84" stroke-width="1.4"/><path d="M12.2 11.8C14.1 12 15.8 13.1 16.3 15.5" stroke="#A69B84" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="res-val">2</span></div>
+      </div>
+
+      <div class="panel" style="width:360px;">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9.8L10 4.2L16.5 9.8" stroke="#E6D7B7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 8.6V15.8H14.5V8.6" stroke="#C8AE7D" stroke-width="1.5" fill="#C8AE7D" fill-opacity="0.12"/><path d="M8.8 15.8V11.8H11.2V15.8" stroke="#E6D7B7" stroke-width="1.4"/></svg></span>Abrigo Básico</div>
+            <div class="panel-subtitle">Montagem em andamento · 1 / 2 construtores</div>
+          </div>
+          <span class="badge badge-control-auto">42%</span>
+        </div>
+        <div class="panel-body">
+          <div class="progress-track"><div class="progress-fill" style="width:42%;"></div></div>
+          <div class="subcard">
+            <div class="kv-row"><span><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span> Madeira</span><strong>12 / 12</strong></div>
+            <div class="kv-row"><span><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span> Pedra</span><strong>6 / 6</strong></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <span class="btn btn-primary" style="flex:1;">Focar canteiro</span>
+            <span class="btn btn-danger">Cancelar</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast ok" style="width:fit-content;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 14.5L13.2 6.8" stroke="#DFC79A" stroke-width="1.6" stroke-linecap="round"/><path d="M11.2 4.8L15.4 5.6L14.6 9.8L11.2 4.8Z" stroke="#C59058" stroke-width="1.5" fill="#C59058" fill-opacity="0.24"/><path d="M4.2 15.8H8.6" stroke="#9F957F" stroke-width="1.4" stroke-linecap="round"/></svg></span><span><strong>5 árvores marcadas</strong> · 2 trabalhadores alocados</span></div>
+    </div>
+
+    <div class="panel bottom-verdict">
+      <div style="font-family:var(--font-display);font-size:15px;color:var(--text-gold);margin-bottom:4px;">Trade-off da Variação B</div>
+      <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.45;">
+        Tom mais acolhedor em florestas temperadas e ótima separação de subcards (espírito <em>Against the Storm</em>), porém os painéis competem um pouco mais com a grama e têm menor contraste externo sobre futuros biomas claros.
+      </div>
+      <div class="swatch-row">
+        <span class="swatch"><span class="dot" style="background:#242720;"></span>#242720 Pedra</span>
+        <span class="swatch"><span class="dot" style="background:#BC9F69;"></span>#BC9F69 Ouro Velho</span>
+        <span class="swatch"><span class="dot" style="background:#383A2E;"></span>#383A2E Oliva Escuro</span>
+        <span class="swatch"><span class="dot" style="background:#F6F0DF;"></span>#F6F0DF Linho</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

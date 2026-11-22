@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — M6 Múltiplas Informações Simultâneas</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+
+</style>
+</head>
+<body class="">
+<div class="stage" id="stage">
+  <img class="bg-scene" id="bgScene" src="../captures/base_m1_clean_1920x1080.jpg" alt="Cenário real Dawn of Kin" />
+  <div class="scene-vignette"></div>
+  
+    <div class="panel top-left-bar">
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="res-val">24</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><span class="res-val">14</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><span class="res-val">18</span></div>
+      <div class="v-sep"></div>
+      <span class="badge badge-exposed"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3L16 5.6V10.4C16 14 13.4 16.4 10 17.6C6.6 16.4 4 14 4 10.4V5.6L10 3Z" stroke="#D19A4B" stroke-width="1.5" fill="#D19A4B" fill-opacity="0.14"/><path d="M10 7.2V11.2M10 13.7V13.8" stroke="#E5B66C" stroke-width="1.7" stroke-linecap="round"/></svg></span>Exposto</span>
+      <div class="v-sep"></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="7" r="2.6" stroke="#DDD1B4" stroke-width="1.5"/><path d="M3.2 15.5C3.6 12.7 5.3 11.4 7.5 11.4C9.7 11.4 11.4 12.7 11.8 15.5" stroke="#DDD1B4" stroke-width="1.5" stroke-linecap="round"/><circle cx="13.5" cy="8" r="2.1" stroke="#A69B84" stroke-width="1.4"/><path d="M12.2 11.8C14.1 12 15.8 13.1 16.3 15.5" stroke="#A69B84" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="res-val">2</span><span class="res-lbl">(1 livre · 1 em obra)</span></div>
+    </div>
+    
+    <div class="panel top-right-bar">
+      <div class="world-meta">
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="6.8" stroke="#B69B6D" stroke-width="1.4"/><path d="M12.8 7.2L11.2 11.2L7.2 12.8L8.8 8.8L12.8 7.2Z" stroke="#DFC79A" stroke-width="1.3" fill="#B69B6D" fill-opacity="0.28"/></svg></span><span><strong>Clareira Inicial</strong></span>
+        <div class="v-sep"></div>
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4.5 15.2C5.2 9.2 9.4 5.2 15.8 4.6C15.1 10.8 11.2 14.8 4.5 15.2Z" stroke="#8FB273" stroke-width="1.5" fill="#8FB273" fill-opacity="0.22"/><path d="M4.5 15.2L11.5 8.6" stroke="#C5DBA9" stroke-width="1.3" stroke-linecap="round"/></svg></span><span>Primavera · Ano 1</span>
+      </div>
+      <div class="v-sep"></div>
+      <div class="speed-group">
+        <span class="speed-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="5.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/><rect x="11.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/></svg></span></span>
+        <span class="speed-btn ">1×</span>
+        <span class="speed-btn active">2×</span>
+        <span class="speed-btn ">4×</span>
+      </div>
+      <span class="icon-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 6H16M4 10H16M4 14H16" stroke="#DED4BD" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+    </div>
+    
+    <!-- Stacked discrete notifications anchored below top-right bar (never blocks center 3D or left tooltips) -->
+    <div class="toast-stack top-right">
+      <div class="toast ok"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4.5 10.5L8.2 14.2L15.5 6.2" stroke="#9BC47E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><strong>Brena</strong> entregou 4 madeiras ao acampamento</span></div>
+      <div class="toast warn"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3.5C7.4 3.5 5.6 5.5 5.6 8.2V11.6L4 13.8H16L14.4 11.6V8.2C14.4 5.5 12.6 3.5 10 3.5Z" stroke="#DFC79A" stroke-width="1.4" fill="#DFC79A" fill-opacity="0.14"/><path d="M8.4 15.5C8.8 16.3 9.3 16.7 10 16.7C10.7 16.7 11.2 16.3 11.6 15.5" stroke="#DFC79A" stroke-width="1.4" stroke-linecap="round"/></svg></span><span>Pilhas expostas — construa um <strong>Depósito Rústico</strong></span></div>
+    </div>
+
+    <!-- Active Contextual Tooltip anchored cleanly below top-left exposed badge -->
+    <div class="tooltip" style="top:calc(var(--edge) + var(--bar-h) + 6px);left:calc(var(--edge) + 150px);">
+      <div class="tooltip-title">Armazenamento Exposto</div>
+      Alimentos e madeira nas pilhas do acampamento sofrem deterioração gradual. Pedra bruta não deteriora.<br/>
+      <span style="color:var(--accent-olive-bright);">Construa um Depósito Rústico (T3.7) para proteger até 50/50/30.</span>
+    </div>
+
+    <!-- Left-side single active drawer positioned cleanly below tooltip clearance -->
+    <div class="panel left-drawer" style="top:calc(var(--edge) + var(--bar-h) + 128px);">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 14.5L13.2 6.8" stroke="#DFC79A" stroke-width="1.6" stroke-linecap="round"/><path d="M11.2 4.8L15.4 5.6L14.6 9.8L11.2 4.8Z" stroke="#C59058" stroke-width="1.5" fill="#C59058" fill-opacity="0.24"/><path d="M4.2 15.8H8.6" stroke="#9F957F" stroke-width="1.4" stroke-linecap="round"/></svg></span>Resumo Operacional</div>
+          <div class="panel-subtitle">2 atividades na região</div>
+        </div>
+        <span class="icon-btn"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 5.5L14.5 14.5M14.5 5.5L5.5 14.5" stroke="#B8B09E" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+      </div>
+      <div class="panel-body">
+        <div class="subcard">
+          <div class="kv-row">
+            <span style="display:flex;align-items:center;gap:6px;color:var(--text-primary);font-weight:600;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span>Corte (3 árvores)</span>
+            <span class="badge badge-control-auto">1/1</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:62%;"></div></div>
+        </div>
+        <div class="subcard">
+          <div class="kv-row">
+            <span style="display:flex;align-items:center;gap:6px;color:var(--text-primary);font-weight:600;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9.8L10 4.2L16.5 9.8" stroke="#E6D7B7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 8.6V15.8H14.5V8.6" stroke="#C8AE7D" stroke-width="1.5" fill="#C8AE7D" fill-opacity="0.12"/><path d="M8.8 15.8V11.8H11.2V15.8" stroke="#E6D7B7" stroke-width="1.4"/></svg></span>Abrigo Básico</span>
+            <span class="badge badge-control-auto">42%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill amber" style="width:42%;"></div></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="bottom-left-dock">
+      <div class="panel founder-strip">
+        <div class="portrait-chip selected">
+          <div class="avatar avatar-a">A<span class="status-dot dot-work"></span></div>
+          <div class="chip-info"><span class="chip-name">Alden</span><span class="chip-state">Construindo abrigo</span></div>
+        </div>
+        <div class="portrait-chip ">
+          <div class="avatar avatar-b">B<span class="status-dot dot-work"></span></div>
+          <div class="chip-info"><span class="chip-name">Brena</span><span class="chip-state">Coletando madeira</span></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="panel bottom-right-dock">
+      <div class="action-btn primary"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9.8L10 4.2L16.5 9.8" stroke="#E6D7B7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 8.6V15.8H14.5V8.6" stroke="#C8AE7D" stroke-width="1.5" fill="#C8AE7D" fill-opacity="0.12"/><path d="M8.8 15.8V11.8H11.2V15.8" stroke="#E6D7B7" stroke-width="1.4"/></svg></span><span>Construir</span><span class="hotkey">B</span></div>
+      <div class="action-btn active"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 14.5L13.2 6.8" stroke="#DFC79A" stroke-width="1.6" stroke-linecap="round"/><path d="M11.2 4.8L15.4 5.6L14.6 9.8L11.2 4.8Z" stroke="#C59058" stroke-width="1.5" fill="#C59058" fill-opacity="0.24"/><path d="M4.2 15.8H8.6" stroke="#9F957F" stroke-width="1.4" stroke-linecap="round"/></svg></span><span>Tarefas</span><span class="count-pill">3</span><span class="hotkey">T</span></div>
+      <div class="action-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3.5L15.5 6.8V12.2C15.5 14.8 12.8 16.5 10 17.2C7.2 16.5 4.5 14.8 4.5 12.2V6.8L10 3.5Z" stroke="#D5B87E" stroke-width="1.5" fill="#D5B87E" fill-opacity="0.15"/><circle cx="10" cy="9.2" r="1.7" fill="#EFE4C8"/><path d="M7.4 13.5C7.9 11.9 8.8 11.3 10 11.3C11.2 11.3 12.1 11.9 12.6 13.5" stroke="#EFE4C8" stroke-width="1.4" stroke-linecap="round"/></svg></span><span>Linhagem</span><span class="hotkey">H</span></div>
+    </div>
+    
+</div>
+<script>
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  if (p.get('theme') === 'b') document.body.classList.add('theme-b');
+  const bg = document.getElementById('bgScene');
+  if (bg && 'base_m1_clean') {
+    bg.src = '../captures/base_m1_clean_' + res + '.jpg';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — Comparação HUD Atual vs Proposta UI-0</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+.cmp-canvas {
+  width: 1920px;
+  height: 1080px;
+  background: #121411;
+  padding: 28px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cmp-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-bronze);
+  padding-bottom: 12px;
+}
+.cmp-header h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+.cmp-header span {
+  font-size: 13px;
+  color: var(--text-gold);
+}
+.cmp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  flex: 1;
+}
+.cmp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.shot-frame {
+  border: 1px solid var(--border-bronze);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #0b0c0a;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+.shot-frame img {
+  width: 100%;
+  display: block;
+}
+.cmp-notes {
+  padding: 14px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cmp-notes h3 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--text-gold);
+}
+.cmp-notes ul {
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.cmp-notes li strong { color: var(--text-primary); }
+</style>
+</head>
+<body>
+<div class="cmp-canvas">
+  <div class="cmp-header">
+    <h1>Dawn of Kin — Comparação Visual: HUD Atual (Protótipo T2/T3) × Proposta UI-0</h1>
+    <span>Base real capturada no Godot 4.7.2 · Estilo Medieval Contemporâneo (Variação A — Ardósia e Bronze)</span>
+  </div>
+  <div class="cmp-grid">
+    <div class="cmp-col">
+      <div class="shot-frame">
+        <img src="../captures/current_hud_1920x1080.png" alt="HUD Atual Real" />
+      </div>
+      <div class="panel cmp-notes">
+        <h3>Estado Atual (Captura real de <code>src/main/main.tscn</code>)</h3>
+        <ul>
+          <li><strong>Sem tema unificado:</strong> botões do catálogo e inspetor usam estilo cinza padrão do Godot 4; apenas <code>HudStyle</code> estiliza <code>PanelContainer</code> e <code>ProgressBar</code>.</li>
+          <li><strong>Sobreposição e acoplamento:</strong> <code>DebugOverlay</code> permanente no topo esquerdo e <code>BuildingInspectorPanel</code> reposicionado manualmente abaixo dele.</li>
+          <li><strong>Ausência de sistemas essenciais:</strong> sem controle de tempo/velocidade, sem menu principal/pausa/configurações e sem dock da Casa Fundadora.</li>
+          <li><strong>Baixa hierarquia visual:</strong> rótulos textuais longos (ex.: <em>"Armazenamento: exposto"</em>) e zero ícones vetoriais coerentes.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="cmp-col">
+      <div class="shot-frame">
+        <img src="../M1_hud_normal_1920x1080.png" alt="HUD Proposta UI-0" />
+      </div>
+      <div class="panel cmp-notes">
+        <h3>Proposta UI-0 — Medieval Contemporâneo (Variação A)</h3>
+        <ul>
+          <li><strong>Cenário 3D protagonista:</strong> HUD normal ocupa <strong>&lt; 7% da área</strong> de tela, concentrada em cápsulas discretas nas quatro bordas.</li>
+          <li><strong>Identidade profissional coesa:</strong> carvão-ardósia, bronze envelhecido, oliva e marfim; ícones vetoriais legíveis e tipografia serifada + tabular.</li>
+          <li><strong>Pronta para evolução do jogo:</strong> integra velocidade (<code>1×/2×/4×</code>), menu de pausa, dock da Casa Fundadora e slots discretos para região/estação futura.</li>
+          <li><strong>Zero custo extra de GPU:</strong> 100% implementável com <code>Theme</code> + <code>StyleBoxFlat</code> no Godot 4.7.2 mantendo meta de desempenho na Intel UHD 620.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

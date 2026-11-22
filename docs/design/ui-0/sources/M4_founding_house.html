@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Dawn of Kin — M4 Casa Fundadora</title>
+<link rel="stylesheet" href="ui0_tokens.css" />
+<style>
+
+.family-card {
+  position: absolute;
+  bottom: var(--edge);
+  left: var(--edge);
+  width: 410px;
+}
+.res-720 .family-card { width: 378px; }
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+}
+.member-row.active {
+  border-color: var(--border-bronze-strong);
+  background: rgba(154, 128, 86, 0.14);
+}
+.member-row.future {
+  border-style: dashed;
+  opacity: 0.84;
+}
+.gene-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+}
+.gene-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gene-node {
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border-bronze);
+  background: var(--bg-elevated);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  text-align: center;
+}
+.gene-node.future {
+  border-style: dashed;
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+</style>
+</head>
+<body class="">
+<div class="stage" id="stage">
+  <img class="bg-scene" id="bgScene" src="../captures/base_m4_family_1920x1080.jpg" alt="Cenário real Dawn of Kin" />
+  <div class="scene-vignette"></div>
+  
+    <div class="panel top-left-bar">
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><span class="res-val">24</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><span class="res-val">14</span></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><span class="res-val">18</span></div>
+      <div class="v-sep"></div>
+      <span class="badge badge-exposed"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3L16 5.6V10.4C16 14 13.4 16.4 10 17.6C6.6 16.4 4 14 4 10.4V5.6L10 3Z" stroke="#D19A4B" stroke-width="1.5" fill="#D19A4B" fill-opacity="0.14"/><path d="M10 7.2V11.2M10 13.7V13.8" stroke="#E5B66C" stroke-width="1.7" stroke-linecap="round"/></svg></span>Exposto</span>
+      <div class="v-sep"></div>
+      <div class="res-item"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="7" r="2.6" stroke="#DDD1B4" stroke-width="1.5"/><path d="M3.2 15.5C3.6 12.7 5.3 11.4 7.5 11.4C9.7 11.4 11.4 12.7 11.8 15.5" stroke="#DDD1B4" stroke-width="1.5" stroke-linecap="round"/><circle cx="13.5" cy="8" r="2.1" stroke="#A69B84" stroke-width="1.4"/><path d="M12.2 11.8C14.1 12 15.8 13.1 16.3 15.5" stroke="#A69B84" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="res-val">2</span><span class="res-lbl">(1 livre · 1 pessoal)</span></div>
+    </div>
+    
+    <div class="panel top-right-bar">
+      <div class="world-meta">
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="6.8" stroke="#B69B6D" stroke-width="1.4"/><path d="M12.8 7.2L11.2 11.2L7.2 12.8L8.8 8.8L12.8 7.2Z" stroke="#DFC79A" stroke-width="1.3" fill="#B69B6D" fill-opacity="0.28"/></svg></span><span><strong>Clareira Inicial</strong></span>
+        <div class="v-sep"></div>
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4.5 15.2C5.2 9.2 9.4 5.2 15.8 4.6C15.1 10.8 11.2 14.8 4.5 15.2Z" stroke="#8FB273" stroke-width="1.5" fill="#8FB273" fill-opacity="0.22"/><path d="M4.5 15.2L11.5 8.6" stroke="#C5DBA9" stroke-width="1.3" stroke-linecap="round"/></svg></span><span>Primavera · Ano 1</span>
+      </div>
+      <div class="v-sep"></div>
+      <div class="speed-group">
+        <span class="speed-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="5.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/><rect x="11.5" y="4.5" width="3" height="11" rx="0.8" fill="currentColor"/></svg></span></span>
+        <span class="speed-btn active">1×</span>
+        <span class="speed-btn ">2×</span>
+        <span class="speed-btn ">4×</span>
+      </div>
+      <span class="icon-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 6H16M4 10H16M4 14H16" stroke="#DED4BD" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+    </div>
+    
+    <!-- Left-top: Founding House Roster + Genealogy Preview -->
+    <div class="panel left-drawer">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3.5L15.5 6.8V12.2C15.5 14.8 12.8 16.5 10 17.2C7.2 16.5 4.5 14.8 4.5 12.2V6.8L10 3.5Z" stroke="#D5B87E" stroke-width="1.5" fill="#D5B87E" fill-opacity="0.15"/><circle cx="10" cy="9.2" r="1.7" fill="#EFE4C8"/><path d="M7.4 13.5C7.9 11.9 8.8 11.3 10 11.3C11.2 11.3 12.1 11.9 12.6 13.5" stroke="#EFE4C8" stroke-width="1.4" stroke-linecap="round"/></svg></span>Casa Fundadora · Linhagem</div>
+          <div class="panel-subtitle">Casa Principal · 2 fundadores ativos</div>
+        </div>
+        <span class="icon-btn"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 5.5L14.5 14.5M14.5 5.5L5.5 14.5" stroke="#B8B09E" stroke-width="1.6" stroke-linecap="round"/></svg></span></span>
+      </div>
+      <div class="panel-body">
+        <div class="member-row active">
+          <div class="avatar avatar-a">A<span class="status-dot dot-manual"></span></div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <strong style="font-size:var(--fs-sm);">Alden</strong>
+              <span class="badge badge-control-personal">Controle Pessoal</span>
+            </div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted);">Fundador · Adulto · Em espera manual</div>
+          </div>
+        </div>
+
+        <div class="member-row">
+          <div class="avatar avatar-b">B<span class="status-dot dot-work"></span></div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <strong style="font-size:var(--fs-sm);">Brena</strong>
+              <span class="badge badge-control-auto">Comunitário</span>
+            </div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted);">Fundadora · Adulta · Coletando madeira</div>
+          </div>
+        </div>
+
+        <div class="member-row future">
+          <div class="avatar avatar-child">?</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <strong style="font-size:var(--fs-sm);color:var(--text-secondary);">Futuros Descendentes</strong>
+              <span class="badge badge-proposal">Proposta T5</span>
+            </div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted);">Controle pessoal permanente após Abrigo Básico</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="kv-row">
+          <span style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text-gold);"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="4.8" r="2.1" stroke="#DFC79A" stroke-width="1.4"/><circle cx="5.2" cy="14.5" r="2" stroke="#A6B78D" stroke-width="1.4"/><circle cx="14.8" cy="14.5" r="2" stroke="#A6B78D" stroke-width="1.4"/><path d="M10 7V10.4M10 10.4H5.2V12.5M10 10.4H14.8V12.5" stroke="#B69B6D" stroke-width="1.3"/></svg></span>Árvore Genealógica</span>
+          <span class="badge badge-proposal">Proposta T5</span>
+        </div>
+        <div class="gene-box">
+          <div class="gene-pair">
+            <div class="gene-node"><strong>Alden</strong><br/><span style="color:var(--text-muted);font-size:10px;">Fundador</span></div>
+            <span style="color:var(--border-bronze-strong);">—</span>
+            <div class="gene-node"><strong>Brena</strong><br/><span style="color:var(--text-muted);font-size:10px;">Fundadora</span></div>
+          </div>
+          <div style="width:1px;height:10px;background:var(--border-bronze);opacity:0.6;"></div>
+          <div class="gene-node future">1ª Geração · Bebê → Criança → Jovem → Adulto</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom-left: Expanded Personal Character Card -->
+    <div class="panel family-card">
+      <div class="panel-header" style="padding:8px 12px;">
+        <div style="display:flex;align-items:center;gap:9px;">
+          <div class="avatar avatar-a" style="width:36px;height:36px;font-size:15px;">A<span class="status-dot dot-manual"></span></div>
+          <div>
+            <div class="panel-title" style="font-size:var(--fs-md);">Alden <span style="font-family:var(--font-ui);font-size:var(--fs-xs);color:var(--text-gold);font-weight:500;">· Casa Fundadora</span></div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted);">Adulto · Proteção dos Líderes · Ordem pessoal ativa</div>
+          </div>
+        </div>
+        <span class="badge badge-control-personal">Pessoal</span>
+      </div>
+      <div class="panel-body">
+        <div class="kv-row"><span>Carga física (mochila)</span><strong>8 / 20 peso (40%)</strong></div>
+        <div class="progress-track"><div class="progress-fill" style="width:40%;"></div></div>
+        <div style="display:flex;align-items:center;gap:14px;font-size:var(--fs-xs);color:var(--text-secondary);">
+          <span style="display:inline-flex;align-items:center;gap:4px;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="6" rx="3" stroke="#C59058" stroke-width="1.6" fill="#C59058" fill-opacity="0.18"/><ellipse cx="14.5" cy="10" rx="2" ry="3" stroke="#C59058" stroke-width="1.4"/><path d="M6.5 9.2h4M7.5 11.2h3" stroke="#E2B986" stroke-width="1.2" stroke-linecap="round"/></svg></span><strong>4</strong> un</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5L6.2 7.2L11.2 5L16 8.4L15.2 14.5H4Z" stroke="#ABB3B8" stroke-width="1.6" fill="#ABB3B8" fill-opacity="0.2" stroke-linejoin="round"/><path d="M11.2 5L9.8 10.2L15.2 14.5M9.8 10.2L4 14.5" stroke="#D3D9DC" stroke-width="1.1" stroke-opacity="0.65"/></svg></span><strong>0</strong> un</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.2" cy="12" r="3.4" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><circle cx="12.5" cy="12.4" r="3" stroke="#D9984A" stroke-width="1.5" fill="#D9984A" fill-opacity="0.22"/><path d="M9.6 8.5C10.2 5.8 12.2 4.5 14.5 4.6C13.9 6.6 12.3 8.1 9.6 8.5Z" stroke="#7E9B64" stroke-width="1.4" fill="#7E9B64" fill-opacity="0.3"/></svg></span><strong>0</strong> un</span>
+          <span style="margin-left:auto;color:var(--text-muted);">Velocidade: 4,0 m/s</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:2px;">
+          <span class="btn btn-primary" style="flex:1;white-space:nowrap;">Liberar para comunidade <span style="opacity:.75;font-size:10px;">(P-RUX-2)</span></span>
+          <span class="btn btn-ghost" style="white-space:nowrap;"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="4.8" r="2.1" stroke="#DFC79A" stroke-width="1.4"/><circle cx="5.2" cy="14.5" r="2" stroke="#A6B78D" stroke-width="1.4"/><circle cx="14.8" cy="14.5" r="2" stroke="#A6B78D" stroke-width="1.4"/><path d="M10 7V10.4M10 10.4H5.2V12.5M10 10.4H14.8V12.5" stroke="#B69B6D" stroke-width="1.3"/></svg></span>Genealogia</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="panel bottom-right-dock">
+      <div class="action-btn primary"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9.8L10 4.2L16.5 9.8" stroke="#E6D7B7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 8.6V15.8H14.5V8.6" stroke="#C8AE7D" stroke-width="1.5" fill="#C8AE7D" fill-opacity="0.12"/><path d="M8.8 15.8V11.8H11.2V15.8" stroke="#E6D7B7" stroke-width="1.4"/></svg></span><span>Construir</span><span class="hotkey">B</span></div>
+      <div class="action-btn "><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M5.5 14.5L13.2 6.8" stroke="#DFC79A" stroke-width="1.6" stroke-linecap="round"/><path d="M11.2 4.8L15.4 5.6L14.6 9.8L11.2 4.8Z" stroke="#C59058" stroke-width="1.5" fill="#C59058" fill-opacity="0.24"/><path d="M4.2 15.8H8.6" stroke="#9F957F" stroke-width="1.4" stroke-linecap="round"/></svg></span><span>Tarefas</span><span class="hotkey">T</span></div>
+      <div class="action-btn active"><span class="icon"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3.5L15.5 6.8V12.2C15.5 14.8 12.8 16.5 10 17.2C7.2 16.5 4.5 14.8 4.5 12.2V6.8L10 3.5Z" stroke="#D5B87E" stroke-width="1.5" fill="#D5B87E" fill-opacity="0.15"/><circle cx="10" cy="9.2" r="1.7" fill="#EFE4C8"/><path d="M7.4 13.5C7.9 11.9 8.8 11.3 10 11.3C11.2 11.3 12.1 11.9 12.6 13.5" stroke="#EFE4C8" stroke-width="1.4" stroke-linecap="round"/></svg></span><span>Linhagem</span><span class="hotkey">H</span></div>
+    </div>
+    
+</div>
+<script>
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const res = p.get('res') || '1920x1080';
+  if (res === '1280x720') document.body.classList.add('res-720');
+  if (p.get('theme') === 'b') document.body.classList.add('theme-b');
+  const bg = document.getElementById('bgScene');
+  if (bg && 'base_m4_family') {
+    bg.src = '../captures/base_m4_family_' + res + '.jpg';
+  }
+})();
+</script>
+</body>
+</html>
