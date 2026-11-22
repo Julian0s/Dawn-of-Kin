@@ -317,15 +317,15 @@
     <div class="header-left">
       <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/emblem_dawn_of_kin.png" class="emblem" alt="Emblem">
       <div class="title-group">
-        <h1>DAWN OF KIN — MASTER DESIGN SYSTEM D2.2</h1>
-        <p>IDENTIDADE ARTÍSTICA OFICIAL · "MARCOS DE PEDRA E ECLIPSE" · ESPECIFICAÇÃO CANÔNICA DE UI/UX</p>
+        <h1>DAWN OF KIN — DESIGN SYSTEM D2.2 (CANDIDATO R2.3.1)</h1>
+        <p>IDENTIDADE VISUAL APROVADA "MARCOS DE PEDRA E ECLIPSE" · CANDIDATO DOCUMENTAL SUJEITO A HOMOLOGAÇÃO</p>
       </div>
     </div>
     <div class="badges">
       <div class="badge badge-gold">D2.2 APROVADA VISUALMENTE</div>
-      <div class="badge badge-dark">GODOT 4.7.2 VERIFICADO (147 FPS)</div>
+      <div class="badge badge-dark">GODOT 4.7.2 · BENCHMARK ISOLADO</div>
       <div class="badge badge-dark">1920×1080 & 1280×720 CANVAS</div>
-      <div class="badge badge-alert">UI-1 BLOQUEADA (DOC MASTER)</div>
+      <div class="badge badge-alert">CANDIDATO R2.3.1 · UI-1 BLOQUEADA</div>
     </div>
   </div>
 
@@ -374,13 +374,13 @@
 
       <div>
         <div class="panel-title">
-          03. Responsividade & Desempenho
-          <span>Canvas Items Godot 4.7.2</span>
+          03. Responsividade & Medições Isoladas
+          <span>Showcase Godot 4.7.2 (Sem V-Sync)</span>
         </div>
-        <div style="font-size:9px; color:#B8B2A5; line-height:1.35; background:#0E1012; padding:6px 8px; border:1px solid rgba(223,188,114,0.2);">
-          <div><strong>Baseline 1080p:</strong> Escala <code>s = 1.00</code> · Viewport <code>1920×1080</code> · P95: <code>10,82 ms</code> (147 FPS)</div>
-          <div><strong>Modo HD 720p:</strong> Escala calibrada <code>s = 1.22</code> · Estelas ~<code>88 px</code> físicos · Zero overflow</div>
-          <div><strong>Atlas Batching:</strong> Apenas <code>+40 draw calls</code> sobre o baseline 3D via <code>AtlasTexture</code> (6.469 asserções).</div>
+        <div style="font-size:8.8px; color:#B8B2A5; line-height:1.35; background:#0E1012; padding:6px 8px; border:1px solid rgba(223,188,114,0.2);">
+          <div><strong>HUD 1080p (s=1.00):</strong> Média <code>8,136 ms</code> · <code>p95 10,828 ms</code> · <code>p99 12,034 ms</code> (isolado)</div>
+          <div><strong>HUD 720p (s=1.22):</strong> Média <code>8,187 ms</code> · <code>p95 11,563 ms</code> · Estelas ~<code>88 px</code> · Zero overflow</div>
+          <div><strong>Atlas Batching:</strong> <code>+40 DC</code> na HUD (<code>+37</code> Linhagem, <code>+66</code> Construção) vs <code>201 DC</code> baseline 3D.</div>
         </div>
       </div>
     </div>
@@ -438,23 +438,23 @@
       <div>
         <div class="panel-title">
           05. Maquetes de Construção & Estruturas Iniciais
-          <span>Traço Nanquim Clássico em Alabastro</span>
+          <span>Custos Provisórios GDD D4 · Alabastro</span>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
           <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.25); padding:6px; display:flex; gap:8px; align-items:center;">
             <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/d1_shelter_mini.png" style="width:52px; height:52px; object-fit:contain; background:#F5F0E6; border-radius:2px;">
             <div style="font-size:9px;">
-              <strong style="color:#DFBC72;">Abrigo de Sobrevivência</strong><br>
+              <strong style="color:#DFBC72;">Abrigo Básico</strong><br>
               <span style="color:#B8B2A5;">Dim: 190×218 px · Tecla [1]</span><br>
-              <span style="color:#DFBC72;">Custo: 10 Mad · 4 Ped</span>
+              <span style="color:#DFBC72;">Custo (D4): 12 Mad · 6 Ped</span>
             </div>
           </div>
           <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.4); padding:6px; display:flex; gap:8px; align-items:center;">
             <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/d1_depot_mini.png" style="width:52px; height:52px; object-fit:contain; background:#F5F0E6; border-radius:2px;">
             <div style="font-size:9px;">
-              <strong style="color:#F5D996;">Depósito de Recursos (Sel)</strong><br>
+              <strong style="color:#F5D996;">Depósito Rústico (Sel)</strong><br>
               <span style="color:#B8B2A5;">Dim: 206×244 px (Y -14px) · [2]</span><br>
-              <span style="color:#DFBC72;">Custo: 15 Mad · 8 Ped</span>
+              <span style="color:#DFBC72;">Custo (D4): 18 Mad · 10 Ped</span>
             </div>
           </div>
         </div>
@@ -522,8 +522,8 @@
           </div>
           <div class="swatch">
             <div class="swatch-color" style="background:#385B2A;"></div>
-            <div class="swatch-name">Valid Green</div>
-            <div class="swatch-hex">#385B2A</div>
+            <div class="swatch-name">Valid Fill (2,33:1)</div>
+            <div class="swatch-hex">#385B2A (só fundo)</div>
           </div>
           <div class="swatch">
             <div class="swatch-color" style="background:#C66A58;"></div>
@@ -580,24 +580,24 @@
       <div>
         <!-- EXTENSIBILITY RULES -->
         <div class="panel-title">
-          09. Diretrizes para Telas Futuras
-          <span>Preservação de Silhueta & Materialidade</span>
+          09. Extensibilidade Futura (PROPOSTA)
+          <span>Exemplos Ilustrativos · Não Obrigatórios</span>
         </div>
         <div class="ext-grid">
           <div class="ext-card">
-            <strong>População / Clã</strong>
+            <strong>População / Clã (Planejado)</strong>
             <p>Monólito lateral de basalto com mini-estelas e retratos entalhados.</p>
           </div>
           <div class="ext-card">
-            <strong>Inventário Geral</strong>
+            <strong>Estoque / Depósito (T3.7)</strong>
             <p>Lajes de basalto compartimentadas com divisores kintsugi finos.</p>
           </div>
           <div class="ext-card">
-            <strong>Linhagem T5</strong>
+            <strong>Linhagem (Planejado T5)</strong>
             <p>Altar de 3 corpos com elos dourados conectando gerações.</p>
           </div>
           <div class="ext-card">
-            <strong>Oficinas T4</strong>
+            <strong>Oficinas (Planejado T4)</strong>
             <p>Maquetes nobres em alabastro com relevos de ferramentas.</p>
           </div>
         </div>
@@ -631,9 +631,9 @@
   <!-- FOOTER -->
   <div class="footer">
     <div class="footer-rule">
-      REGRA PERMANENTE DE PROTEÇÃO DA IDENTIDADE: VEDADA QUALQUER MODIFICAÇÃO, MODERNIZAÇÃO OU SIMPLIFICAÇÃO POR AGENTES DE IA SEM AUTORIZAÇÃO DOCUMENTADA.
+      PROTEÇÃO D2.2: VEDADA MODIFICAÇÃO SILENCIOSA POR IA · LIMITAÇÕES DE ACESSIBILIDADE DOCUMENTADAS PARA DECISÃO DO PROPRIETÁRIO.
     </div>
-    <div>Dawn of Kin · Visual Design System Mestre D2.2 · Branch: design/ui-0-r2-3-design-system</div>
+    <div>Dawn of Kin · Candidato Documental R2.3.1 (D2.2 Aprovada) · Branch: design/ui-0-r2-3-1-audit-fix</div>
   </div>
 
 </body>

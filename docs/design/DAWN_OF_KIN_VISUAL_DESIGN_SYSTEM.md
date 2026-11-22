@@ -1,12 +1,12 @@
 # DAWN OF KIN — DESIGN SYSTEM MESTRE
-## Identidade Visual Oficial D2.2: "Marcos de Pedra e Eclipse"
+## Referência Visual Aprovada D2.2: "Marcos de Pedra e Eclipse"
 
-> **Status:** `OFICIAL (PROPOSTA MASTER R2.3)` — Especificação formal e permanente da linguagem visual de Dawn of Kin, derivada da restauração fiel da Direção D2 aprovada visualmente pelo proprietário em 22/11/2026 (`design/ui-0-r2-2-d2-visual-fidelity` @ commit `1ab8ffb78c269f3a659712491de91ab1f317e919`).  
+> **Status:** `CANDIDATO DOCUMENTAL (UI-0 R2.3.1)` — Auditoria e correção factual do candidato documental R2.3, baseado na restauração fiel da Direção D2 aprovada visualmente pelo proprietário em 22/11/2026 (`design/ui-0-r2-2-d2-visual-fidelity` @ commit `1ab8ffb78c269f3a659712491de91ab1f317e919`). **Aguarda avaliação expressa e homologação do proprietário.**  
 > **Hierarquia e Limites:**  
 > 1. GDD Consolidado e decisões vigentes: autoridade máxima sobre regras de gameplay, simulação e narrativa.  
 > 2. Direção Artística D2 Original (`design/ui-0-r2-identity` @ `f138177`): fonte primária de composição, silhueta e atmosfera estética.  
-> 3. Reprodução D2.2 na Godot (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb`): referência visual aprovada e balizamento técnico de renderização.  
-> 4. Este Design System (R2.3): padronização documental, catálogo de tokens e regras de preservação.  
+> 3. Reprodução D2.2 na Godot (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb`): **identidade visual aprovada** e referência técnica de renderização.  
+> 4. Este Design System (`R2.3.1 — Candidato Documental`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.  
 > **Restrição mandatória:** **UI-1 permanece BLOQUEADA.** Este documento não autoriza alterações em código de produção, gameplay, `MainScene` ou arquitetura técnica.
 
 ---
@@ -39,7 +39,7 @@ A materialidade da interface é governada estritamente por três texturas e subs
 
 2. **Alabastro Claro Esculpido (`#F5F0E6` a `#E5DDCD`):**
    - Rocha calcária nobre, de textura cerâmica e tonalidade marfim aquecida. Funciona como a "tela" sobre a qual a intenção humana projeta suas criações.
-   - Aplicação: A laje de ação primordial (`Maquetes / Construir [B]`), as maquetes verticais de estruturas (`Abrigo de Sobrevivência`, `Depósito de Recursos`) e as teclas primárias de ação do menu.
+   - Aplicação: A laje de ação primordial (`Maquetes / Construir [B]`), as maquetes verticais de estruturas (`Abrigo Básico`, `Depósito Rústico`) e as teclas primárias de ação do menu.
    - Significado: A arquitetura planejada, o esforço criativo contra o caos da natureza e a distinção imediata de ações construtivas.
 
 3. **Ouro Kintsugi e Filetes de Eclipse (`#DFBC72` / `#F5D996`):**
@@ -63,24 +63,31 @@ Todos os valores numéricos e cromáticos foram extraídos diretamente da implem
 
 ### 2.1 Paleta de Cores e Tokens Cromáticos
 
-| Token Semântico | Valor Hex | RGBA Normalizado (Godot) | Rácio WCAG | Uso Canônico Obrigatório | Proibições Explícitas |
+| Token Semântico | Valor Hex | RGBA Normalizado (Godot) | Rácio WCAG 2.1 | Categoria / Uso Canônico Obrigatório | Limitações e Proibições Explícitas |
 |---|---|---|---|---|---|
-| `color-surface-basalt-base` | `#141618` | `Color(0.078, 0.086, 0.094, 1.0)` | — | Fundo base de painéis e estelas | Proibido usar preto puro (`#000000`) |
-| `color-surface-basalt-deep` | `#0E1013` | `Color(0.055, 0.063, 0.075, 1.0)` | — | Áreas rebaixadas, entalhes de retrato | Proibido usar cinza neutro sem matiz azulado |
-| `color-surface-alabaster-base` | `#F5F0E6` | `Color(0.961, 0.941, 0.902, 1.0)` | — | Superfície de maquetes e laje de construir | Proibido usar branco puro (`#FFFFFF`) |
-| `color-surface-alabaster-edge` | `#E5DDCD` | `Color(0.898, 0.867, 0.804, 1.0)` | — | Borda interna chanfrada de alabastro | Proibido gradiente artificial plástico |
-| `color-accent-gold-primary` | `#DFBC72` | `Color(0.875, 0.737, 0.447, 1.0)` | `7.8:1` vs basalto | Filetes kintsugi, molduras de retratos, ícones | Proibido amarelo saturado (`#FFFF00`) |
-| `color-accent-gold-highlight`| `#F5D996` | `Color(0.961, 0.851, 0.588, 1.0)` | `9.4:1` vs basalto | Ponto de luz em hover e borda de seleção | Proibido brilhos tipo neon ou bloom excessivo |
-| `color-accent-gold-dim` | `#6A5832` | `Color(0.416, 0.345, 0.196, 0.65)`| — | Divisores secundários, grades sutis | Proibido usar linhas sólidas brancas |
-| `color-text-primary-ivory` | `#F4EFE4` | `Color(0.957, 0.937, 0.894, 1.0)` | `13.1:1` vs basalto | Texto principal sobre basalto, contadores | Proibido texto cinza escuro sobre basalto |
-| `color-text-secondary-muted` | `#B8B2A5` | `Color(0.722, 0.698, 0.647, 1.0)` | `7.2:1` vs basalto | Subtítulos, custos secundários, atalhos | Proibido usar fontes de baixo contraste (<4.5:1) |
-| `color-text-on-alabaster-ink`| `#1D1813` | `Color(0.114, 0.094, 0.075, 1.0)` | `12.8:1` vs alabastro | Título "Maquetes", nomes de estruturas | Proibido usar texto claro sobre alabastro |
-| `color-text-on-alabaster-sub`| `#5B4B3A` | `Color(0.357, 0.294, 0.227, 1.0)` | `6.9:1` vs alabastro | Atalhos e descrições sobre alabastro | Proibido usar preto fosco absoluto |
-| `color-feedback-valid-green` | `#385B2A` | `Color(0.220, 0.357, 0.165, 1.0)` | `5.6:1` vs basalto | Terreno válido, trabalhadores livres | Proibido verde neon ou verde radioativo |
-| `color-feedback-valid-bright`| `#A5C98B` | `Color(0.647, 0.788, 0.545, 1.0)` | `9.8:1` vs basalto | Rótulo de confirmação "LOCAL VÁLIDO" | Proibido uso em botões não-confirmativos |
-| `color-feedback-error-rose` | `#F2B8AC` | `Color(0.949, 0.722, 0.675, 1.0)` | `8.2:1` vs basalto | Bloqueios, obstáculos, cancelamentos | Proibido vermelho puro de alarme web |
-| `color-feedback-error-dark` | `#C66A58` | `Color(0.776, 0.416, 0.345, 1.0)` | `4.6:1` vs basalto | Barra de status de terreno inválido | Proibido piscar intermitente agressivo |
-| `color-feedback-amber` | `#EAB464` | `Color(0.918, 0.706, 0.392, 1.0)` | `8.1:1` vs basalto | Alertas de sobrevivência, status exposto | Proibido laranja fluorescente |
+| `color-surface-basalt-base` | `#141618` | `Color(0.078, 0.086, 0.094, 1.0)` | — (Fundo) | Fundo base de painéis e estelas | Proibido usar preto puro (`#000000`) |
+| `color-surface-basalt-deep` | `#0E1013` | `Color(0.055, 0.063, 0.075, 1.0)` | — (Fundo) | Áreas rebaixadas, entalhes de retrato | Proibido usar cinza neutro sem matiz azulado |
+| `color-surface-alabaster-base` | `#F5F0E6` | `Color(0.961, 0.941, 0.902, 1.0)` | — (Fundo) | Superfície de maquetes e laje de construir | Proibido usar branco puro (`#FFFFFF`) |
+| `color-surface-alabaster-edge` | `#E5DDCD` | `Color(0.898, 0.867, 0.804, 1.0)` | — (Fundo/Borda) | Borda interna chanfrada de alabastro | Proibido gradiente artificial plástico |
+| `color-accent-gold-primary` | `#DFBC72` | `Color(0.875, 0.737, 0.447, 1.0)` | `10,00:1` vs basalto (`AAA`) | Filetes kintsugi, molduras de retratos, ícones; fundo de badge com texto `#1D1813` (`9,71:1` AAA) | Proibido amarelo saturado (`#FFFF00`) |
+| `color-accent-gold-highlight`| `#F5D996` | `Color(0.961, 0.851, 0.588, 1.0)` | `13,17:1` vs basalto (`AAA`) | Ponto de luz em hover e borda de seleção | Proibido brilhos tipo neon ou bloom excessivo |
+| `color-accent-gold-dim` | `#6A5832` | `Color(0.416, 0.345, 0.196, 0.65)`| `2,64:1` vs basalto *(s/ alpha)* | **Decorativo:** divisores secundários, grades sutis | **Abaixo de 3:1:** proibido para texto ou único indicador interativo |
+| `color-text-primary-ivory` | `#F4EFE4` | `Color(0.957, 0.937, 0.894, 1.0)` | `15,82:1` vs basalto (`AAA`) | Texto principal sobre basalto, contadores | Proibido texto cinza escuro sobre basalto |
+| `color-text-secondary-muted` | `#B8B2A5` | `Color(0.722, 0.698, 0.647, 1.0)` | `8,59:1` vs basalto (`AAA`) | Subtítulos, custos secundários, atalhos | Proibido usar fontes de baixo contraste (< 4,5:1) |
+| `color-text-on-alabaster-ink`| `#1D1813` | `Color(0.114, 0.094, 0.075, 1.0)` | `15,51:1` vs alabastro (`AAA`) | Título "Maquetes", nomes de estruturas | Proibido usar texto claro sobre alabastro |
+| `color-text-on-alabaster-sub`| `#5B4B3A` | `Color(0.357, 0.294, 0.227, 1.0)` | `7,36:1` vs alabastro (`AAA`) | Atalhos e descrições sobre alabastro | Proibido usar preto fosco absoluto |
+| `color-feedback-valid-green` | `#385B2A` | `Color(0.220, 0.357, 0.165, 1.0)` | **`2,33:1`** vs basalto *(Limitação)*; `6,79:1` com texto `#F4EFE4` (`AA`) | **Fundo** de indicador/barra/botão válido com texto `#F4EFE4` | **Limitação WCAG:** abaixo de 3:1 sobre basalto. Proibido como texto ou indicador isolado sem `#A5C98B` |
+| `color-feedback-valid-bright`| `#A5C98B` | `Color(0.647, 0.788, 0.545, 1.0)` | `9,78:1` vs basalto (`AAA`); `4,20:1` vs `#385B2A` *(só UI/grande)* | Rótulo e ícone de confirmação `"LOCAL VÁLIDO"` sobre basalto | Sobre fundo `#385B2A`, usar apenas para ícones/texto grande (≥ 3:1); texto pequeno sobre `#385B2A` deve usar `#F4EFE4` |
+| `color-feedback-error-rose` | `#F2B8AC` | `Color(0.949, 0.722, 0.675, 1.0)` | `10,56:1` vs basalto (`AAA`) | Texto de bloqueios, obstáculos, cancelamentos sobre basalto | Proibido vermelho puro de alarme web |
+| `color-feedback-error-dark` | `#C66A58` | `Color(0.776, 0.416, 0.345, 1.0)` | `4,84:1` vs basalto (`AA`); `3,27:1` com `#F4EFE4` *(só UI/grande)* | Barra/indicador de terreno inválido sobre basalto | Texto pequeno sobre fundo `#C66A58` deve evitar `#F4EFE4` (`3,27:1`); preferir texto `#F2B8AC` sobre `#141618` |
+| `color-feedback-amber` | `#EAB464` | `Color(0.918, 0.706, 0.392, 1.0)` | `9,68:1` vs basalto (`AAA`) | Alertas de sobrevivência, status `EXPOSTO` | Proibido laranja fluorescente |
+
+#### 2.1.1 Classificação Funcional de Contraste (Texto × Indicador × Decorativo) e Remediações
+Os cálculos acima seguem a fórmula oficial de luminância relativa da **WCAG 2.1** ($L = 0{,}2126 R + 0{,}7152 G + 0{,}0722 B$ linearizado; razão $= (L_1 + 0{,}05) / (L_2 + 0{,}05)$):
+- **Texto normal:** exige mínimo `4,5:1` (AA) / `7,0:1` (AAA). Todas as combinações principais de texto sobre basalto (`#F4EFE4`, `#B8B2A5`, `#DFBC72`, `#A5C98B`, `#F2B8AC`, `#EAB464`) e sobre alabastro (`#1D1813`, `#5B4B3A`) atingem nível **AAA**.
+- **Indicadores gráficos e componentes de UI (WCAG 1.4.11):** exigem mínimo `3,0:1`.
+- **Elementos puramente decorativos:** divisores sutis (`#6A5832`, `2,64:1`) e texturas de veio kintsugi são isentos, desde que não transmitam estado exclusivo.
+- **Limitação formal registrada (`#385B2A` sobre `#141618` = `2,33:1`):** O verde musgo `#385B2A` da paleta D2.2 não atinge `3,0:1` diretamente contra o basalto `#141618`. **Solução visual compatível (sem alterar a identidade D2.2):** empregar `#385B2A` apenas como preenchimento interno acompanhado de texto `#F4EFE4` (`6,79:1`) e/ou filete/ícone em `#A5C98B` (`9,78:1` contra o basalto), submetendo qualquer ajuste adicional de brilho do `#385B2A` à aprovação expressa do proprietário antes da `UI-1`.
 
 ### 2.2 Sistema Tipográfico Canônico
 A tipografia de *Dawn of Kin* é explicitamente híbrida, combinando a reverência histórica das fontes serifadas com a precisão tabular das fontes sans-serif contemporâneas.
@@ -251,8 +258,8 @@ Todos os 10 componentes abaixo estão integralmente referenciados no Atlas de pr
 - **Materialidade:** Placas verticais nobres de alabastro claro com contorno chanfrado.
 - **Conteúdo Interno:**
   - Ilustração arquitetônica em traço clássico sépia/nanquim (`d1_shelter_mini.png` e `d1_depot_mini.png`).
-  - Nome da estrutura em nanquim bold serifado de `13 px`.
-  - Custos de madeira e pedra com mini-ícones e valores em nanquim escuro.
+  - Nome da estrutura em nanquim bold serifado de `13 px`: **Abrigo Básico** (`shelter_basic`) e **Depósito Rústico** (`storage_depot`).
+  - Custos de madeira e pedra com mini-ícones e valores em nanquim escuro (parâmetros provisórios `D4` do GDD e `data/buildings/*.tres`: **12 Madeiras + 6 Pedras** para o Abrigo Básico; **18 Madeiras + 10 Pedras** para o Depósito Rústico).
   - Tag de atalho numérico (`[1]`, `[2]`) no canto superior.
 
 ---
@@ -277,7 +284,7 @@ Todos os 10 componentes abaixo estão integralmente referenciados no Atlas de pr
   - Posição na Tela 1080p: Centro-direita (`x: 1592 px`, `y: 736 px`).
 - **Geometria:** Laje espessa de basalto chanfrada com filete dourado integral.
 - **Conteúdo Interno:**
-  - Nome do canteiro (`Canteiro: Depósito de Recursos`) e estágio físico.
+  - Nome do canteiro (`Canteiro: Depósito Rústico`) e estágio físico.
   - Barra de progresso de acumulação de materiais e horas de trabalho.
   - Lista de habitantes atribuídos automaticamente pela coleta comunitária.
   - Botão de prioridade de obra e botão de demolição/cancelamento.
@@ -355,35 +362,38 @@ flowchart TD
 
 ---
 
-## 5. Diretrizes de Aplicação para Novas Telas
+## 5. Diretrizes de Aplicação para Novas Telas (`PROPOSTA DE EXTENSIBILIDADE`)
 
 > **Regra de Ouro:** "Nenhuma tela futura de Dawn of Kin poderá parecer uma janela de software comercial ou um kit visual independente. Toda interface adicional deve parecer esculpida pelas mesmas mãos, na mesma rocha e sob a mesma luz de eclipse."
+> **Escopo Normativo:** Os exemplos abaixo ilustram exclusivamente **como aplicar a linguagem visual D2.2** caso essas telas venham a ser autorizadas no futuro. Eles **não convertem hipóteses de design em funcionalidades obrigatórias** nem autorizam implementação fora das etapas vigentes do GDD.
 
-Quando novos sistemas forem introduzidos nas etapas futuras autorizadas, eles deverão estritamente recombinar as peças canônicas D2.2:
+Quando sistemas futuros (`PLANEJADO` ou `PROPOSTA` no GDD) forem expressamente autorizados, eles deverão recombinar as peças canônicas D2.2:
 
 ```
 +----------------------------------------------------------------------------------------------------+
-|                               DIRETRIZES PARA SISTEMAS FUTUROS                                     |
+|                      EXEMPLOS ILUSTRATIVOS PARA SISTEMAS FUTUROS (PROPOSTA)                        |
 |                                                                                                    |
-|    SISTEMA FUTURO         ESTRUTURA VISUAL OBRIGATÓRIA D2.2                                        |
-|    01. População / Clã    • Monólito vertical de basalto à esquerda, similar ao Menu               |
-|                           • Mini-estelas para cada habitante com retratos circulares entalhados    |
+|    SISTEMA NO GDD              ESTRUTURA VISUAL PROPOSTA (LINGUAGEM D2.2)                          |
+|    01. População / Clã         • Monólito vertical de basalto à esquerda, similar ao Menu          |
+|        (PLANEJADO T3.5/T5)     • Mini-estelas para habitantes com retratos circulares entalhados   |
 |                                                                                                    |
-|    02. Inventário Total   • Lajes horizontais divididas em compartimentos chanfrados               |
-|                           • Fundo grafite vulcânico com divisores kintsugi sutis                   |
+|    02. Estoque / Depósito      • Lajes horizontais divididas em compartimentos chanfrados          |
+|        (IMPLEMENTADO/T3.7)     • Fundo grafite vulcânico com divisores kintsugi sutis              |
 |                                                                                                    |
-|    03. Linhagem T5        • Expansão da Lâmina Contextual para um altar de três corpos             |
-|                           • Nós genealógicos conectados por veios dourados ramificados             |
+|    03. Linhagem e Genealogia   • Expansão da Lâmina Contextual para um altar de três corpos        |
+|        (PLANEJADO T5)          • Nós genealógicos conectados por veios dourados ramificados        |
 |                                                                                                    |
-|    04. Oficinas T4        • Semelhante às Maquetes de Construção: painéis em alabastro nobre       |
-|                           • Ferramentas e itens representados como relevos gravados na rocha       |
+|    04. Oficinas & Artesanato   • Semelhante às Maquetes de Construção: painéis em alabastro nobre  |
+|        (PLANEJADO T4)          • Ferramentas e itens representados como relevos gravados na rocha  |
 |                                                                                                    |
-|    05. Comércio Cap. 3    • Díptico de balança: laje do assentamento × laje da caravana visitante  |
-|                           • Indicadores de equivalência em seixos de valor                         |
+|    05. Comércio / Caravanas    • Díptico de balança: laje do assentamento × laje visitante         |
+|        (PLANEJADO Cap. 3)      • Indicadores de equivalência em seixos de valor                    |
 |                                                                                                    |
-|    06. Configurações      • Monólito central de basalto com controles em alabastro (sliders/toggles)|
+|    06. Configurações           • Monólito central de basalto com controles em alabastro            |
+|        (PLANEJADO T3.8)        • Preserva silhuetas chanfradas e tokens da Seção 2                 |
 +----------------------------------------------------------------------------------------------------+
 ```
+*(Nota: Outros domínios previstos no GDD — como Exploração/Cap. 2, Diplomacia/Cap. 3 e Defesa/T7 — seguem o mesmo princípio: reutilização dos tokens, silhuetas chanfradas e tríade material D2.2, sem criar kits visuais paralelos.)*
 
 ---
 
@@ -399,8 +409,8 @@ Todos os recursos gráficos constitutivos da identidade visual oficial estão co
 | [`portrait_alden.jpg`](../design/ui-0-r2-2/assets/portrait_alden.jpg) | `256 × 256` | JPEG | `16 KB` | Retrato do patriarca fundador Alden | Obra original de estúdio. Sem royalties. |
 | [`portrait_brena.jpg`](../design/ui-0-r2-2/assets/portrait_brena.jpg) | `256 × 256` | JPEG | `17 KB` | Retrato da matriarca fundadora Brena | Obra original de estúdio. Sem royalties. |
 | [`emblem_dawn_of_kin.png`](../design/ui-0-r2-2/assets/emblem_dawn_of_kin.png) | `512 × 512` | PNG | `128 KB` | Emblema solar místico gravado em ouro | Obra original de estúdio. Sem royalties. |
-| [`d1_shelter_mini.png`](../design/ui-0-r2-2/assets/d1_shelter_mini.png) | `512 × 512` | PNG | `204 KB` | Miniatura arquitetônica do Abrigo de Sobrevivência | Obra original de estúdio. Sem royalties. |
-| [`d1_depot_mini.png`](../design/ui-0-r2-2/assets/d1_depot_mini.png) | `512 × 512` | PNG | `207 KB` | Miniatura arquitetônica do Depósito Comunitário | Obra original de estúdio. Sem royalties. |
+| [`d1_shelter_mini.png`](../design/ui-0-r2-2/assets/d1_shelter_mini.png) | `512 × 512` | PNG | `204 KB` | Miniatura arquitetônica do Abrigo Básico (`shelter_basic`) | Obra original de estúdio. Sem royalties. |
+| [`d1_depot_mini.png`](../design/ui-0-r2-2/assets/d1_depot_mini.png) | `512 × 512` | PNG | `207 KB` | Miniatura arquitetônica do Depósito Rústico (`storage_depot`) | Obra original de estúdio. Sem royalties. |
 | [`d2_kintsugi_basalt.png`](../design/ui-0-r2-2/assets/d2_kintsugi_basalt.png) | `1024 × 1024` | PNG | `347 KB` | Textura base de basalto mineral com veios dourados para assamento | Obra original de estúdio. Sem royalties. |
 
 *Declaração de Conformidade Legal:* Nenhum dos arquivos acima infringe direitos autorais, contém marcas registradas de terceiros ou impõe restrições para distribuição em código aberto comercial.
@@ -422,8 +432,11 @@ Para assegurar a mesma fidelidade de layout tanto em `1920×1080` quanto em `128
    - Em telas `1080p`: fator de escala `s = 1.00`.
    - Em telas `720p`: fator de escala `s = 1.22` sobre as coordenadas do canvas lógico, mantendo o tamanho físico percebido dos elementos idêntico ao benchmark aprovado (estelas ~`88 px` de largura física, placa ~`160 px`).
 
-### 7.2 Loteamento de Draw Calls via `AtlasTexture`
-O uso do atlas consolidado `d2_2_faithful_atlas.png` reduz o custo de renderização de toda a interface para menos de **+40 draw calls** sobre a cena 3D, atingindo framerates superiores a **140 FPS** em hardware integrado (Intel UHD Graphics 620).
+### 7.2 Loteamento de Draw Calls via `AtlasTexture` e Medições Isoladas (R2.2)
+O uso do atlas consolidado `d2_2_faithful_atlas.png` reduziu o custo adicional de renderização da HUD em repouso (`D2_2_FAITHFUL_HUD`) para **`+40` draw calls** sobre o baseline 3D (`241` vs `201`), com **`+37` draw calls** em `D2_2_FAITHFUL_LINEAGE` (`238`) e **`+66` draw calls** em `D2_2_FAITHFUL_CONSTRUCTION` (`267`), conforme `benchmark_results_r2_2.json` (`Intel(R) UHD Graphics 620`, `OpenGL 3.3 Compatibility`, `VSYNC_DISABLED`, `540` quadros válidos por cenário sobre `res://tests/visual/rux_2b_multi_source_selection.tscn`):
+- **`1920×1080` (`scale = 1.00`):** `D2_2_FAITHFUL_HUD` registrou média mediana de `8,136 ms` (`+0,977 ms` sobre `BASELINE_3D`), `p95` mediano `10,828 ms` (`10,323..11,127 ms`), `p99` mediano `12,034 ms` (`11,146..12,094 ms`) e `0` quadros `> 100 ms`. `D2_2_FAITHFUL_CONSTRUCTION` registrou `p95` mediano `12,334 ms` e `p99` mediano `14,075 ms`.
+- **`1280×720` (`scale = 1.22`):** `D2_2_FAITHFUL_HUD` registrou média mediana de `8,187 ms`, `p95` mediano `11,563 ms`, `p99` mediano `13,638 ms` e `0` quadros `> 100 ms`.
+- **Escopo e Limitação:** Trata-se de **benchmark preliminar de renderização isolada sem V-Sync**, sem simulação pesada simultânea de gameplay e sem distinção formal CA × bateria DC; portanto **não constitui medição de FPS sustentado em gameplay nem homologação final de desempenho**.
 
 ```gdscript
 # Exemplo canônico de instanciação de elemento via Atlas:
@@ -502,4 +515,5 @@ Qualquer futura necessidade de um componente inexistente deve ser formulada segu
 > - É expressamente vedado remover as pedras de recursos escalonadas ou fundir as estelas dos fundadores em dípticos comuns.
 > - É expressamente vedado substituir o alabastro nobre da laje de maquetes por botões convencionais cinzentos.
 > - Ajustes técnicos de resolução, acessibilidade ou correções de corte de texto são permitidos apenas desde que preservem 100% da silhueta, composição e materiais da referência D2.2.
+> - **Documentação de Problemas de Acessibilidade e Usabilidade:** Esta norma **não impede** que limitações de legibilidade, contraste (ex.: `#385B2A` sobre `#141618` a `2,33:1`) ou usabilidade sejam abertamente diagnosticadas, registradas com evidência e submetidas ao proprietário com propostas compatíveis de remediação — **vedando apenas alterações visuais unilaterais ou silenciosas** sem decisão documentada.
 > - Em caso de dúvida ou conflito de design, a IA deve paralisar a atividade, expor o dilema com clareza e aguardar a decisão do usuário.
