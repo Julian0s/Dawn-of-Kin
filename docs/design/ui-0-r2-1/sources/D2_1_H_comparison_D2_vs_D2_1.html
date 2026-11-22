@@ -1,0 +1,55 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>UI-0 R2.1 — Comparativo Direto D2 Original × D2 Refinada</title><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:1920px;height:1080px;background:#0d0f12;color:#F4EFE4;font-family:"Segoe UI",system-ui,sans-serif;padding:22px 30px;display:flex;flex-direction:column;gap:14px;}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #DFBC72;padding-bottom:8px;}
+.hdr h1{font-family:"Palatino Linotype",Georgia,serif;font-size:26px;letter-spacing:.04em;}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1;}
+.panel{background:#15181C;border:1px solid rgba(223,188,114,0.36);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.panel.before{border-left:3px solid #C8644B;}
+.panel.after{border-left:3px solid #799E66;}
+.ptitle{display:flex;justify-content:space-between;align-items:baseline;}
+.ptitle h2{font-family:"Palatino Linotype",Georgia,serif;font-size:19px;}
+.grid4{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.shot{display:flex;flex-direction:column;gap:4px;}
+.shot img{width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid rgba(255,255,255,0.16);display:block;}
+.shot span{font-size:10.5px;color:#C4BEB0;}
+.notes{margin-top:auto;padding-top:8px;border-top:1px solid rgba(223,188,114,0.22);font-size:11.5px;color:#D0CABE;line-height:1.45;}
+</style></head><body>
+<div class="hdr">
+  <h1>Comparativo Direto — Direção D2 Original (R2) × Direção D2 Refinada (R2.1)</h1>
+  <span style="font-size:12px;color:#DFBC72;">Evolução Artística, Adequação ao GDD, Correção de Sobreposições na Godot &amp; Prova Interativa</span>
+</div>
+<div class="cols">
+  <div class="panel before">
+    <div class="ptitle">
+      <h2 style="color:#EE9B84;">ANTES — D2 Original (UI-0 R2)</h2>
+      <span style="font-size:11px;color:#EE9B84;">Problemas auditados na R2</span>
+    </div>
+    <div class="grid4">
+      <div class="shot"><img src="../../ui-0-r2/D2_B_hud_1920x1080.png"/><span>HUD R2: 4 grupos soltos com ângulos variados e placa <em>ema</em> fora do GDD.</span></div>
+      <div class="shot"><img src="../../ui-0-r2/D2_C_construction_1920x1080.png"/><span>Construção R2: dois cartões verticais altos em alabastro (ainda convencional).</span></div>
+      <div class="shot"><img src="../../ui-0-r2/D2_E_menu_1920x1080.png"/><span>Menu R2: lista vertical convencional de faixas sobre fundo escuro.</span></div>
+      <div class="shot"><img src="../../ui-0-r2/G_godot_D2_marcos_kintsugi_1280x720.png"/><span>Godot R2 (720p): <strong>veios dourados cruzavam texto</strong> (MAD/PED/ALI, Ano I, Brena) e <em>Construir</em> rente à borda.</span></div>
+    </div>
+    <div class="notes">
+      <strong>Principais limitações da D2 original:</strong> (1) quatro blocos independentes nos cantos; (2) referências culturais japonesas (<em>ema</em>/<em>kintsugi</em>) sem lastro no GDD; (3) estelas como cartões separados; (4) showcase Godot estático com linhas diagonais atravessando rótulos.
+    </div>
+  </div>
+
+  <div class="panel after">
+    <div class="ptitle">
+      <h2 style="color:#A9CF92;">DEPOIS — D2 Refinada (UI-0 R2.1)</h2>
+      <span style="font-size:11px;color:#A9CF92;">Sistema Unificado · Validado na Godot 4.7.2</span>
+    </div>
+    <div class="grid4">
+      <div class="shot"><img src="../D2_1_B_hud_1920x1080.png"/><span>HUD R2.1: bisel único de 8°, bloco de estoques com bandejas, Marco de Ciclo e Díptico unido.</span></div>
+      <div class="shot"><img src="../D2_1_D1_construction_valid_1920x1080.png"/><span>Construção R2.1: Mesa de Maquetes horizontal em alabastro + abas de Nível + prévia válida/inválida.</span></div>
+      <div class="shot"><img src="../D2_1_F_menu_1920x1080.png"/><span>Menu R2.1: chave de alabastro atravessando a Fenda de Aurora + cunhas escalonadas na diagonal.</span></div>
+      <div class="shot"><img src="../G_godot_D2_1_rest_1280x720.png"/><span>Godot R2.1 (720p): <strong>Atlas 2D real texturizado</strong>, <strong>zero sobreposição</strong> em qualquer rótulo e estados interativos reais.</span></div>
+    </div>
+    <div class="notes">
+      <strong>Ganhos comprovados na D2.1:</strong> (1) gramática arquitetural única (chanfro 8° + Fenda de Aurora estritamente na aresta de encaixe); (2) 100% alinhado ao GDD v1.2; (3) Díptico de Fundadores + Laje deslizante + Pilar de Linhagem; (4) showcase Godot interativo com medição empírica Procedural × Atlas.
+    </div>
+  </div>
+</div>
+</body></html>

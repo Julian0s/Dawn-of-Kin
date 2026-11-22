@@ -1,0 +1,344 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>D2.1 — Nova Prancha de Identidade</title><style>
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body {
+  width:100%; height:100%; overflow:hidden; background:#0c0e10;
+  font-family:"Segoe UI", system-ui, sans-serif;
+  font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased;
+  color:#F4EFE4;
+}
+:root {
+  --fd: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --fu: "Segoe UI", system-ui, sans-serif;
+  --basalt-0: #141619;
+  --basalt-1: #1B1E22;
+  --basalt-tray: rgba(10,12,14,0.74);
+  --alab: #EFEADF;
+  --alab-2: #E4DCCB;
+  --ink: #1D1813;
+  --ink-sub: #544738;
+  --ivory: #F4EFE4;
+  --muted: #B8B2A5;
+  --aurora: #DFBC72;
+  --aurora-hi: #F6DF9F;
+  --moss: #799E66;
+  --moss-hi: #A9CF92;
+  --terra: #C8644B;
+  --terra-hi: #EE9B84;
+}
+.stage { position:relative; width:100vw; height:100vh; overflow:hidden; }
+.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.ic { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ic svg { width:100%; height:100%; }
+
+/* Unified Material Grammar: Basalt (World/Memory) vs Alabaster (Creation/Intention) */
+.mat-basalt {
+  background-image: linear-gradient(155deg, rgba(22,25,29,0.88), rgba(14,16,19,0.95)), url('../assets/d2_1_basalt_clean.png');
+  background-size: 260px 260px;
+  border: 1.5px solid rgba(223,188,114,0.52);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,250,238,0.12);
+}
+.mat-alab {
+  background-image: linear-gradient(160deg, rgba(247,243,234,0.94), rgba(228,220,203,0.97)), url('../assets/d2_1_alabaster_slab.png');
+  background-size: 280px 280px;
+  color: var(--ink);
+  border: 1.5px solid #9A7F52;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.75);
+}
+
+/* Architectural Plumb Lines (Subtle visual unity linking the 4 anchors without blocking 3D!) */
+.plumb-l {
+  position:absolute; left:24px; top:92px; bottom:188px; width:1px;
+  background:linear-gradient(180deg, rgba(223,188,114,0.38) 0%, rgba(223,188,114,0.0) 24%, rgba(223,188,114,0.0) 76%, rgba(223,188,114,0.38) 100%);
+  pointer-events:none;
+}
+.plumb-r {
+  position:absolute; right:24px; top:126px; bottom:108px; width:1px;
+  background:linear-gradient(180deg, rgba(223,188,114,0.38) 0%, rgba(223,188,114,0.0) 24%, rgba(223,188,114,0.0) 76%, rgba(223,188,114,0.38) 100%);
+  pointer-events:none;
+}
+.res-720 .plumb-l { left:16px; top:76px; bottom:154px; }
+.res-720 .plumb-r { right:16px; top:104px; bottom:90px; }
+
+/* TOP-LEFT: Unified Stepped Stockpile Monolith (3 recessed stone trays — ZERO crossing lines!) */
+.d21-stock {
+  position:absolute; top:20px; left:24px;
+  display:flex; align-items:stretch; padding:8px 14px 8px 18px; gap:8px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-left: 3px solid var(--aurora);
+}
+.res-720 .d21-stock { top:14px; left:16px; padding:6px 10px 6px 13px; gap:6px; }
+.d21-tray {
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  background: var(--basalt-tray);
+  border: 1px solid rgba(223,188,114,0.22);
+  border-radius: 3px;
+  position:relative;
+}
+.res-720 .d21-tray { padding:4px 9px; gap:6px; }
+.d21-tray.exposed { border-bottom: 2px solid #D99B4E; }
+.d21-tray.immune { border-bottom: 2px solid #8D9AA3; }
+.d21-tray .v { font-family:var(--fd); font-size:18px; font-weight:700; color:var(--ivory); line-height:1; }
+.res-720 .d21-tray .v { font-size:15px; }
+.d21-tray .k { font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); display:block; margin-top:2px; }
+.res-720 .d21-tray .k { font-size:8.5px; }
+
+/* TOP-RIGHT: Solar Cycle Monolith ("Marco de Ciclo" — ZERO Japanese ema!) */
+.d21-cycle {
+  position:absolute; top:20px; right:24px; width:262px;
+  padding:11px 18px 11px 16px;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-right: 3px solid var(--aurora);
+}
+.res-720 .d21-cycle { top:14px; right:16px; width:224px; padding:8px 14px 8px 12px; }
+.d21-cycle-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+.d21-cycle-title { font-family:var(--fd); font-size:16px; font-weight:700; color:var(--ivory); letter-spacing:0.03em; }
+.res-720 .d21-cycle-title { font-size:13.5px; }
+.d21-cycle-sub { font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--aurora); }
+.res-720 .d21-cycle-sub { font-size:8.5px; }
+.d21-speed-row {
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--basalt-tray); border:1px solid rgba(223,188,114,0.22);
+  padding:4px 7px; border-radius:3px;
+}
+.d21-sp-group { display:flex; align-items:center; gap:4px; }
+.d21-sp {
+  padding:2px 7px; font-size:11px; font-weight:600; color:var(--muted);
+  border:1px solid rgba(223,188,114,0.22); border-radius:2px;
+}
+.res-720 .d21-sp { padding:1px 5px; font-size:10px; }
+.d21-sp.on { background:var(--alab); color:var(--ink); border-color:var(--alab); font-weight:700; }
+.d21-exp-dot { font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; color:#E8B05E; font-weight:600; }
+
+/* BOTTOM-LEFT: Joined Founder Diptych Monolith ("Díptico da Casa Fundadora") */
+.d21-diptych-wrap {
+  position:absolute; bottom:22px; left:24px;
+  display:flex; align-items:flex-end; gap:0;
+}
+.res-720 .d21-diptych-wrap { bottom:14px; left:16px; }
+.d21-diptych {
+  position:relative; display:flex; align-items:flex-end; gap:2px;
+}
+.d21-half {
+  width:112px; padding:12px 10px 10px; text-align:center; position:relative;
+  transition: transform 140ms ease;
+}
+.res-720 .d21-half { width:92px; padding:9px 7px 8px; }
+.d21-half.left {
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+  border-right: 2px solid var(--aurora);
+}
+.d21-half.right {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  border-left: 2px solid var(--aurora);
+}
+.d21-half.raised {
+  transform: translateY(-12px);
+  border-color: var(--aurora-hi);
+  box-shadow: 0 18px 34px rgba(0,0,0,0.68), 0 0 0 1px rgba(246,223,159,0.55);
+}
+.d21-av {
+  width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto 8px;
+  border: 2px solid rgba(223,188,114,0.82);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.55);
+}
+.res-720 .d21-av { width:50px; height:50px; margin-bottom:6px; }
+.d21-half.raised .d21-av { border-color:var(--aurora-hi); box-shadow:0 0 0 2px rgba(223,188,114,0.35); }
+.d21-av img { width:100%; height:100%; object-fit:cover; }
+.d21-nameplate {
+  background: var(--basalt-tray);
+  border: 1px solid rgba(223,188,114,0.24);
+  border-radius: 3px;
+  padding: 5px 4px;
+}
+.res-720 .d21-nameplate { padding:3px 3px; }
+.d21-nameplate .nm { font-family:var(--fd); font-size:14.5px; font-weight:700; color:var(--ivory); line-height:1.15; }
+.res-720 .d21-nameplate .nm { font-size:12.5px; }
+.d21-nameplate .st { font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center; gap:4px; margin-top:2px; }
+.res-720 .d21-nameplate .st { font-size:9px; }
+.dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.dot.gold { background:var(--aurora); }
+.dot.moss { background:var(--moss-hi); }
+
+/* Crown Emblem straddling the central joining Aurora Seam of the Founder Diptych! */
+.d21-crown {
+  position:absolute; left:50%; top:-16px; transform:translateX(-50%); z-index:6;
+  width:34px; height:34px; border-radius:50%;
+  background:#15181B; border:1.5px solid var(--aurora);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 4px 14px rgba(0,0,0,0.68);
+}
+.res-720 .d21-crown { width:28px; height:28px; top:-13px; }
+.d21-crown img { width:24px; height:24px; object-fit:contain; }
+.res-720 .d21-crown img { width:19px; height:19px; }
+
+/* Small Lineage Continuity Socket perched at top-right of Diptych */
+.d21-gen-notch {
+  position:absolute; right:-4px; top:-12px; z-index:6;
+  padding:2px 8px; background:#14171A; border:1px solid rgba(223,188,114,0.62);
+  font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--aurora);
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+}
+.res-720 .d21-gen-notch { font-size:8.5px; padding:1px 6px; top:-10px; }
+
+/* BOTTOM-RIGHT: Alabaster Construction Keystone + Basalt Utility Wedge */
+.d21-cmd {
+  position:absolute; bottom:22px; right:24px;
+  display:flex; align-items:stretch; gap:8px;
+}
+.res-720 .d21-cmd { bottom:14px; right:16px; gap:6px; }
+.d21-build-key {
+  padding:10px 22px 10px 18px; display:flex; align-items:center; gap:12px;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-left: 3px solid #B69049;
+}
+.res-720 .d21-build-key { padding:7px 15px 7px 13px; gap:9px; }
+.d21-build-key img { width:44px; height:44px; object-fit:contain; filter:drop-shadow(0 3px 5px rgba(24,18,10,0.35)); }
+.res-720 .d21-build-key img { width:34px; height:34px; }
+.d21-build-key .t { font-family:var(--fd); font-size:17px; font-weight:700; color:var(--ink); line-height:1.1; }
+.res-720 .d21-build-key .t { font-size:14.5px; }
+.d21-build-key .s { font-size:10.5px; color:var(--ink-sub); margin-top:2px; letter-spacing:0.04em; }
+.res-720 .d21-build-key .s { font-size:9.5px; }
+
+.d21-util {
+  padding:7px 14px; display:flex; flex-direction:column; justify-content:center; gap:5px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-right: 3px solid var(--aurora);
+}
+.res-720 .d21-util { padding:5px 11px; gap:4px; }
+.d21-util-row {
+  display:flex; align-items:center; gap:7px; padding:3px 9px;
+  background:var(--basalt-tray); border:1px solid rgba(223,188,114,0.22); border-radius:2px;
+  font-size:11.5px; color:var(--ivory); white-space:nowrap;
+}
+.res-720 .d21-util-row { font-size:10px; padding:2px 7px; }
+.d21-util-row strong { color:var(--aurora); font-weight:700; margin-left:auto; font-size:10px; }
+
+body { background:#101215; }
+.bd { width:1920px; height:1080px; padding:28px 36px; display:flex; flex-direction:column; gap:16px; }
+.hdr { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid var(--aurora); padding-bottom:10px; }
+.hdr h1 { font-family:var(--fd); font-size:32px; letter-spacing:0.04em; color:var(--ivory); }
+.grid { display:grid; grid-template-columns: 440px 1fr 480px; gap:18px; flex:1; }
+.col { display:flex; flex-direction:column; gap:14px; }
+.box { padding:14px 16px; background:rgba(24,27,31,0.88); border:1px solid rgba(223,188,114,0.34); border-left:3px solid var(--aurora); }
+.bt { font-family:var(--fd); font-size:13px; letter-spacing:0.1em; text-transform:uppercase; color:var(--aurora); margin-bottom:9px; }
+</style></head><body><div class="stage">
+<div class="bd">
+  <div class="hdr">
+    <div>
+      <div style="font-size:10.5px;letter-spacing:0.26em;text-transform:uppercase;color:var(--aurora);">DAWN OF KIN · UI-0 R2.1 · REFINAMENTO EXCLUSIVO DA DIREÇÃO D2</div>
+      <h1>Marcos de Pedra e Eclipse — Sistema Arquitetural Unificado (D2.1)</h1>
+      <div style="font-size:13px;color:var(--muted);margin-top:2px;">Basalto da Terra Selvagem · Fenda de Aurora estrutural (zero linhas sobre texto) · Maquetes de Alabastro · Díptico da Casa Fundadora</div>
+    </div>
+    <div style="text-align:right;font-size:11.5px;color:var(--muted);">100% Alinhado ao GDD v1.2 (sem cultura japonesa/ema)<br/>Atlas 2D pré-assado + Showcase Interativo Godot 4.7.2</div>
+  </div>
+
+  <div class="grid">
+    <!-- COLUMN 1: Silhouette, Materials, Palette & GDD Narrative Grounding -->
+    <div class="col">
+      <div class="box">
+        <div class="bt">1. Assinatura Exclusiva: Chanfro 8° + Fenda de Aurora</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+          <div style="height:86px;background-image:url('../assets/d2_1_basalt_clean.png');background-size:cover;border:1px solid rgba(223,188,114,0.5);border-left:3px solid var(--aurora);clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);display:flex;align-items:flex-end;padding:6px 10px;font-size:10.5px;font-weight:700;">Basalto · Mundo &amp; Memória</div>
+          <div style="height:86px;background-image:url('../assets/d2_1_alabaster_slab.png');background-size:cover;border:1px solid #9A7F52;border-left:3px solid #B69049;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);display:flex;align-items:flex-end;padding:6px 10px;font-size:10.5px;font-weight:700;color:var(--ink);">Alabastro · Criação &amp; Obra</div>
+        </div>
+        <div style="font-size:11.5px;color:#CCC6B9;line-height:1.45;">
+          Todo bloco compartilha o mesmo <strong>chanfro arquitetural de 8°</strong> e um <strong>Veio de Aurora</strong> restrito à <strong>aresta de encaixe</strong> (nunca atravessando texto). As quatro âncoras alinham-se por prumos verticais invisíveis sem exigir barra contínua.
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="bt">2. Gramática Funcional de Materiais &amp; Cores</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;"><div><div style="height:40px;background:#181B1F;border:1px solid rgba(255,255,255,0.2);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);"></div><div style="font-size:11px;font-weight:700;margin-top:4px;">Basalto Bruto</div><div style="font-size:9.5px;color:var(--aurora);">#181B1F</div><div style="font-size:9px;color:var(--muted);">Mundo & Memória</div></div><div><div style="height:40px;background:#DFBC72;border:1px solid rgba(255,255,255,0.2);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);"></div><div style="font-size:11px;font-weight:700;margin-top:4px;">Veio de Aurora</div><div style="font-size:9.5px;color:var(--aurora);">#DFBC72</div><div style="font-size:9px;color:var(--muted);">Conexão & Foco</div></div><div><div style="height:40px;background:#EFEADF;border:1px solid rgba(255,255,255,0.2);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);"></div><div style="font-size:11px;font-weight:700;margin-top:4px;">Alabastro</div><div style="font-size:9.5px;color:var(--aurora);">#EFEADF</div><div style="font-size:9px;color:var(--muted);">Criação & Obra</div></div><div><div style="height:40px;background:#799E66;border:1px solid rgba(255,255,255,0.2);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);"></div><div style="font-size:11px;font-weight:700;margin-top:4px;">Musgo Mineral</div><div style="font-size:9.5px;color:var(--aurora);">#799E66</div><div style="font-size:9px;color:var(--muted);">Válido / Ativo</div></div><div><div style="height:40px;background:#C8644B;border:1px solid rgba(255,255,255,0.2);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);"></div><div style="font-size:11px;font-weight:700;margin-top:4px;">Terracota</div><div style="font-size:9.5px;color:var(--aurora);">#C8644B</div><div style="font-size:9px;color:var(--muted);">Bloqueio / Alerta</div></div></div>
+      </div>
+
+      <div class="box" style="flex:1;">
+        <div class="bt">3. Adequação ao GDD (Transformação Autoral)</div>
+        <div style="font-size:11.5px;color:#CCC6B9;line-height:1.5;display:flex;flex-direction:column;gap:6px;">
+          <div>• <strong style="color:var(--ivory);">Removido:</strong> referências japonesas (<em>ema</em>, arquipélago, templos) ausentes do GDD v1.2.</div>
+          <div>• <strong style="color:var(--ivory);">Transformado:</strong> basalto escuro + fenda dourada expressam a <strong>Terra selvagem sem ruínas</strong> e a dualidade oculta <strong>Luz × Sombra</strong> (GDD §2.1).</div>
+          <div>• <strong style="color:var(--ivory);">Alabastro funcional:</strong> reserva-se exclusivamente à <strong>intenção construtiva</strong> e ações primárias.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 2: Typography, Icons, States & Why D2.1 Beats Original D2 -->
+    <div class="col">
+      <div class="box">
+        <div class="bt">4. Hierarquia Tipográfica &amp; Bandejas de Leitura</div>
+        <div style="font-family:var(--fd);font-size:28px;font-weight:700;letter-spacing:0.06em;">DAWN OF KIN · Casa Fundadora</div>
+        <div style="font-family:var(--fd);font-size:15.5px;color:var(--aurora);margin-top:3px;">Sobrevivência · Linhagem · Construção · Continuidade</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:5px;">Números tabulares em bandejas rebaixadas: <strong style="color:var(--ivory);">Madeira 24 · Pedra 14 · Alimentos 18 · 42% · 4,0 m/s</strong></div>
+      </div>
+
+      <div class="box">
+        <div class="bt">5. Iconografia Mineral Exclusiva (Traço 1,5 px)</div>
+        <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:7px;"><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4L18.5 16.5H5.5L12 4Z" stroke="#E2BF78" stroke-width="1.5" fill="#E2BF78" fill-opacity="0.14"/><path d="M12 10.5V20M9 20H15" stroke="#F4E2B6" stroke-width="1.4" stroke-linecap="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Madeira</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="6.5,18.5 8.5,7.5 15.5,5.5 18.5,18.5" stroke="#CBD4D9" stroke-width="1.5" fill="#CBD4D9" fill-opacity="0.14"/><path d="M12.5 6.5L11.5 18.5" stroke="#CBD4D9" stroke-width="1.1" opacity="0.55"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Pedra</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="14" r="4.6" stroke="#E8B05E" stroke-width="1.5" fill="#E8B05E" fill-opacity="0.2"/><path d="M12 9.4C12.8 6.4 15.2 5.2 17.4 5.8" stroke="#8FB475" stroke-width="1.6" stroke-linecap="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Alimentos</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4.5 12L12 5.5L19.5 12M7.5 18.5H16.5M9 11.5V18.5M15 11.5V18.5" stroke="#DFBC72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Construir</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5.5 7.5H13.5M5.5 12H18.5M5.5 16.5H15.5" stroke="#DFBC72" stroke-width="1.5" stroke-linecap="round"/><path d="M16 5.5L19 7.5L16 9.5" stroke="#F5E4BC" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Tarefas</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 18V7.5H16.5V18" stroke="#DFBC72" stroke-width="1.5"/><path d="M12 7.5V18M7.5 12.5H16.5" stroke="#F5E4BC" stroke-width="1.4"/><circle cx="12" cy="5" r="1.5" fill="#DFBC72"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Linhagem</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 15.5H20" stroke="#DFBC72" stroke-width="1.4"/><path d="M7.5 15.5A4.5 4.5 0 0 1 16.5 15.5" stroke="#F6E5BD" stroke-width="1.6" fill="#DFBC72" fill-opacity="0.24"/><path d="M12 6.5V8.8M6.5 9.2L8 10.6M17.5 9.2L16 10.6" stroke="#DFBC72" stroke-width="1.4" stroke-linecap="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Ciclo</span></div><div style="padding:8px 4px;background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="ic" style="width:24px;height:24px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="12,4.5 20,18.5 4,18.5" stroke="#E07D63" stroke-width="1.6" fill="#C8644B" fill-opacity="0.2"/><path d="M12 9.8V13.6M12 16.2V16.6" stroke="#F8D2C6" stroke-width="1.8" stroke-linecap="round"/></svg></span><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Alerta</span></div></div>
+      </div>
+
+      <div class="box">
+        <div class="bt">6. Estados Interativos &amp; Encaixes</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center;font-family:var(--fd);font-size:12.5px;">
+          <div style="padding:9px;background:#1A1D21;border:1px solid rgba(223,188,114,0.45);border-left:3px solid var(--aurora);clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);">Repouso</div>
+          <div style="padding:9px;background:#262A30;border:1.5px solid var(--aurora-hi);border-left:3px solid var(--aurora-hi);clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);">Hover / Foco</div>
+          <div style="padding:9px;background:var(--alab);color:var(--ink);font-weight:700;border-left:3px solid #B69049;clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);">Alabastro Ativo</div>
+          <div style="padding:9px;background:#141619;border:1px dashed rgba(223,188,114,0.35);color:#7D786D;clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);">Proposta / Futuro</div>
+        </div>
+      </div>
+
+      <div class="box" style="flex:1;">
+        <div class="bt">7. Por que D2.1 Supera a D2 Original (Correção dos 5 Problemas)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;line-height:1.42;color:#CFC9BC;">
+          <div style="padding:7px 9px;background:var(--basalt-tray);border-left:2px solid var(--aurora);"><strong>1. Composição Unificada:</strong> ângulo único de 8°, prumos verticais e bloco único de estoques com bandejas.</div>
+          <div style="padding:7px 9px;background:var(--basalt-tray);border-left:2px solid var(--aurora);"><strong>2. Zero Sobreposição:</strong> veios migram do centro do texto para as arestas de encaixe estrutural.</div>
+          <div style="padding:7px 9px;background:var(--basalt-tray);border-left:2px solid var(--aurora);"><strong>3. Díptico Familiar:</strong> Alden e Brena compartilham uma fenda central com emblema + laje deslizante.</div>
+          <div style="padding:7px 9px;background:var(--basalt-tray);border-left:2px solid var(--aurora);"><strong>4. Mesa de Maquetes + Menu:</strong> prancha horizontal em alabastro e chaves de pedra encaixadas na fenda.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 3: Founder Diptych, Construction Maquette & Menu Language -->
+    <div class="col">
+      <div class="box">
+        <div class="bt">8. Díptico dos Fundadores &amp; Pilar de Linhagem</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:2px;position:relative;padding-top:14px;">
+          <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:30px;height:30px;border-radius:50%;background:#131619;border:1.5px solid var(--aurora);display:flex;align-items:center;justify-content:center;z-index:3;"><img src="../assets/emblem_dawn_of_kin.png" style="width:20px;height:20px;"/></div>
+          <div style="width:128px;padding:10px 8px;background:#1A1D21;border:1.5px solid var(--aurora-hi);border-right:2px solid var(--aurora-hi);clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);text-align:center;transform:translateY(-6px);">
+            <img src="../assets/portrait_alden.jpg" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid var(--aurora-hi);"/>
+            <div style="font-family:var(--fd);font-size:13px;font-weight:700;margin-top:4px;">Alden</div>
+            <div style="font-size:9.5px;color:var(--aurora);">Elevado · Pessoal</div>
+          </div>
+          <div style="width:128px;padding:10px 8px;background:#1A1D21;border:1px solid rgba(223,188,114,0.45);border-left:2px solid var(--aurora);clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,0 100%);text-align:center;">
+            <img src="../assets/portrait_brena.jpg" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid var(--aurora);"/>
+            <div style="font-family:var(--fd);font-size:13px;font-weight:700;margin-top:4px;">Brena</div>
+            <div style="font-size:9.5px;color:var(--moss-hi);">Coletando</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4;">Os fundadores formam uma peça dupla indivisível ligada pelo Veio da União. Clicar eleva a metade selecionada e desliza a Laje de Inspeção à direita.</div>
+      </div>
+
+      <div class="box">
+        <div class="bt">9. Arquitetura de Construção (Mesa de Maquetes)</div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <div class="mat-alab" style="padding:10px 14px;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);display:flex;gap:10px;align-items:center;flex:1;">
+            <img src="../assets/d1_shelter_mini.png" style="width:62px;height:62px;object-fit:contain;"/>
+            <img src="../assets/d1_depot_mini.png" style="width:62px;height:62px;object-fit:contain;"/>
+          </div>
+          <div style="width:165px;font-size:11px;color:#CCC6B9;line-height:1.45;">
+            Prancha horizontal em <strong>alabastro</strong> com abas de Nível I–III, miniaturas 3D acima do bisel e faixas-chave verde/terracota para prévia válida/inválida.
+          </div>
+        </div>
+      </div>
+
+      <div class="box" style="flex:1;">
+        <div class="bt">10. Regras de Consistência (HUD · Construção · Menu)</div>
+        <div style="font-size:11.5px;color:#CCC6B9;line-height:1.48;display:flex;flex-direction:column;gap:5px;">
+          <div>1. <strong>Bisel único (8°):</strong> todas as telas compartilham a mesma inclinação e encaixe.</div>
+          <div>2. <strong>Margem limpa ≥ 12 px:</strong> nenhum texto toca aresta metálica ou borda chanfrada.</div>
+          <div>3. <strong>Esc hierárquico:</strong> cancela prévia → fecha inspetor/linhagem → desseleciona → pausa.</div>
+          <div>4. <strong>Zero click-through:</strong> peças sólidas usam <code>MOUSE_FILTER_STOP</code>; raiz <code>IGNORE</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div></body></html>

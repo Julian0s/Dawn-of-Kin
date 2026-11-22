@@ -1,0 +1,332 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>D2.1 — Seleção de Fundador</title><style>
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body {
+  width:100%; height:100%; overflow:hidden; background:#0c0e10;
+  font-family:"Segoe UI", system-ui, sans-serif;
+  font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased;
+  color:#F4EFE4;
+}
+:root {
+  --fd: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --fu: "Segoe UI", system-ui, sans-serif;
+  --basalt-0: #141619;
+  --basalt-1: #1B1E22;
+  --basalt-tray: rgba(10,12,14,0.74);
+  --alab: #EFEADF;
+  --alab-2: #E4DCCB;
+  --ink: #1D1813;
+  --ink-sub: #544738;
+  --ivory: #F4EFE4;
+  --muted: #B8B2A5;
+  --aurora: #DFBC72;
+  --aurora-hi: #F6DF9F;
+  --moss: #799E66;
+  --moss-hi: #A9CF92;
+  --terra: #C8644B;
+  --terra-hi: #EE9B84;
+}
+.stage { position:relative; width:100vw; height:100vh; overflow:hidden; }
+.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.ic { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ic svg { width:100%; height:100%; }
+
+/* Unified Material Grammar: Basalt (World/Memory) vs Alabaster (Creation/Intention) */
+.mat-basalt {
+  background-image: linear-gradient(155deg, rgba(22,25,29,0.88), rgba(14,16,19,0.95)), url('../assets/d2_1_basalt_clean.png');
+  background-size: 260px 260px;
+  border: 1.5px solid rgba(223,188,114,0.52);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,250,238,0.12);
+}
+.mat-alab {
+  background-image: linear-gradient(160deg, rgba(247,243,234,0.94), rgba(228,220,203,0.97)), url('../assets/d2_1_alabaster_slab.png');
+  background-size: 280px 280px;
+  color: var(--ink);
+  border: 1.5px solid #9A7F52;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.75);
+}
+
+/* Architectural Plumb Lines (Subtle visual unity linking the 4 anchors without blocking 3D!) */
+.plumb-l {
+  position:absolute; left:24px; top:92px; bottom:188px; width:1px;
+  background:linear-gradient(180deg, rgba(223,188,114,0.38) 0%, rgba(223,188,114,0.0) 24%, rgba(223,188,114,0.0) 76%, rgba(223,188,114,0.38) 100%);
+  pointer-events:none;
+}
+.plumb-r {
+  position:absolute; right:24px; top:126px; bottom:108px; width:1px;
+  background:linear-gradient(180deg, rgba(223,188,114,0.38) 0%, rgba(223,188,114,0.0) 24%, rgba(223,188,114,0.0) 76%, rgba(223,188,114,0.38) 100%);
+  pointer-events:none;
+}
+.res-720 .plumb-l { left:16px; top:76px; bottom:154px; }
+.res-720 .plumb-r { right:16px; top:104px; bottom:90px; }
+
+/* TOP-LEFT: Unified Stepped Stockpile Monolith (3 recessed stone trays — ZERO crossing lines!) */
+.d21-stock {
+  position:absolute; top:20px; left:24px;
+  display:flex; align-items:stretch; padding:8px 14px 8px 18px; gap:8px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-left: 3px solid var(--aurora);
+}
+.res-720 .d21-stock { top:14px; left:16px; padding:6px 10px 6px 13px; gap:6px; }
+.d21-tray {
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  background: var(--basalt-tray);
+  border: 1px solid rgba(223,188,114,0.22);
+  border-radius: 3px;
+  position:relative;
+}
+.res-720 .d21-tray { padding:4px 9px; gap:6px; }
+.d21-tray.exposed { border-bottom: 2px solid #D99B4E; }
+.d21-tray.immune { border-bottom: 2px solid #8D9AA3; }
+.d21-tray .v { font-family:var(--fd); font-size:18px; font-weight:700; color:var(--ivory); line-height:1; }
+.res-720 .d21-tray .v { font-size:15px; }
+.d21-tray .k { font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); display:block; margin-top:2px; }
+.res-720 .d21-tray .k { font-size:8.5px; }
+
+/* TOP-RIGHT: Solar Cycle Monolith ("Marco de Ciclo" — ZERO Japanese ema!) */
+.d21-cycle {
+  position:absolute; top:20px; right:24px; width:262px;
+  padding:11px 18px 11px 16px;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-right: 3px solid var(--aurora);
+}
+.res-720 .d21-cycle { top:14px; right:16px; width:224px; padding:8px 14px 8px 12px; }
+.d21-cycle-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+.d21-cycle-title { font-family:var(--fd); font-size:16px; font-weight:700; color:var(--ivory); letter-spacing:0.03em; }
+.res-720 .d21-cycle-title { font-size:13.5px; }
+.d21-cycle-sub { font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--aurora); }
+.res-720 .d21-cycle-sub { font-size:8.5px; }
+.d21-speed-row {
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--basalt-tray); border:1px solid rgba(223,188,114,0.22);
+  padding:4px 7px; border-radius:3px;
+}
+.d21-sp-group { display:flex; align-items:center; gap:4px; }
+.d21-sp {
+  padding:2px 7px; font-size:11px; font-weight:600; color:var(--muted);
+  border:1px solid rgba(223,188,114,0.22); border-radius:2px;
+}
+.res-720 .d21-sp { padding:1px 5px; font-size:10px; }
+.d21-sp.on { background:var(--alab); color:var(--ink); border-color:var(--alab); font-weight:700; }
+.d21-exp-dot { font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; color:#E8B05E; font-weight:600; }
+
+/* BOTTOM-LEFT: Joined Founder Diptych Monolith ("Díptico da Casa Fundadora") */
+.d21-diptych-wrap {
+  position:absolute; bottom:22px; left:24px;
+  display:flex; align-items:flex-end; gap:0;
+}
+.res-720 .d21-diptych-wrap { bottom:14px; left:16px; }
+.d21-diptych {
+  position:relative; display:flex; align-items:flex-end; gap:2px;
+}
+.d21-half {
+  width:112px; padding:12px 10px 10px; text-align:center; position:relative;
+  transition: transform 140ms ease;
+}
+.res-720 .d21-half { width:92px; padding:9px 7px 8px; }
+.d21-half.left {
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+  border-right: 2px solid var(--aurora);
+}
+.d21-half.right {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  border-left: 2px solid var(--aurora);
+}
+.d21-half.raised {
+  transform: translateY(-12px);
+  border-color: var(--aurora-hi);
+  box-shadow: 0 18px 34px rgba(0,0,0,0.68), 0 0 0 1px rgba(246,223,159,0.55);
+}
+.d21-av {
+  width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto 8px;
+  border: 2px solid rgba(223,188,114,0.82);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.55);
+}
+.res-720 .d21-av { width:50px; height:50px; margin-bottom:6px; }
+.d21-half.raised .d21-av { border-color:var(--aurora-hi); box-shadow:0 0 0 2px rgba(223,188,114,0.35); }
+.d21-av img { width:100%; height:100%; object-fit:cover; }
+.d21-nameplate {
+  background: var(--basalt-tray);
+  border: 1px solid rgba(223,188,114,0.24);
+  border-radius: 3px;
+  padding: 5px 4px;
+}
+.res-720 .d21-nameplate { padding:3px 3px; }
+.d21-nameplate .nm { font-family:var(--fd); font-size:14.5px; font-weight:700; color:var(--ivory); line-height:1.15; }
+.res-720 .d21-nameplate .nm { font-size:12.5px; }
+.d21-nameplate .st { font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center; gap:4px; margin-top:2px; }
+.res-720 .d21-nameplate .st { font-size:9px; }
+.dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.dot.gold { background:var(--aurora); }
+.dot.moss { background:var(--moss-hi); }
+
+/* Crown Emblem straddling the central joining Aurora Seam of the Founder Diptych! */
+.d21-crown {
+  position:absolute; left:50%; top:-16px; transform:translateX(-50%); z-index:6;
+  width:34px; height:34px; border-radius:50%;
+  background:#15181B; border:1.5px solid var(--aurora);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 4px 14px rgba(0,0,0,0.68);
+}
+.res-720 .d21-crown { width:28px; height:28px; top:-13px; }
+.d21-crown img { width:24px; height:24px; object-fit:contain; }
+.res-720 .d21-crown img { width:19px; height:19px; }
+
+/* Small Lineage Continuity Socket perched at top-right of Diptych */
+.d21-gen-notch {
+  position:absolute; right:-4px; top:-12px; z-index:6;
+  padding:2px 8px; background:#14171A; border:1px solid rgba(223,188,114,0.62);
+  font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--aurora);
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+}
+.res-720 .d21-gen-notch { font-size:8.5px; padding:1px 6px; top:-10px; }
+
+/* BOTTOM-RIGHT: Alabaster Construction Keystone + Basalt Utility Wedge */
+.d21-cmd {
+  position:absolute; bottom:22px; right:24px;
+  display:flex; align-items:stretch; gap:8px;
+}
+.res-720 .d21-cmd { bottom:14px; right:16px; gap:6px; }
+.d21-build-key {
+  padding:10px 22px 10px 18px; display:flex; align-items:center; gap:12px;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-left: 3px solid #B69049;
+}
+.res-720 .d21-build-key { padding:7px 15px 7px 13px; gap:9px; }
+.d21-build-key img { width:44px; height:44px; object-fit:contain; filter:drop-shadow(0 3px 5px rgba(24,18,10,0.35)); }
+.res-720 .d21-build-key img { width:34px; height:34px; }
+.d21-build-key .t { font-family:var(--fd); font-size:17px; font-weight:700; color:var(--ink); line-height:1.1; }
+.res-720 .d21-build-key .t { font-size:14.5px; }
+.d21-build-key .s { font-size:10.5px; color:var(--ink-sub); margin-top:2px; letter-spacing:0.04em; }
+.res-720 .d21-build-key .s { font-size:9.5px; }
+
+.d21-util {
+  padding:7px 14px; display:flex; flex-direction:column; justify-content:center; gap:5px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  border-right: 3px solid var(--aurora);
+}
+.res-720 .d21-util { padding:5px 11px; gap:4px; }
+.d21-util-row {
+  display:flex; align-items:center; gap:7px; padding:3px 9px;
+  background:var(--basalt-tray); border:1px solid rgba(223,188,114,0.22); border-radius:2px;
+  font-size:11.5px; color:var(--ivory); white-space:nowrap;
+}
+.res-720 .d21-util-row { font-size:10px; padding:2px 7px; }
+.d21-util-row strong { color:var(--aurora); font-weight:700; margin-left:auto; font-size:10px; }
+</style></head><body><div class="stage"><img class="bg" id="bg" src="../../ui-0/captures/base_m4_family_1920x1080.jpg"/>
+<div class="plumb-l"></div>
+<div class="plumb-r"></div>
+
+<div class="mat-basalt d21-stock">
+  <div class="d21-tray exposed">
+    <span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4L18.5 16.5H5.5L12 4Z" stroke="#E2BF78" stroke-width="1.5" fill="#E2BF78" fill-opacity="0.14"/><path d="M12 10.5V20M9 20H15" stroke="#F4E2B6" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+    <div><span class="v">24</span><span class="k">Madeira</span></div>
+  </div>
+  <div class="d21-tray immune">
+    <span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="6.5,18.5 8.5,7.5 15.5,5.5 18.5,18.5" stroke="#CBD4D9" stroke-width="1.5" fill="#CBD4D9" fill-opacity="0.14"/><path d="M12.5 6.5L11.5 18.5" stroke="#CBD4D9" stroke-width="1.1" opacity="0.55"/></svg></span>
+    <div><span class="v">14</span><span class="k">Pedra</span></div>
+  </div>
+  <div class="d21-tray exposed">
+    <span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="14" r="4.6" stroke="#E8B05E" stroke-width="1.5" fill="#E8B05E" fill-opacity="0.2"/><path d="M12 9.4C12.8 6.4 15.2 5.2 17.4 5.8" stroke="#8FB475" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+    <div><span class="v">18</span><span class="k">Alimentos</span></div>
+  </div>
+</div>
+
+<div class="mat-basalt d21-cycle">
+  <div class="d21-cycle-top">
+    <div>
+      <div class="d21-cycle-sub">Nível I · Acampamento</div>
+      <div class="d21-cycle-title">Ano I · Ciclo 1 <span style="font-size:10px;color:var(--muted);font-family:var(--fu);font-weight:400;">(T4)</span></div>
+    </div>
+    <span class="ic" style="width:22px;height:22px;"><svg viewBox="0 0 24 24" fill="none"><path d="M4 15.5H20" stroke="#DFBC72" stroke-width="1.4"/><path d="M7.5 15.5A4.5 4.5 0 0 1 16.5 15.5" stroke="#F6E5BD" stroke-width="1.6" fill="#DFBC72" fill-opacity="0.24"/><path d="M12 6.5V8.8M6.5 9.2L8 10.6M17.5 9.2L16 10.6" stroke="#DFBC72" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+  </div>
+  <div class="d21-speed-row">
+    <div class="d21-sp-group">
+      <span class="d21-sp">||</span>
+      <span class="d21-sp on">1×</span>
+      <span class="d21-sp">2×</span>
+      <span class="d21-sp">4×</span>
+    </div>
+    <span class="d21-exp-dot">● Exposto</span>
+    <span class="ic" style="width:16px;height:16px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5H19M7 12H19M5 16.5H17" stroke="#DFBC72" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+  </div>
+</div>
+
+<div class="d21-diptych-wrap">
+  <div class="d21-diptych">
+    <div class="d21-crown"><img src="../assets/emblem_dawn_of_kin.png"/></div>
+    <div class="d21-gen-notch">Casa · 2</div>
+    <div class="mat-basalt d21-half left raised">
+      <div class="d21-av"><img src="../assets/portrait_alden.jpg"/></div>
+      <div class="d21-nameplate">
+        <div class="nm">Alden</div>
+        <div class="st"><span class="dot gold"></span>Pessoal</div>
+      </div>
+    </div>
+    <div class="mat-basalt d21-half right">
+      <div class="d21-av"><img src="../assets/portrait_brena.jpg"/></div>
+      <div class="d21-nameplate">
+        <div class="nm">Brena</div>
+        <div class="st"><span class="dot moss"></span>Coletando</div>
+      </div>
+    </div>
+  </div>
+  
+<div class="mat-basalt" style="margin-left:-10px;width:438px;padding:14px 20px 14px 22px;clip-path:polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);border-left:3px solid var(--aurora-hi);display:grid;grid-template-columns:1fr 134px;gap:14px;align-items:stretch;">
+  <div style="display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+      <div>
+        <div style="font-family:var(--fd);font-size:19px;font-weight:700;color:var(--ivory);line-height:1.1;">Alden <span style="font-size:11px;color:var(--aurora);font-family:var(--fu);font-weight:600;letter-spacing:0.06em;">· FUNDADOR</span></div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">Adulto · Proteção dos Líderes · Ordem pessoal</div>
+      </div>
+      <span style="padding:3px 9px;background:var(--alab);color:var(--ink);font-size:9.5px;font-weight:700;letter-spacing:0.1em;clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%);">PESSOAL</span>
+    </div>
+
+    <!-- Recessed stone physical carry channel -->
+    <div style="background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;padding:7px 10px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;">
+        <span>Carga física: <strong style="color:var(--aurora-hi);">8 / 20 peso</strong> (40%)</span>
+        <span style="color:var(--muted);">4,0 m/s</span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;margin-bottom:5px;">
+        <div style="width:40%;height:100%;background:linear-gradient(90deg,#B9914A,#DFBC72);"></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);">4 Madeiras · 0 Pedras · 0 Alimentos</div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div style="flex:1;padding:6px 10px;text-align:center;border:1px solid rgba(223,188,114,0.68);background:rgba(223,188,114,0.12);font-family:var(--fd);font-size:12px;font-weight:700;color:var(--ivory);clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);">Liberar p/ Comunidade <span style="font-family:var(--fu);font-size:9px;color:var(--aurora);">(P-RUX-2)</span></div>
+    </div>
+  </div>
+
+  <!-- Right bay: Vínculo da Casa Fundadora -->
+  <div style="background:var(--basalt-tray);border:1px solid rgba(223,188,114,0.24);border-radius:3px;padding:9px 8px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;">
+    <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:var(--aurora);">Vínculo · Casa</div>
+    <div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;font-family:var(--fd);font-size:12px;font-weight:700;">
+        <span style="padding:2px 6px;border:1px solid var(--aurora);background:rgba(223,188,114,0.16);">A</span>
+        <span style="color:var(--aurora);">═</span>
+        <span style="padding:2px 6px;border:1px solid rgba(223,188,114,0.45);">B</span>
+      </div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:5px;">Casa Principal</div>
+      <div style="font-size:9px;color:var(--moss-hi);">Alento latente (T6)</div>
+    </div>
+    <div style="padding:4px 6px;border:1px solid rgba(223,188,114,0.45);font-size:10px;color:var(--aurora);font-weight:600;">Linhagem [H]</div>
+  </div>
+</div>
+
+</div>
+
+<div class="d21-cmd">
+  <div class="mat-alab d21-build-key">
+    <img src="../assets/d1_shelter_mini.png"/>
+    <div>
+      <div class="t">Construir</div>
+      <div class="s">Maquetes · [B]</div>
+    </div>
+  </div>
+  <div class="mat-basalt d21-util">
+    <div class="d21-util-row"><span class="ic" style="width:14px;height:14px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5.5 7.5H13.5M5.5 12H18.5M5.5 16.5H15.5" stroke="#DFBC72" stroke-width="1.5" stroke-linecap="round"/><path d="M16 5.5L19 7.5L16 9.5" stroke="#F5E4BC" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Tarefas</span><strong>[T]</strong></div>
+    <div class="d21-util-row"><span class="ic" style="width:14px;height:14px;"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 18V7.5H16.5V18" stroke="#DFBC72" stroke-width="1.5"/><path d="M12 7.5V18M7.5 12.5H16.5" stroke="#F5E4BC" stroke-width="1.4"/><circle cx="12" cy="5" r="1.5" fill="#DFBC72"/></svg></span><span>Linhagem</span><strong>[H]</strong></div>
+  </div>
+</div>
+</div><script>(function(){const p=new URLSearchParams(location.search);const r=p.get('res')||'1920x1080';if(r==='1280x720')document.body.classList.add('res-720');const b=document.getElementById('bg');if(b&&'base_m4_family')b.src='../../ui-0/captures/base_m4_family_'+r+'.jpg';})();</script></body></html>

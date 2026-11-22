@@ -1,0 +1,79 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>D2.1 — Storyboard de Comportamento (7 Estados)</title><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:1920px;height:1080px;background:#0e1013;color:#F4EFE4;font-family:"Segoe UI",system-ui,sans-serif;padding:24px 32px;display:flex;flex-direction:column;gap:14px;}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #DFBC72;padding-bottom:8px;}
+.hdr h1{font-family:"Palatino Linotype",Georgia,serif;font-size:26px;letter-spacing:.04em;}
+.row4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;}
+.row3{display:grid;grid-template-columns:repeat(3,1fr) 1fr;gap:14px;flex:1;}
+.card{background:#16191D;border:1px solid rgba(223,188,114,0.36);border-left:3px solid #DFBC72;padding:10px;display:flex;flex-direction:column;gap:7px;}
+.card img{width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid rgba(255,255,255,0.14);display:block;}
+.num{font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#DFBC72;font-weight:700;}
+.card h2{font-family:"Palatino Linotype",Georgia,serif;font-size:15.5px;color:#F4EFE4;}
+.card p{font-size:11.5px;color:#C4BEB0;line-height:1.42;}
+.tag{margin-top:auto;font-size:10px;color:#DFBC72;padding-top:5px;border-top:1px solid rgba(223,188,114,0.2);}
+</style></head><body>
+<div class="hdr">
+  <h1>UI-0 R2.1 · Storyboard de Comportamento — Marcos de Pedra e Eclipse (7 Estados)</h1>
+  <span style="font-size:12px;color:#DFBC72;">Transições curtas 120–160 ms · Hierarquia determinística de Esc · Zero click-through</span>
+</div>
+<div class="row4">
+  <div class="card">
+    <img src="../D2_1_B_hud_1920x1080.png"/>
+    <div class="num">01 · Interface em Repouso</div>
+    <h2>Exploração (&gt;93% 3D Livre)</h2>
+    <p>Quatro âncoras de basalto/alabastro ligadas por prumos sutis e ângulo único de 8°. Nenhuma janela aberta; câmera, Edge Pan e coleta comunitária (RUX-2B) operam sem obstrução.</p>
+    <div class="tag">Tween repouso · MOUSE_FILTER_IGNORE na raiz</div>
+  </div>
+  <div class="card">
+    <img src="../D2_1_C_founder_selection_1920x1080.png"/>
+    <div class="num">02 · Seleção de Fundador</div>
+    <h2>Elevação do Díptico (+12 px)</h2>
+    <p>Ao clicar em Alden no mapa ou no Díptico, sua metade de basalto sobe suavemente em 120 ms e ilumina a Fenda de Aurora central sem deslocar Brena nem bloquear seleção rápida.</p>
+    <div class="tag">Clique esq. seleciona · Caixa destaca ambos</div>
+  </div>
+  <div class="card">
+    <img src="../D2_1_E_lineage_1920x1080.png"/>
+    <div class="num">03 · Contexto &amp; Linhagem [H]</div>
+    <h2>Laje Deslizante + Pilar Lateral</h2>
+    <p>A Laje de Inspeção desliza à direita (140 ms) exibindo carga física e modo Pessoal/Comunitário. Tecla [H] abre o Pilar das Gerações acima do Díptico preservando o centro do 3D.</p>
+    <div class="tag">Esc fecha Pilar → Laje → limpa seleção</div>
+  </div>
+  <div class="card">
+    <img src="../D2_1_D1_construction_valid_1920x1080.png"/>
+    <div class="num">04 · Entrada em Construção [B]</div>
+    <h2>Mesa de Maquetes em Alabastro</h2>
+    <p>Acionar a chave de alabastro abre a prancha horizontal de edifícios em 150 ms. O contraste escuro → claro sinaliza instantaneamente que o jogador está no modo de planejamento.</p>
+    <div class="tag">MOUSE_FILTER_STOP em toda peça sólida</div>
+  </div>
+</div>
+<div class="row3">
+  <div class="card">
+    <img src="../D2_1_D2_construction_invalid.html" style="display:none;"/>
+    <img src="../D2_1_D2_construction_invalid_1920x1080.png"/>
+    <div class="num">05 · Escolha &amp; Prévia (Válida × Inválida)</div>
+    <h2>Validação Real de Terreno (D6)</h2>
+    <p>Faixa-chave no topo alterna entre alabastro/musgo (terreno válido ≤ 10°) e basalto/terracota (área protegida do Acampamento ou desnível). Clique esq. assenta; dir./Esc solta.</p>
+    <div class="tag">Sincronizado a PlacementValidator</div>
+  </div>
+  <div class="card">
+    <img src="../D2_1_B_hud_1280x720.png"/>
+    <div class="num">06 · Retorno à Exploração</div>
+    <h2>Desfazimento Limpo por Esc</h2>
+    <p>Pressionar Esc desfaz sempre um nível por vez sem jamais cancelar tarefas comunitárias já criadas no mapa (regra RUX-0 §4.1). Legibilidade integralmente preservada em 720p.</p>
+    <div class="tag">Zero perda de seleção/tarefa acidental</div>
+  </div>
+  <div class="card">
+    <img src="../D2_1_F_menu_1920x1080.png"/>
+    <div class="num">07 · Pausa &amp; Menu Principal</div>
+    <h2>Mesma Linguagem de Monólito</h2>
+    <p>Ícone ☰ (ou Esc em repouso) abre a laje de pausa com acesso a Configurações e Menu Principal, mantendo a mesma gramática de basalto fendido, Fenda de Aurora e chave de alabastro.</p>
+    <div class="tag">Continuidade visual em 100% das telas</div>
+  </div>
+  <div class="card" style="background:#121519;border-left-color:#EFEADF;">
+    <div class="num" style="color:#EFEADF;">Contrato Técnico de UX</div>
+    <h2>Regras de Movimento &amp; Input</h2>
+    <p>• <strong>Duração curta:</strong> 120–160 ms (ease-out cúbico); nunca atrasa cliques consecutivos.<br/><br/>• <strong>Hierarquia de Esc:</strong><br/>1. Soltar prévia de obra<br/>2. Fechar Mesa de Maquetes<br/>3. Fechar Pilar / Inspetor<br/>4. Limpar seleção RTS<br/>5. Abrir/fechar Pausa<br/><br/>• <strong>Anti-Click-Through:</strong> todo bloco sólido intercepta mouse (<code>STOP</code>); áreas vazias repassam ao 3D (<code>IGNORE</code>).</p>
+    <div class="tag">Validado no Showcase Godot 4.7.2</div>
+  </div>
+</div>
+</body></html>
