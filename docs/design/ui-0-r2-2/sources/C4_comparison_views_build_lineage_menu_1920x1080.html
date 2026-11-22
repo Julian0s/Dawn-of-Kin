@@ -1,0 +1,35 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>UI-0 R2.2 — Fidelidade Godot: Construção, Linhagem e Menu</title><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:1920px;height:1080px;background:#0d0f12;color:#F4EFE4;font-family:"Segoe UI",system-ui,sans-serif;padding:20px 28px;display:flex;flex-direction:column;gap:12px;}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #DFBC72;padding-bottom:8px;}
+.hdr h1{font-family:"Palatino Linotype",Georgia,serif;font-size:24px;letter-spacing:.04em;}
+.rows{display:grid;grid-template-rows:repeat(3,1fr);gap:10px;flex:1;}
+.pair{display:grid;grid-template-columns:230px 1fr 1fr;gap:14px;background:#15181C;border:1px solid rgba(223,188,114,0.34);padding:10px 12px;align-items:center;}
+.meta h2{font-family:"Palatino Linotype",Georgia,serif;font-size:16.5px;color:#DFBC72;margin-bottom:6px;}
+.meta p{font-size:11.5px;color:#C4BEB0;line-height:1.45;}
+.shot{display:flex;flex-direction:column;gap:4px;}
+.shot span{font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;}
+.shot img{width:100%;max-height:262px;object-fit:contain;background:#0a0c0e;border:1px solid rgba(255,255,255,0.16);display:block;}
+</style></head><body>
+<div class="hdr">
+  <h1>UI-0 R2.2 · Reprodução Fiel na Godot 4.7.2 — Construção, Seleção/Linhagem e Menu Principal</h1>
+  <span style="font-size:12px;color:#DFBC72;">Esquerda: Mockup D2 Original Escolhido (R2) · Direita: Captura Real na Godot 4.7.2 (R2.2)</span>
+</div>
+<div class="rows">
+  <div class="pair">
+    <div class="meta"><h2>Construção (D2_C)</h2><p>Faixa superior de alabastro, monólito escuro de obra ativa à esquerda (42%, 12/12, 6/6, Desmontar Marco) e duas maquetes verticais em alabastro à direita com Depósito elevado (<em>● EM POSIÇÃO</em>). <em>Nota: o fantasma verde 3D do terreno existe apenas no fluxo de placement real; no showcase isolado o 3D permanece intocado.</em></p></div>
+    <div class="shot"><span style="color:#DFBC72;">D2 Original (Mockup R2)</span><img src="../../ui-0-r2/D2_C_construction_1920x1080.png"/></div>
+    <div class="shot"><span style="color:#A9CF92;">D2 Restaurada na Godot 4.7.2 (R2.2)</span><img src="../G_godot_D2_2_construction_1920x1080.png"/></div>
+  </div>
+  <div class="pair">
+    <div class="meta"><h2>Seleção &amp; Linhagem (D2_D)</h2><p>Estela de Alden elevada (-22 px) com topo <em>SELECIONADO</em>, laje contextual acoplada à direita (<em>Alden · Casa Fundadora</em>, tag <em>PESSOAL</em>, barra de carga 40%, <em>Liberar para Comunidade</em> e coluna <em>PILHA DA LINHAGEM</em> com 1ª Geração e blocos Alden/Brena).</p></div>
+    <div class="shot"><span style="color:#DFBC72;">D2 Original (Mockup R2)</span><img src="../../ui-0-r2/D2_D_lineage_1920x1080.png"/></div>
+    <div class="shot"><span style="color:#A9CF92;">D2 Restaurada na Godot 4.7.2 (R2.2)</span><img src="../G_godot_D2_2_lineage_1920x1080.png"/></div>
+  </div>
+  <div class="pair">
+    <div class="meta"><h2>Menu Principal (D2_E)</h2><p>Monólito diagonal de basalto kintsugi à esquerda com fenda dourada dupla, emblema no topo, título <em>DAWN OF KIN</em>, botão primário chanfrado em alabastro (<em>Iniciar Assentamento / CAP. I</em>) e 4 entradas secundárias sobre a clareira 3D viva.</p></div>
+    <div class="shot"><span style="color:#DFBC72;">D2 Original (Mockup R2)</span><img src="../../ui-0-r2/D2_E_menu_1920x1080.png"/></div>
+    <div class="shot"><span style="color:#A9CF92;">D2 Restaurada na Godot 4.7.2 (R2.2)</span><img src="../G_godot_D2_2_menu_1920x1080.png"/></div>
+  </div>
+</div>
+</body></html>

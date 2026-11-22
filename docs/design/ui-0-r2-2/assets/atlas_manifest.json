@@ -1,0 +1,161 @@
+{
+  "atlas_file": "d2_2_faithful_atlas.png",
+  "width": 1024,
+  "height": 1024,
+  "shadow_pad": 10,
+  "regions": {
+    "maquette_depot_sel": {
+      "x": 8,
+      "y": 8,
+      "w": 226,
+      "h": 264,
+      "content_w": 206,
+      "content_h": 244,
+      "pad": 10
+    },
+    "build_site_monolith": {
+      "x": 242,
+      "y": 8,
+      "w": 328,
+      "h": 244,
+      "content_w": 308,
+      "content_h": 224,
+      "pad": 10
+    },
+    "maquette_shelter": {
+      "x": 578,
+      "y": 8,
+      "w": 210,
+      "h": 238,
+      "content_w": 190,
+      "content_h": 218,
+      "pad": 10
+    },
+    "lineage_blade": {
+      "x": 8,
+      "y": 280,
+      "w": 474,
+      "h": 234,
+      "content_w": 454,
+      "content_h": 214,
+      "pad": 10
+    },
+    "founder_stele_raised": {
+      "x": 490,
+      "y": 280,
+      "w": 128,
+      "h": 174,
+      "content_w": 108,
+      "content_h": 154,
+      "pad": 10
+    },
+    "founder_stele": {
+      "x": 626,
+      "y": 280,
+      "w": 128,
+      "h": 156,
+      "content_w": 108,
+      "content_h": 136,
+      "pad": 10
+    },
+    "top_plaque": {
+      "x": 762,
+      "y": 280,
+      "w": 216,
+      "h": 130,
+      "content_w": 196,
+      "content_h": 110,
+      "pad": 10
+    },
+    "slab_maquetes_alab": {
+      "x": 8,
+      "y": 522,
+      "w": 196,
+      "h": 92,
+      "content_w": 176,
+      "content_h": 72,
+      "pad": 10
+    },
+    "slab_cmd_basalt": {
+      "x": 212,
+      "y": 522,
+      "w": 166,
+      "h": 92,
+      "content_w": 146,
+      "content_h": 72,
+      "pad": 10
+    },
+    "menu_primary_alab": {
+      "x": 386,
+      "y": 522,
+      "w": 380,
+      "h": 72,
+      "content_w": 360,
+      "content_h": 52,
+      "pad": 10
+    },
+    "resource_rock": {
+      "x": 774,
+      "y": 522,
+      "w": 104,
+      "h": 62,
+      "content_w": 84,
+      "content_h": 42,
+      "pad": 10
+    },
+    "build_valid_bar": {
+      "x": 8,
+      "y": 622,
+      "w": 660,
+      "h": 58,
+      "content_w": 640,
+      "content_h": 38,
+      "pad": 10
+    },
+    "ico_wood": {
+      "x": 676,
+      "y": 622,
+      "w": 48,
+      "h": 48,
+      "content_w": 48,
+      "content_h": 48,
+      "pad": 0
+    },
+    "ico_stone": {
+      "x": 732,
+      "y": 622,
+      "w": 48,
+      "h": 48,
+      "content_w": 48,
+      "content_h": 48,
+      "pad": 0
+    },
+    "ico_food": {
+      "x": 788,
+      "y": 622,
+      "w": 48,
+      "h": 48,
+      "content_w": 48,
+      "content_h": 48,
+      "pad": 0
+    },
+    "ico_tasks": {
+      "x": 844,
+      "y": 622,
+      "w": 48,
+      "h": 48,
+      "content_w": 48,
+      "content_h": 48,
+      "pad": 0
+    },
+    "ico_lineage": {
+      "x": 900,
+      "y": 622,
+      "w": 48,
+      "h": 48,
+      "content_w": 48,
+      "content_h": 48,
+      "pad": 0
+    }
+  }
+}

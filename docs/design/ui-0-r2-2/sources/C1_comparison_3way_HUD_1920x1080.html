@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>UI-0 R2.2 — Comparação 3 Vias (1920×1080)</title><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:1920px;height:1080px;background:#0d0f12;color:#F4EFE4;font-family:"Segoe UI",system-ui,sans-serif;padding:22px 28px;display:flex;flex-direction:column;gap:14px;}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #DFBC72;padding-bottom:8px;}
+.hdr h1{font-family:"Palatino Linotype",Georgia,serif;font-size:25px;letter-spacing:.04em;}
+.cols3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;flex:1;}
+.card{background:#15181C;border:1px solid rgba(223,188,114,0.38);padding:12px;display:flex;flex-direction:column;gap:10px;}
+.card.ref{border-top:3px solid #DFBC72;}
+.card.rej{border-top:3px solid #C8644B;}
+.card.rest{border-top:3px solid #799E66;}
+.tag{font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;font-weight:700;}
+.card h2{font-family:"Palatino Linotype",Georgia,serif;font-size:18px;}
+.card img{width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid rgba(255,255,255,0.16);display:block;}
+.desc{font-size:12px;color:#CFC9BC;line-height:1.5;}
+.list{font-size:11.5px;color:#C4BEB0;line-height:1.55;margin-top:auto;padding-top:8px;border-top:1px solid rgba(223,188,114,0.22);}
+</style></head><body>
+<div class="hdr">
+  <h1>UI-0 R2.2 · Comparação Visual Obrigatória (1920×1080) — D2 Original × D2.1 Reprovada × D2 Restaurada na Godot</h1>
+  <span style="font-size:12px;color:#DFBC72;">Mesma cena 3D (rux_2b_multi_source_selection.tscn) · Mesmo enquadramento e iluminação</span>
+</div>
+<div class="cols3">
+  <div class="card ref">
+    <div class="tag" style="color:#DFBC72;">A — Referência Escolhida (UI-0 R2)</div>
+    <h2>D2 Original — Marcos de Pedra e Eclipse</h2>
+    <img src="../../ui-0-r2/D2_B_hud_1920x1080.png"/>
+    <p class="desc">Mockup artístico escolhido pelo proprietário (`design/ui-0-r2-identity` @ `f138177`): 3 pedras escalonadas de recursos, placa superior chanfrada de topo em cumeeira, duas estelas inclinadas separadas (Alden e Brena) e laje de alabastro <em>Maquetes</em> + bloco de basalto <em>Tarefas/Linhagem</em>.</p>
+    <div class="list"><strong>Referência normativa de fidelidade:</strong> silhuetas assimétricas livres, basalto kintsugi sutil, ícones minerais limpos e ausência de caixas administrativas internas.</div>
+  </div>
+  <div class="card rej">
+    <div class="tag" style="color:#EE9B84;">B — Versão Reprovada (UI-0 R2.1)</div>
+    <h2>D2.1 — Composição Alterada (Reprovada)</h2>
+    <img src="../../ui-0-r2-1/D2_1_B_hud_1920x1080.png"/>
+    <p class="desc">A R2.1 alterou a identidade escolhida: fundiu os 3 recursos numa faixa única com 3 caixas internas e rótulos extras, trocou a placa superior por um retângulo inclinado, fundiu Alden e Brena num díptico colado com coroa circular e alterou proporções/textos.</p>
+    <div class="list"><strong>Motivo da reprovação:</strong> perdeu a composição escultural original e introduziu divisórias/bandejas convencionais não solicitadas.</div>
+  </div>
+  <div class="card rest">
+    <div class="tag" style="color:#A9CF92;">C — Restauração Real na Godot 4.7.2 (UI-0 R2.2)</div>
+    <h2>D2 Restaurada — Captura Real da Engine</h2>
+    <img src="../G_godot_D2_2_hud_1920x1080.png"/>
+    <p class="desc">Captura real executada na Godot 4.7.2 sobre o 3D vivo usando Atlas 2D pré-assado com as silhuetas exatas da D2 original, os 5 ícones originais, a textura de basalto kintsugi sutil (sem linhas cruzando texto) e proporção calibrada para 1920×1080.</p>
+    <div class="list"><strong>Fidelidade recuperada:</strong> mesmas 3 pedras escalonadas, placa superior em cumeeira, estelas gêmeas separadas, laje <em>Maquetes</em> em alabastro e <strong>zero sobreposição</strong>.</div>
+  </div>
+</div>
+</body></html>
