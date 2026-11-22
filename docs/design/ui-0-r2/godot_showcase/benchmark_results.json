@@ -1,0 +1,287 @@
+{
+	"engine": "4.7.2-stable (official)",
+	"frames_per_run": 180,
+	"renderer": "Intel(R) UHD Graphics 620",
+	"repetitions": 3,
+	"resolutions": {
+		"1280x720": {
+			"BASELINE_3D": {
+				"draw_calls": 217,
+				"median_avg_ms": 5.57703888888889,
+				"median_p95_ms": 8.437,
+				"median_p99_ms": 10.708,
+				"nodes": 537,
+				"runs": [
+					{
+						"avg_ms": 5.57703888888889,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 8.437,
+						"p99_ms": 11.662
+					},
+					{
+						"avg_ms": 6.59327777777778,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 9.659,
+						"p99_ms": 10.708
+					},
+					{
+						"avg_ms": 5.28815555555556,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 7.941,
+						"p99_ms": 8.472
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D1_FIO_DA_AURORA": {
+				"draw_calls": 284,
+				"median_avg_ms": 6.38972222222222,
+				"median_p95_ms": 8.651,
+				"median_p99_ms": 9.607,
+				"nodes": 556,
+				"runs": [
+					{
+						"avg_ms": 6.38972222222222,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 8.651,
+						"p99_ms": 9.607
+					},
+					{
+						"avg_ms": 6.66971111111111,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 9.41,
+						"p99_ms": 10.428
+					},
+					{
+						"avg_ms": 6.17977222222222,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 8.066,
+						"p99_ms": 8.993
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D2_MARCOS_KINTSUGI": {
+				"draw_calls": 288,
+				"median_avg_ms": 6.09819444444444,
+				"median_p95_ms": 7.347,
+				"median_p99_ms": 8.389,
+				"nodes": 557,
+				"runs": [
+					{
+						"avg_ms": 5.88504444444444,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 6.927,
+						"p99_ms": 7.921
+					},
+					{
+						"avg_ms": 6.16790555555556,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 7.687,
+						"p99_ms": 9.202
+					},
+					{
+						"avg_ms": 6.09819444444444,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 7.347,
+						"p99_ms": 8.389
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D3_TEAR_SEMENTE": {
+				"draw_calls": 277,
+				"median_avg_ms": 6.02179444444444,
+				"median_p95_ms": 7.857,
+				"median_p99_ms": 9.575,
+				"nodes": 551,
+				"runs": [
+					{
+						"avg_ms": 7.66510555555556,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 10.448,
+						"p99_ms": 10.961
+					},
+					{
+						"avg_ms": 5.88674444444445,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 7.473,
+						"p99_ms": 8.754
+					},
+					{
+						"avg_ms": 6.02179444444444,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 7.857,
+						"p99_ms": 9.575
+					}
+				],
+				"total_frames_over_100ms": 0
+			}
+		},
+		"1920x1080": {
+			"BASELINE_3D": {
+				"draw_calls": 217,
+				"median_avg_ms": 11.8555777777778,
+				"median_p95_ms": 15.889,
+				"median_p99_ms": 17.744,
+				"nodes": 537,
+				"runs": [
+					{
+						"avg_ms": 11.8555777777778,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 14.808,
+						"p99_ms": 15.932
+					},
+					{
+						"avg_ms": 12.1948833333333,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 16.803,
+						"p99_ms": 19.123
+					},
+					{
+						"avg_ms": 11.5402166666667,
+						"draw_calls": 217,
+						"frames_over_100ms": 0,
+						"nodes": 537,
+						"p95_ms": 15.889,
+						"p99_ms": 17.744
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D1_FIO_DA_AURORA": {
+				"draw_calls": 284,
+				"median_avg_ms": 12.0276777777778,
+				"median_p95_ms": 16.319,
+				"median_p99_ms": 20.884,
+				"nodes": 556,
+				"runs": [
+					{
+						"avg_ms": 12.0276777777778,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 15.628,
+						"p99_ms": 17.901
+					},
+					{
+						"avg_ms": 12.7524166666667,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 17.193,
+						"p99_ms": 22.222
+					},
+					{
+						"avg_ms": 12.0223222222222,
+						"draw_calls": 284,
+						"frames_over_100ms": 0,
+						"nodes": 556,
+						"p95_ms": 16.319,
+						"p99_ms": 20.884
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D2_MARCOS_KINTSUGI": {
+				"draw_calls": 288,
+				"median_avg_ms": 12.48155,
+				"median_p95_ms": 16.39,
+				"median_p99_ms": 20.594,
+				"nodes": 557,
+				"runs": [
+					{
+						"avg_ms": 13.1406888888889,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 17.413,
+						"p99_ms": 22.227
+					},
+					{
+						"avg_ms": 12.48155,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 16.39,
+						"p99_ms": 19.756
+					},
+					{
+						"avg_ms": 12.0280222222222,
+						"draw_calls": 288,
+						"frames_over_100ms": 0,
+						"nodes": 557,
+						"p95_ms": 15.306,
+						"p99_ms": 20.594
+					}
+				],
+				"total_frames_over_100ms": 0
+			},
+			"GODOT_D3_TEAR_SEMENTE": {
+				"draw_calls": 277,
+				"median_avg_ms": 12.4377277777778,
+				"median_p95_ms": 15.68,
+				"median_p99_ms": 18.137,
+				"nodes": 551,
+				"runs": [
+					{
+						"avg_ms": 12.4377277777778,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 16.752,
+						"p99_ms": 20.546
+					},
+					{
+						"avg_ms": 12.4413888888889,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 15.68,
+						"p99_ms": 18.137
+					},
+					{
+						"avg_ms": 11.8184722222222,
+						"draw_calls": 277,
+						"frames_over_100ms": 0,
+						"nodes": 551,
+						"p95_ms": 14.265,
+						"p99_ms": 15.34
+					}
+				],
+				"total_frames_over_100ms": 0
+			}
+		}
+	},
+	"total_frames_per_scenario": 540,
+	"vsync_mode": 0,
+	"warmup_frames": 60
+}

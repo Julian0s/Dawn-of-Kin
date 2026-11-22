@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Direção 3 — Tear de Trama e Semente</title>
+<style>
+
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { width:100%; height:100%; overflow:hidden; background:#0d0f0e; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+.stage { position:relative; width:100vw; height:100vh; overflow:hidden; }
+.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.ic { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ic svg { width:100%; height:100%; }
+
+body { background:#EFE6D4; color:#241D15; font-family:"Segoe UI",system-ui,sans-serif; }
+.bd { width:1920px; height:1080px; padding:34px 44px; display:flex; flex-direction:column; gap:20px; }
+.hdr { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #AE5736; padding-bottom:12px; }
+.hdr h1 { font-family:"Palatino Linotype",Georgia,serif; font-size:36px; letter-spacing:0.05em; }
+.grid { display:grid; grid-template-columns: 440px 1fr 480px; gap:22px; flex:1; }
+.col { display:flex; flex-direction:column; gap:18px; }
+.box { padding:16px 18px; border:1px solid rgba(180,150,100,0.34); border-radius:8px; background:rgba(128,128,128,0.06); }
+.bt { font-family:"Palatino Linotype",Georgia,serif; font-size:14.5px; letter-spacing:0.09em; text-transform:uppercase; color:#AE5736; margin-bottom:10px; }
+</style></head><body>
+<div class="bd">
+  <div class="hdr">
+    <div>
+      <div style="font-size:11px;letter-spacing:0.26em;text-transform:uppercase;color:#AE5736;">DAWN OF KIN · UI-0 R2 · OPERAÇÃO IDENTIDADE</div>
+      <h1>Direção 3 — Tear de Trama e Semente</h1>
+      <div style="font-size:14px;color:#584A39;margin-top:3px;">Cerâmica esmaltada fosca, linho cru tramado, cordão de sementes, Ninho Familiar sobreposto e Roseta Botânica de 4 estações.</div>
+    </div>
+    <div style="text-align:right;font-size:12px;color:#584A39;">100% Arte Autoral · Validado na Godot 4.7.2 (Custom _draw + CLIP_CHILDREN)<br/>720p &amp; 1080p · Intel UHD Graphics 620</div>
+  </div>
+  <div class="grid">
+    <div class="col">
+      <div class="box"><div class="bt">Linho Cru Tramado + Cerâmica Musgo</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><img src="../assets/d3_linen_weave.png" style="width:100%;height:148px;object-fit:cover;border-radius:16px 4px 16px 4px;border:1.5px solid #7E6D55;"/><img src="../assets/d3_ceramic_moss.png" style="width:100%;height:148px;object-fit:cover;border-radius:16px 4px 16px 4px;border:1.5px solid #7E6D55;"/></div><div style="font-size:12.5px;color:#584A39;margin-top:8px;line-height:1.45;">Zero metal medieval clichê: celebra a natureza vibrante, o acolhimento familiar e o crescimento orgânico das gerações.</div></div>
+      <div class="box" style="flex:1;"><div class="bt">Paleta &amp; Contraste (WCAG AA/AAA)</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;"><div><div style="height:46px;border-radius:4px;background:#EFE6D4;border:1px solid rgba(128,128,128,0.35);"></div><div style="font-size:11.5px;font-weight:700;margin-top:4px;">Linho Cru</div><div style="font-size:10.5px;opacity:.72;">#EFE6D4</div></div><div><div style="height:46px;border-radius:4px;background:#2E3D30;border:1px solid rgba(128,128,128,0.35);"></div><div style="font-size:11.5px;font-weight:700;margin-top:4px;">Cerâmica Musgo</div><div style="font-size:10.5px;opacity:.72;">#2E3D30</div></div><div><div style="height:46px;border-radius:4px;background:#AE5736;border:1px solid rgba(128,128,128,0.35);"></div><div style="font-size:11.5px;font-weight:700;margin-top:4px;">Terracota</div><div style="font-size:10.5px;opacity:.72;">#AE5736</div></div><div><div style="height:46px;border-radius:4px;background:#6B9650;border:1px solid rgba(128,128,128,0.35);"></div><div style="font-size:11.5px;font-weight:700;margin-top:4px;">Broto</div><div style="font-size:10.5px;opacity:.72;">#6B9650</div></div></div></div>
+    </div>
+    <div class="col">
+      <div class="box">
+        <div class="bt">Hierarquia Tipográfica &amp; Informação</div>
+        <div style="font-family:'Palatino Linotype',Georgia,serif;font-size:32px;font-weight:700;letter-spacing:.06em;">DAWN OF KIN · Linhagem Viva</div>
+        <div style="font-family:'Palatino Linotype',Georgia,serif;font-size:18px;color:#AE5736;margin-top:4px;">Origem · União · Descoberta · Construção · Continuidade</div>
+        <div style="font-size:13.5px;color:#584A39;margin-top:6px;">Contadores tabulares: <strong>Madeira 24 · Pedra 14 · Alimentos 18 · 42% · 4,0 m/s</strong></div>
+      </div>
+      <div class="box"><div class="bt">Iconografia Exclusiva</div><div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;"><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5V19M12 10L7.5 7M12 13.5L16.5 10.5" stroke="#5E3A1E" stroke-width="1.8" stroke-linecap="round"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">wood</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><rect x="6.5" y="7.5" width="11" height="9" rx="3.5" stroke="#364247" stroke-width="1.7" fill="#364247" fill-opacity="0.16"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">stone</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="9.5" cy="13.5" r="3.2" fill="#A64D2B"/><circle cx="14.5" cy="13.5" r="3.2" fill="#A64D2B"/><path d="M12 10C12.5 7 15 5.5 17 5.8" stroke="#4D703A" stroke-width="1.8" stroke-linecap="round"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">food</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5L12 6.5L19 12.5V18H5V12.5Z" stroke="#AE5736" stroke-width="1.7" fill="#AE5736" fill-opacity="0.14" stroke-linejoin="round"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">build</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><path d="M6 12.5L10.2 16.5L18 8" stroke="#2D2419" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">tasks</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid rgba(180,150,100,0.32);border-radius:6px;"><span class="ic" style="width:28px;height:28px;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 18V10M12 10C9 9.5 7 7.5 6.5 5C9.5 5.2 11.5 7 12 10ZM12 10C15 9.5 17 7.5 17.5 5C14.5 5.2 12.5 7 12 10Z" stroke="#2D2419" stroke-width="1.5" fill="#7D9B62" fill-opacity="0.3"/></svg></span><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;">lineage</span></div></div></div>
+      <div class="box"><div class="bt">Botões &amp; Estados Interativos</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center;font-family:'Palatino Linotype',serif;font-size:13px;"><div style="padding:10px;border-radius:20px 6px 20px 6px;background:#F6EFE0;border:1.5px solid #7E6D55;">Normal</div><div style="padding:10px;border-radius:20px 6px 20px 6px;background:#2E3D30;color:#FAF3E4;border:1.5px solid #2E3D30;">Hover</div><div style="padding:10px;border-radius:20px 6px 20px 6px;background:#AE5736;color:#FFF;font-weight:700;">Terracota</div><div style="padding:10px;border-radius:20px 6px 20px 6px;border:1.5px dashed #A39278;color:#94836B;">Inativo</div></div></div>
+      <div class="box" style="flex:1;"><div class="bt">Evolução Visual com a Civilização (Linguagem Futura)</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;color:#584A39;"><div style="padding:8px;border-radius:12px;border:1px dashed #8B7960;"><strong style="color:#AE5736;">Nível I · Acampamento</strong><br/>Cordão simples de fibra e sementes</div><div style="padding:8px;border-radius:12px;border:1px solid #8B7960;"><strong style="color:#2E3D30;">Nível III · Povoado</strong><br/>Cerâmica esmaltada e pontos bordados</div><div style="padding:8px;border-radius:12px;background:#2E3D30;color:#F5ECDC;"><strong>Nível V · Vila</strong><br/>Tapeçaria completa da comunidade</div></div></div>
+    </div>
+    <div class="col">
+      <div class="box">
+        <div class="bt">Tratamento dos Fundadores &amp; Emblema</div>
+        <div style="display:flex;align-items:center;justify-content:space-around;">
+          <div style="text-align:center;"><img src="../assets/portrait_alden.jpg" style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2.5px solid #AE5736;"/><div style="font-family:'Palatino Linotype',serif;font-weight:700;margin-top:4px;">Alden</div></div>
+          <img src="../assets/emblem_dawn_of_kin.png" style="width:88px;height:88px;object-fit:contain;"/>
+          <div style="text-align:center;"><img src="../assets/portrait_brena.jpg" style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2.5px solid #AE5736;"/><div style="font-family:'Palatino Linotype',serif;font-weight:700;margin-top:4px;">Brena</div></div>
+        </div>
+      </div>
+      <div class="box" style="flex:1;"><div class="bt">Componente Exclusivo &amp; Miniaturas</div><div style="display:flex;align-items:center;gap:14px;margin:10px 0;"><div class="ceramic-glaze" style="width:94px;height:94px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+<svg viewBox="0 0 60 60" style="width:48px;height:48px;">
+  <path d="M30 8 C37 14 37 24 30 28 C23 24 23 14 30 8Z" fill="#7FB060" stroke="#F4ECDC" stroke-width="1.4"/>
+  <path d="M52 30 C46 37 36 37 32 30 C36 23 46 23 52 30Z" fill="#D5A94E" fill-opacity="0.45" stroke="#D5C7A8" stroke-width="1.1"/>
+  <path d="M30 52 C23 46 23 36 30 32 C37 36 37 46 30 52Z" fill="#B9643D" fill-opacity="0.45" stroke="#D5C7A8" stroke-width="1.1"/>
+  <path d="M8 30 C14 23 24 23 28 30 C24 37 14 37 8 30Z" fill="#C4D4DC" fill-opacity="0.45" stroke="#D5C7A8" stroke-width="1.1"/>
+  <circle cx="30" cy="30" r="5" fill="#F4ECDC" stroke="#4D402F" stroke-width="1.2"/>
+</svg>
+</div><div style="font-size:12.5px;color:#584A39;line-height:1.5;"><strong>Roseta de 4 Pétalas + Ninho Familiar:</strong> as estações acendem pétalas cerâmicas distintas, enquanto o Ninho de discos sobrepostos brota folhas reais conforme os filhos nascem.</div></div></div>
+    </div>
+  </div>
+</div></body></html>

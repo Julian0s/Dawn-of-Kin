@@ -1,0 +1,131 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>D2 — Marcos de Pedra e Eclipse (Estela e Cairn)</title><style>
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { width:100%; height:100%; overflow:hidden; background:#0d0f0e; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+.stage { position:relative; width:100vw; height:100vh; overflow:hidden; }
+.bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.ic { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ic svg { width:100%; height:100%; }
+
+:root {
+  --fd: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --fu: "Segoe UI", system-ui, sans-serif;
+  --ivory: #F4EFE4;
+  --gold: #DFBC72;
+  --alab: #EFEADF;
+  --ink: #1D1813;
+}
+body { font-family:var(--fu); color:var(--ivory); }
+
+.k-stone {
+  background-image: linear-gradient(155deg, rgba(20,22,24,0.86), rgba(14,16,18,0.92)), url('../assets/d2_kintsugi_basalt.png');
+  background-size: cover;
+  border: 1.5px solid rgba(223,188,114,0.65);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.58);
+}
+.k-alab {
+  background: linear-gradient(160deg, #F5F0E6 0%, #E5DDCD 100%);
+  color: var(--ink);
+  border: 1.5px solid #8D744C;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.44);
+}
+/* Stepped Asymmetric River-Stone Resource Monoliths (Top-Left) */
+.d2-cairn {
+  position:absolute; top:20px; left:24px;
+  display:flex; align-items:flex-start; gap:10px;
+}
+.res-720 .d2-cairn { top:14px; left:14px; gap:7px; }
+.d2-rock {
+  padding:9px 18px; display:flex; align-items:center; gap:9px;
+  clip-path: polygon(6px 0, 100% 3px, calc(100% - 5px) 100%, 0 calc(100% - 4px));
+}
+.res-720 .d2-rock { padding:7px 12px; gap:6px; }
+.d2-rock.step2 { margin-top:7px; }
+.d2-rock.step3 { margin-top:2px; }
+.d2-rock .v { font-family:var(--fd); font-size:18px; font-weight:700; }
+.res-720 .d2-rock .v { font-size:14.5px; }
+
+/* Top-Right: Hanging Sanctuary Ema Plaque */
+.d2-ema {
+  position:absolute; top:16px; right:24px; width:196px; padding:14px 16px;
+  clip-path: polygon(0 4px, 50% 0, 100% 4px, 97% 100%, 3% 96%);
+  text-align:center;
+}
+.res-720 .d2-ema { width:162px; padding:10px 12px; right:14px; }
+
+/* Bottom-Left: Twin Tilted Basalt Founder Steles */
+.d2-steles {
+  position:absolute; bottom:22px; left:24px;
+  display:flex; align-items:flex-end; gap:14px;
+}
+.res-720 .d2-steles { bottom:14px; left:14px; gap:10px; }
+.d2-stele {
+  width:108px; padding:12px 10px 14px; text-align:center;
+  clip-path: polygon(6px 6px, 100% 0, calc(100% - 4px) 100%, 0 98%);
+  position:relative;
+}
+.res-720 .d2-stele { width:88px; padding:8px 6px 10px; }
+.d2-stele.raised { transform:translateY(-22px); border-color:#F5D996; }
+.d2-stele-av { width:62px; height:62px; border-radius:50%; overflow:hidden; margin:0 auto 8px; border:2px solid var(--gold); }
+.res-720 .d2-stele-av { width:48px; height:48px; margin-bottom:5px; }
+.d2-stele-av img { width:100%; height:100%; object-fit:cover; }
+
+/* Bottom-Right: Alabaster Construction Maquette Slab + Basalt Command Slab */
+.d2-slabs {
+  position:absolute; bottom:22px; right:24px;
+  display:flex; align-items:flex-end; gap:12px;
+}
+.res-720 .d2-slabs { bottom:14px; right:14px; gap:8px; }
+.d2-slab-btn {
+  padding:12px 18px; display:flex; align-items:center; gap:12px;
+  clip-path: polygon(8px 0, 100% 4px, calc(100% - 6px) 100%, 0 calc(100% - 3px));
+}
+.res-720 .d2-slab-btn { padding:8px 12px; gap:8px; }
+</style></head><body><div class="stage"><img class="bg" id="bg" src="../../ui-0/captures/base_m4_family_1920x1080.jpg"/>
+<div class="d2-cairn">
+  <div class="k-stone d2-rock"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><path d="M5 17L11 6L19 17H5Z" stroke="#DFBD7A" stroke-width="1.5" fill="#DFBD7A" fill-opacity="0.14"/><path d="M11 11V17" stroke="#F2DDB0" stroke-width="1.3"/></svg></span><span class="v">24</span></div>
+  <div class="k-stone d2-rock step2"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><polygon points="6,18 9,7 16,5 19,18" stroke="#D1D8DC" stroke-width="1.5" fill="#D1D8DC" fill-opacity="0.15"/></svg></span><span class="v">14</span></div>
+  <div class="k-stone d2-rock step3"><span class="ic" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13.5" r="4.8" stroke="#E8AE5B" stroke-width="1.5" fill="#E8AE5B" fill-opacity="0.2"/><path d="M12 8.7C12.8 6 15.2 5 17 5.5" stroke="#98BA7A" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="v">18</span></div>
+</div>
+<div class="k-stone d2-ema">
+  <div style="font-size:10px;letter-spacing:0.18em;color:var(--gold);text-transform:uppercase;">Clareira Inicial</div>
+  <div style="font-family:var(--fd);font-size:17px;font-weight:700;margin:2px 0;">Primavera · Ano I</div>
+</div>
+
+<!-- Elevated Stele + Extended Stone Blade showing Personal Control & Cairn Genealogy -->
+<div style="position:absolute;bottom:24px;left:24px;display:flex;align-items:flex-end;gap:14px;">
+  <div class="k-stone d2-stele raised">
+    <div style="font-size:9.5px;letter-spacing:0.14em;color:var(--gold);text-transform:uppercase;margin-bottom:6px;">Selecionado</div>
+    <div class="d2-stele-av"><img src="../assets/portrait_alden.jpg"/></div>
+    <div style="font-family:var(--fd);font-size:16px;font-weight:700;">Alden</div>
+    <div style="font-size:10.5px;color:#F5D996;">Pessoal</div>
+  </div>
+
+  <div class="k-stone" style="width:450px;padding:18px 22px;clip-path:polygon(0 6px,100% 0,98% 100%,4px 98%);">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid rgba(223,188,114,0.35);padding-bottom:8px;margin-bottom:12px;">
+      <div>
+        <div style="font-family:var(--fd);font-size:21px;font-weight:700;">Alden · Casa Fundadora</div>
+        <div style="font-size:11px;color:var(--gold);">Adulto · Proteção dos Líderes · Ordem pessoal ativa</div>
+      </div>
+      <span style="padding:3px 10px;border:1px solid var(--gold);font-size:10.5px;color:var(--gold);">PESSOAL</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 164px;gap:16px;align-items:center;">
+      <div>
+        <div style="font-size:12px;color:#D4CFC3;margin-bottom:4px;">Carga física: <strong style="color:#FFF;">8 / 20 peso (40%)</strong></div>
+        <div style="height:6px;background:rgba(0,0,0,0.55);margin-bottom:8px;"><div style="width:40%;height:100%;background:linear-gradient(90deg,#7B9C63,#B5D999);"></div></div>
+        <div style="font-size:11.5px;color:#B4B0A4;margin-bottom:12px;">4 madeiras · Velocidade 4,0 m/s</div>
+        <div style="padding:7px 12px;text-align:center;background:rgba(223,188,114,0.2);border:1px solid var(--gold);font-family:var(--fd);font-size:12.5px;font-weight:700;">Liberar para Comunidade (P-RUX-2)</div>
+      </div>
+      <!-- Cairn stacked stones genealogy metaphor! -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;border-left:1px solid rgba(223,188,114,0.28);padding-left:14px;">
+        <div style="font-size:9.5px;letter-spacing:0.12em;color:var(--gold);text-transform:uppercase;">Pilha da Linhagem</div>
+        <div style="padding:5px 14px;border:1px dashed rgba(223,188,114,0.55);font-size:10.5px;color:#C4BEAE;clip-path:polygon(6px 0,100% 2px,94% 100%,0 98%);">1ª Geração (T5)</div>
+        <div style="width:2px;height:10px;background:var(--gold);"></div>
+        <div style="display:flex;gap:6px;">
+          <span style="padding:5px 10px;background:rgba(223,188,114,0.24);border:1px solid var(--gold);font-family:var(--fd);font-size:11.5px;">Alden</span>
+          <span style="padding:5px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(223,188,114,0.45);font-family:var(--fd);font-size:11.5px;">Brena</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div><script>(function(){const p=new URLSearchParams(location.search);const r=p.get('res')||'1920x1080';if(r==='1280x720')document.body.classList.add('res-720');const b=document.getElementById('bg');if(b&&'base_m4_family')b.src='../../ui-0/captures/base_m4_family_'+r+'.jpg';})();</script></body></html>

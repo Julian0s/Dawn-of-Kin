@@ -1,0 +1,56 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>UI-0 R2 — Storyboard de Comportamento e Transições</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:1920px;height:1080px;background:#0e1011;color:#F5F0E3;font-family:"Segoe UI",system-ui,sans-serif;padding:28px 34px;display:flex;flex-direction:column;gap:18px;}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #D6B572;padding-bottom:10px;}
+.hdr h1{font-family:"Palatino Linotype",Georgia,serif;font-size:28px;letter-spacing:.05em;}
+.grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:20px;flex:1;}
+.step{background:#16191B;border:1px solid rgba(214,181,114,0.42);border-radius:8px;padding:14px;display:grid;grid-template-columns:1.25fr 1fr;gap:14px;align-items:center;}
+.step img{width:100%;border-radius:4px;border:1px solid rgba(255,255,255,0.16);display:block;}
+.num{font-size:11px;letter-spacing:.2em;color:#E4C886;text-transform:uppercase;margin-bottom:4px;}
+.step h2{font-family:"Palatino Linotype",Georgia,serif;font-size:20px;margin-bottom:8px;}
+.step p{font-size:13px;color:#C8C4B8;line-height:1.5;}
+.tag{display:inline-block;margin-top:10px;padding:3px 10px;border-radius:99px;border:1px solid rgba(228,200,134,0.5);font-size:11px;color:#E4C886;}
+</style></head><body>
+<div class="hdr">
+  <h1>Storyboard de Comportamento Contextual — Como a Interface se Transforma em Jogo</h1>
+  <span style="font-size:13px;color:#E4C886;">Exemplo ilustrado com Direção 1 (O Fio da Aurora) + paralelos em D2 e D3 · Microtransições ≤ 160 ms</span>
+</div>
+<div class="grid">
+  <div class="step">
+    <img src="../D1_B_hud_1920x1080.png"/>
+    <div>
+      <div class="num">Estado 01 · Repouso / Exploração</div>
+      <h2>Cenário 3D 94% Livre</h2>
+      <p>Sem nenhuma caixa ou painel aberto. Apenas os 3 seixos de matéria no fio, o astrolábio de estação e o Nó da Origem flutuante na base. Edge Pan e câmera operam sem atrito.</p>
+      <span class="tag">Tween repouso · Zero polling</span>
+    </div>
+  </div>
+  <div class="step">
+    <img src="../D1_D_lineage_1920x1080.png"/>
+    <div>
+      <div class="num">Estado 02 · Seleção de Fundador</div>
+      <h2>Expansão Orgânica da Linhagem</h2>
+      <p>Ao clicar em Alden (no mapa ou no Nó), o leque semicircular de raízes se abre em 140 ms revelando carga física radial (40%), controle Pessoal vs Comunitário e vínculo com Brena e 1ª geração (T5). <em>(Em D2 a estela se eleva; em D3 a faixa de linho desenrola.)</em></p>
+      <span class="tag">Esc recolhe → volta ao Estado 01</span>
+    </div>
+  </div>
+  <div class="step">
+    <img src="../D1_C_construction_1920x1080.png"/>
+    <div>
+      <div class="num">Estado 03 · Modo Construção [B]</div>
+      <h2>Rosa de Compasso &amp; Prévia no Terreno</h2>
+      <p>O arco concêntrico surge no canto inferior direito exibindo miniaturas 3D flutuantes sem bloquear o centro. Ao escolher o edifício, a faixa-horizonte valida terreno plano em tempo real e a obra ativa acompanha no pivô.</p>
+      <span class="tag">Zero click-through · Clique dir./Esc cancela</span>
+    </div>
+  </div>
+  <div class="step">
+    <img src="../D1_E_menu_1920x1080.png"/>
+    <div>
+      <div class="num">Estado 04 · Portal, Pausa &amp; Evolução</div>
+      <h2>Da Origem à Civilização</h2>
+      <p>O mesmo Anel da Origem unifica HUD, pausa e Menu Principal sobre o mundo vivo. Com a evolução dos Níveis I → V da comunidade (GDD §6), a linguagem amadurece de fio rústico para bronze/cerâmica e astrolábio de latão sem quebrar a memória muscular.</p>
+      <span class="tag">Identidade contínua em todas as telas</span>
+    </div>
+  </div>
+</div></body></html>
