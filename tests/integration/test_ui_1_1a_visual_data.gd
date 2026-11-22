@@ -195,3 +195,115 @@ func test_real_physical_gathering_updates_rocks_only_after_delivery() -> void:
 
 	main_root.queue_free()
 	await wait_process_frames(2)
+
+
+func test_production_provenance_economy_real_gathering_and_controlled_teardown() -> void:
+	# 1. Verify legacy main.tscn default with production provenance economy enabled
+	var legacy_main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	add_test_child(legacy_main)
+	await _wait_nav_ready(legacy_main)
+	assert_true(legacy_main.use_provenance_economy, "main.tscn production default must keep use_provenance_economy = true")
+	assert_false(legacy_main.use_d2_2_hud, "main.tscn default must keep use_d2_2_hud = false")
+	assert_null(legacy_main.get_d2_hud_root(), "Legacy mode must not instantiate D2HudRoot")
+	assert_true(legacy_main.get_resource_hud().get_stockpile_panel().visible, "Legacy stockpile must remain visible")
+	var legacy_teardown: Dictionary = legacy_main.request_controlled_teardown()
+	assert_true(bool(legacy_teardown.get("ok", false)), "Legacy controlled teardown must succeed cleanly")
+	await wait_process_frames(2)
+
+	# 2. Verify D2.2 sandbox with production use_provenance_economy = true (no override!)
+	var main_root: MainScene = SANDBOX_SCENE.instantiate() as MainScene
+	add_test_child(main_root)
+	await _wait_nav_ready(main_root)
+
+	assert_true(main_root.use_provenance_economy, "Sandbox must run under production use_provenance_economy = true")
+	assert_true(main_root.use_d2_2_hud, "Sandbox must enable use_d2_2_hud")
+	assert_not_null(main_root.get_placement_controller(), "Economic admission must succeed so placement/RTS stay active")
+	assert_not_null(main_root.get_d2_hud_root(), "D2HudRoot must be instantiated under provenance economy")
+	assert_false(main_root.get_resource_hud().get_stockpile_panel().visible, "Legacy stockpile must remain hidden in D2.2 mode")
+
+	var rig: RtsCameraRig = main_root.get_node_or_null("RtsCameraRig") as RtsCameraRig
+	if rig != null:
+		rig.edge_pan_enabled = false
+
+	var test_map: TestMap = main_root.get_test_map()
+	var target_src: ResourceSource = null
+	for src: ResourceSource in test_map.get_resource_sources():
+		src.set_gather_cycle_timings(0.08, 0.0)
+		src.felling_duration_sec = minf(src.felling_duration_sec, 0.06)
+		if src.get_resource_id() == &"wood" and target_src == null:
+			target_src = src
+	assert_not_null(target_src, "TestMap must contain a wood ResourceSource")
+
+	var leader: Unit = main_root.get_units()[0]
+	var fast_def: CharacterDefinition = leader.get_definition().duplicate() as CharacterDefinition
+	fast_def.move_speed = 8.0
+	fast_def.work_approach_speed = 8.0
+	fast_def.max_load_speed_multiplier = 1.0
+	leader.apply_definition(fast_def)
+
+	var inv: SettlementInventory = main_root.get_settlement_inventory()
+	var d2: D2HudRoot = main_root.get_d2_hud_root()
+	var rocks: D2ResourceRocksView = d2.get_resource_rocks_view()
+	var plaque: D2TopPlaqueView = d2.get_top_plaque_view()
+
+	# True initial balances
+	assert_eq(inv.get_amount(&"wood"), 0)
+	assert_eq(inv.get_amount(&"stone"), 0)
+	assert_eq(inv.get_amount(&"food"), 0)
+	assert_eq(rocks.get_displayed_amount(&"wood"), 0)
+	assert_eq(rocks.get_displayed_amount(&"stone"), 0)
+	assert_eq(rocks.get_displayed_amount(&"food"), 0)
+	assert_eq(plaque.get_exposure_tone(), HudFormatter.ExposureTone.EXPOSED_IDLE)
+
+	# Real worker gathering under provenance economy
+	main_root.get_selection_manager().select_single(leader)
+	main_root.get_command_controller().command_at(PickResult.from_resource_source(target_src, target_src.global_position, Vector3.UP))
+
+	var saw_carrying_zero_stockpile: bool = false
+	var frames: int = 0
+	while frames < MAX_CYCLE_FRAMES:
+		await wait_physics_frames(1)
+		frames += 1
+		if leader.get_carry_load().get_amount(&"wood") > 0 and inv.get_amount(&"wood") == 0:
+			assert_eq(rocks.get_displayed_amount(&"wood"), 0, "No premature credit before physical delivery under provenance")
+			assert_true(leader.get_carry_load().validate_provenance(), "Carry provenance must remain valid in transit")
+			saw_carrying_zero_stockpile = true
+			break
+	assert_true(saw_carrying_zero_stockpile, "Worker must carry extracted wood with valid provenance before delivery")
+
+	# Wait until physical delivery settles and worker finishes depositing its carried load
+	var delivered_and_empty: bool = false
+	while frames < MAX_CYCLE_FRAMES:
+		await wait_physics_frames(1)
+		frames += 1
+		if inv.get_amount(&"wood") > 0 and leader.get_carry_load().is_empty():
+			delivered_and_empty = true
+			break
+	await wait_process_frames(2)
+	assert_true(delivered_and_empty, "Worker must physically deliver wood and empty carry load under provenance")
+
+	# Exact conservation: no balance, transport, or reservation duplication
+	var avail_wood: int = inv.get_amount(&"wood")
+	var phys_wood: int = inv.get_physical_amount(&"wood")
+	var res_wood: int = inv.get_reserved_amount(&"wood")
+	assert_gt(avail_wood, 0)
+	assert_eq(avail_wood, phys_wood, "Available wood must equal physical wood with zero spurious reservations")
+	assert_eq(res_wood, 0, "Reserved wood must remain 0")
+	assert_eq(rocks.get_displayed_amount(&"wood"), avail_wood, "Wood rock must match SettlementInventory under provenance")
+	assert_eq(rocks.get_displayed_text(&"wood"), "%d" % avail_wood)
+	assert_eq(rocks.get_displayed_amount(&"stone"), 0)
+	assert_eq(rocks.get_displayed_amount(&"food"), 0)
+	assert_eq(plaque.get_exposure_tone(), HudFormatter.ExposureTone.EXPOSED_ACTIVE)
+	assert_eq(plaque.get_exposure_text(), "● EXPOSTO")
+
+	# Stop worker cleanly so controlled economic teardown preflight passes with zero pending obligations
+	leader.cancel_current_order()
+	await wait_physics_frames(2)
+	var preflight: Dictionary = main_root.preflight_economic_teardown()
+	assert_true(bool(preflight.get("ok", false)), "Economic teardown preflight must pass cleanly: %s" % str(preflight))
+	var teardown: Dictionary = main_root.request_controlled_teardown()
+	assert_true(bool(teardown.get("ok", false)), "Controlled economic teardown must succeed cleanly")
+	var release_res: Dictionary = main_root.get_last_domain_release_result()
+	assert_true(bool(release_res.get("ok", false)), "Regional economic domain must release cleanly")
+	await wait_process_frames(2)
+	assert_eq(inv.inventory_changed.get_connections().size(), 0, "All inventory_changed listeners must disconnect after controlled teardown")

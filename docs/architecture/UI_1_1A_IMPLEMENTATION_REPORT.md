@@ -88,3 +88,37 @@ Todas as capturas abaixo foram geradas diretamente na **Godot 4.7.2** (`Intel(R)
   - Ressalvas de procedência/licenciamento dos 6 assets base gerados por IA (`UI_0_R2_3_2_CLOSEOUT.md` §2) permanecem vigentes.
 - **Integridade do Repositório:** `main`, `C:\Projetos\Dawn of Kin`, `docs/design/ui-0-r2-2/assets/*`, `docs/Dawn_of_Kin_GDD.md`, `AGENTS.md` e todas as branches anteriores permanecem intocados.
 - **Estado:** **Aguardando auditoria independente do ChatGPT e avaliação/aceite do proprietário.** Não declarada homologada unilateralmente; `UI-1.1B` não iniciada.
+
+---
+
+## 6. Adendo R1 — Fechamento das Evidências de Integração (`use_provenance_economy = true`) e Regressão Limpa
+
+### 6.1 Pendência A — Cobertura em Economia Real de Produção (`use_provenance_economy = true`)
+Adicionado o teste de integração `test_production_provenance_economy_real_gathering_and_controlled_teardown()` em [`tests/integration/test_ui_1_1a_visual_data.gd`](../../tests/integration/test_ui_1_1a_visual_data.gd) executando **sem sobrescrever** `use_provenance_economy` (mantendo o padrão de produção `true` tanto em `src/main/main.tscn` quanto em `tests/visual/ui_1_d2_2_sandbox.tscn`):
+- **Resultado:** **PASS (`35` asserções)** dentro de `test_ui_1_1a_visual_data.gd` (**4/4 testes aprovados, `100` asserções, `5.984,4 ms`, 0 erros, 0 avisos**).
+- **Itens comprovados com proveniência ativa:**
+  1. Admissão econômica válida em `MainScene` (`use_provenance_economy == true`, `PlacementController` ativo, `D2HudRoot` instanciado).
+  2. Saldos iniciais verdadeiros (`0/0/0`) nas 3 pedras e `EXPOSED_IDLE` na placa superior.
+  3. Coleta física real de madeira por trabalhador (`LeaderA`) via `CommandController`.
+  4. Zero crédito antecipado antes da descarga física (`wood == 0` na pedra enquanto `carry_load > 0` com `validate_provenance() == true`).
+  5. Atualização imediata da pedra de madeira após descarga física com carga esvaziada (`avail_wood == phys_wood > 0`, `reserved_wood == 0`, zero duplicação de saldo/transporte/reserva).
+  6. Exposição atualizada para `EXPOSED_ACTIVE` (`● EXPOSTO`).
+  7. `preflight_economic_teardown()` (`ok == true`), `request_controlled_teardown()` (`ok == true`), liberação limpa do domínio regional (`get_last_domain_release_result().ok == true`) e `0` listeners remanescentes em `SettlementInventory.inventory_changed`.
+  8. Modo legado (`main.tscn` com `use_provenance_economy = true` e `use_d2_2_hud = false`) preservado e com teardown controlado bem-sucedido.
+
+### 6.2 Pendência B — Diagnóstico Honesto da Regressão Completa (`.\tools\run_tests.ps1 -Segmented`)
+Executado `.\tools\run_tests.ps1 -Segmented` de forma **totalmente isolada** (sem capturas Godot simultâneas, sem processos concorrentes, sem alterar timeouts, sem excluir suítes e sem modificar `tools/run_tests.ps1`):
+- **Código de saída:** **`1`** (por timeout de `120 s` no lote `BATCH integration-17`, **não** por falha de asserção).
+- **Contagem exata desta execução única:** **`78/79` suítes concluídas · `554/554` testes aprovados · `0` falhas · `0` avisos de tipagem estrita · `27.882` asserções** (incluindo `test_ui_1_1a_foundation.gd` `4/4` [`108` asserções] e `test_ui_1_1a_visual_data.gd` `4/4` [`100` asserções]).
+- **Diagnóstico objetivo da causa raiz do timeout em `BATCH integration-17`:**
+  O runner `tools/run_tests.ps1 -Segmented` agrupa 3 suítes por lote (`max_per_batch = 3`) sob limite fixo de `120 s`. O lote `integration-17` reúne as 3 suítes pesadas de cancelamento/recuperação da `T3.6.3`:
+  1. `test_t3_6_3_b1_2_cancellation_commit_transaction.gd` — **`10,00 s`** (`4/4` PASS, `201` asserções)
+  2. `test_t3_6_3_b1_3_physical_recovery.gd` — **`34,47 s`** (`9/9` PASS, `370` asserções)
+  3. `test_t3_6_3_b1_4_recovery_dispatch.gd` — **`89,90 s`** isoladamente (`16/16` PASS, `178` asserções, exit code `0` em execução dedicada; durante o lote atingiu o teste `12/16` sem falhas antes do corte em `120,0 s`).
+  - **Soma real das 3 suítes no lote:** `10,00 + 34,47 + 89,90 = 134,37 s` (+ inicialização Godot ≈ `138 s` > `120 s`).
+  - **Declaração honesta:** Por não termos alterado `tools/run_tests.ps1` (preservando estritamente a regra de não interferir artificialmente nos timeouts), **não declaramos execução única com código de saída `0`**. Fica comprovado por medição que o timeout é uma limitação matemática pré-existente de particionamento/timeout do `BATCH integration-17` (`134,4 s > 120 s`), sem nenhuma relação com a `UI-1.1A` e com **0 falhas funcionais** em todas as `79/79` suítes (`570/570` testes, `28.060` asserções somando `b1_4` isolado).
+
+### 6.3 Arquivos Modificados nesta Revisão R1 e Preservação Visual
+- **Arquivos modificados:** apenas [`tests/integration/test_ui_1_1a_visual_data.gd`](../../tests/integration/test_ui_1_1a_visual_data.gd) e [`docs/architecture/UI_1_1A_IMPLEMENTATION_REPORT.md`](UI_1_1A_IMPLEMENTATION_REPORT.md).
+- **Preservação integral confirmada:** nenhum código de produção (`src/`), asset (`assets/ui/d2/`, `docs/design/ui-0-r2-2/assets/`), captura visual (`docs/design/ui-1-1a/`), `tools/run_tests.ps1`, `main` ou worktree protegido foi alterado.
+
