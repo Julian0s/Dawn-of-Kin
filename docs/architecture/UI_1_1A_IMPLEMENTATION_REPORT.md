@@ -1,7 +1,7 @@
 # DAWN OF KIN — UI-1.1A: RELATÓRIO TÉCNICO DE IMPLEMENTAÇÃO
 ## Fundação Visual e Integração de Dados Reais — Identidade D2.2 ("Marcos de Pedra e Eclipse")
 
-> **Status:** `CANDIDATA PRONTA PARA AUDITORIA E ACEITE` — Subincremento **`UI-1.1A`** implementado, testado automaticamente (`79/79` suítes, `569/569` testes, `28.017` asserções, `0` falhas, `0` avisos de tipagem estrita) e validado visualmente ao vivo na **Godot 4.7.2** (`Intel(R) UHD Graphics 620`, `OpenGL 3.3 Compatibility`) em `1280×720` e `1920×1080`.  
+> **Status:** `CANDIDATA PRONTA PARA AUDITORIA E ACEITE` — Subincremento **`UI-1.1A`** implementado, testado automaticamente (**`79/79` suítes, `570/570` testes, `28.051` asserções, `0` falhas, `0` avisos de tipagem estrita**, com execução integral segmentada limpa e código de saída **`0`**) e validado visualmente ao vivo na **Godot 4.7.2** (`Intel(R) UHD Graphics 620`, `OpenGL 3.3 Compatibility`) em `1280×720` e `1920×1080`.  
 > **Escopo respeitado:** Somente **`UI-1.1A`** foi implementada. `UI-1.1B` e incrementos posteriores **não foram iniciados**. Zero alterações em gameplay, câmera, pausa, `Esc`, economia, transporte ou construção.  
 > **Branch de Implementação:** `feat/ui-1-1a-d2-visual-foundation` (worktree isolado `C:\Projetos\Dawn_of_Kin_wt_ui_1_1a`).  
 > **Base Técnica (`DT-01`):** `design/ui-0-r2-3-2-closeout` @ `cdd9f2f4308a05d822c8f7c72f57c0a07756f0a6`.
@@ -51,10 +51,10 @@
 ### 3.1 Resultados dos Testes (Godot 4.7.2, Tipagem Estrita Ativa)
 - **Suítes novas `UI-1.1A` (`.\tools\run_tests.ps1 -Filter "test_ui_1_1a"`):**
   - `test_ui_1_1a_foundation.gd`: **4/4 aprovados (`108` asserções)** — 17 regiões do atlas, SHA-256 bit-a-bit dos 9 assets, escala `720p`/`1080p`, sincronismo reativo sem polling, idempotência, `unbind()`, regressão de redução de escala `1,22 → 1,00` e zero botões interativos/estações inventadas.
-  - `test_ui_1_1a_visual_data.gd`: **3/3 aprovados (`65` asserções)** — modo legado intacto em `main.tscn`, modo dual sem HUD duplicada, coleta física real sem crédito antecipado antes da descarga, atualização real do indicador de exposição, preservação de pausa externa, layout sem clipping/sobreposição em `1280×720` e `1920×1080`, e teardown com `0` listeners remanescentes em `SettlementInventory`.
-- **Regressão completa (`.\tools\run_tests.ps1 -Segmented` + reexecução isolada de `test_t3_6_3_b1_4_recovery_dispatch.gd`):**
-  - Na primeira passagem paralela, o lote `integration-17` atingiu o timeout de `120 s` por concorrência de CPU com a captura visual da Godot; reexecutado isoladamente em seguida, passou **16/16 (`178` asserções)**.
-  - **Total consolidado único verificado:** **79/79 suítes · 569/569 testes aprovados · 0 falhas · 28.017 asserções · 0 erros · 0 avisos de tipagem estrita.**
+  - `test_ui_1_1a_visual_data.gd`: **4/4 aprovados (`100` asserções)** — modo legado intacto em `main.tscn`, modo dual sem HUD duplicada, coleta física real com proveniência (`use_provenance_economy = true`) sem crédito antecipado antes da descarga, atualização real do indicador de exposição, preservação de pausa externa, layout sem clipping/sobreposição em `1280×720` e `1920×1080`, e teardown controlado com `0` listeners remanescentes em `SettlementInventory`.
+- **Regressão Completa do Repositório (`.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1`):**
+  - Execução segmentada completa em lote unitário para suítes de integração, sem concorrência de processos e sem alterar timeouts ou código do runner.
+  - **Resultado Oficial da Execução Integral Única:** **Código de saída `0` · 79/79 suítes concluídas · 570/570 testes aprovados · 0 falhas · 0 erros de suíte · 28.051 asserções · 0 avisos de tipagem estrita** (ver Seções 6.2 e 7 para o histórico completo das rodadas).
 
 ### 3.2 Bug Real Detectado na Inspeção Visual e Corrigido
 Na primeira captura real em `1920×1080` após redimensionar de `1280×720` (`s = 1,22 → 1,00`), a inspeção visual revelou que os `TextureRect` das pedras e da placa permaneciam presos em `1,22×` porque `size` era atribuído antes de `custom_minimum_size` (causando clamp pelo tamanho mínimo anterior). Corrigido definindo `custom_minimum_size` antes de `size` em `D2ResourceRocksView` e `D2TopPlaqueView`, validado por nova captura e coberto por teste unitário dedicado.
@@ -106,19 +106,74 @@ Adicionado o teste de integração `test_production_provenance_economy_real_gath
   7. `preflight_economic_teardown()` (`ok == true`), `request_controlled_teardown()` (`ok == true`), liberação limpa do domínio regional (`get_last_domain_release_result().ok == true`) e `0` listeners remanescentes em `SettlementInventory.inventory_changed`.
   8. Modo legado (`main.tscn` com `use_provenance_economy = true` e `use_d2_2_hud = false`) preservado e com teardown controlado bem-sucedido.
 
-### 6.2 Pendência B — Diagnóstico Honesto da Regressão Completa (`.\tools\run_tests.ps1 -Segmented`)
-Executado `.\tools\run_tests.ps1 -Segmented` de forma **totalmente isolada** (sem capturas Godot simultâneas, sem processos concorrentes, sem alterar timeouts, sem excluir suítes e sem modificar `tools/run_tests.ps1`):
+### 6.2 Pendência B (Histórico R1) — Diagnóstico da Regressão e Causa Raiz do Timeout em Lote de 3 Suítes
+Executado `.\tools\run_tests.ps1 -Segmented` (com o valor padrão `MaxIntegrationPerGroup = 3`) de forma isolada durante a rodada R1:
 - **Código de saída:** **`1`** (por timeout de `120 s` no lote `BATCH integration-17`, **não** por falha de asserção).
-- **Contagem exata desta execução única:** **`78/79` suítes concluídas · `554/554` testes aprovados · `0` falhas · `0` avisos de tipagem estrita · `27.882` asserções** (incluindo `test_ui_1_1a_foundation.gd` `4/4` [`108` asserções] e `test_ui_1_1a_visual_data.gd` `4/4` [`100` asserções]).
+- **Contagem exata dessa execução histórica:** `78/79` suítes concluídas · `554/554` testes aprovados · `0` falhas · `0` avisos de tipagem estrita · `27.882` asserções.
 - **Diagnóstico objetivo da causa raiz do timeout em `BATCH integration-17`:**
-  O runner `tools/run_tests.ps1 -Segmented` agrupa 3 suítes por lote (`max_per_batch = 3`) sob limite fixo de `120 s`. O lote `integration-17` reúne as 3 suítes pesadas de cancelamento/recuperação da `T3.6.3`:
+  O runner `tools/run_tests.ps1 -Segmented` agrupa por padrão até 3 suítes por lote (`max_per_batch = 3`) sob limite fixo de `GroupTimeoutSeconds = 120`. O lote `integration-17` reúne as 3 suítes pesadas de cancelamento e recuperação da `T3.6.3`:
   1. `test_t3_6_3_b1_2_cancellation_commit_transaction.gd` — **`10,00 s`** (`4/4` PASS, `201` asserções)
   2. `test_t3_6_3_b1_3_physical_recovery.gd` — **`34,47 s`** (`9/9` PASS, `370` asserções)
-  3. `test_t3_6_3_b1_4_recovery_dispatch.gd` — **`89,90 s`** isoladamente (`16/16` PASS, `178` asserções, exit code `0` em execução dedicada; durante o lote atingiu o teste `12/16` sem falhas antes do corte em `120,0 s`).
-  - **Soma real das 3 suítes no lote:** `10,00 + 34,47 + 89,90 = 134,37 s` (+ inicialização Godot ≈ `138 s` > `120 s`).
-  - **Declaração honesta:** Por não termos alterado `tools/run_tests.ps1` (preservando estritamente a regra de não interferir artificialmente nos timeouts), **não declaramos execução única com código de saída `0`**. Fica comprovado por medição que o timeout é uma limitação matemática pré-existente de particionamento/timeout do `BATCH integration-17` (`134,4 s > 120 s`), sem nenhuma relação com a `UI-1.1A` e com **0 falhas funcionais** em todas as `79/79` suítes (`570/570` testes, `28.060` asserções somando `b1_4` isolado).
+  3. `test_t3_6_3_b1_4_recovery_dispatch.gd` — **`89,90 s`** (`16/16` PASS, `178` asserções)
+  - **Soma real das 3 suítes no lote:** `10,00 + 34,47 + 89,90 = 134,37 s` (+ inicialização da Godot ≈ `138 s` > `120 s`).
+  - **Conclusão:** O timeout decorre puramente da soma aritmética do tempo de execução de 3 suítes intensivas de simulação que excedem 120 segundos combinadas, e não de qualquer anomalia de código ou da interface UI-1.1A. O próprio script `tools/run_tests.ps1` já dispõe nativamente do parâmetro `-MaxIntegrationPerGroup` para configurar o tamanho do lote sem necessitar de alteração de código.
 
-### 6.3 Arquivos Modificados nesta Revisão R1 e Preservação Visual
-- **Arquivos modificados:** apenas [`tests/integration/test_ui_1_1a_visual_data.gd`](../../tests/integration/test_ui_1_1a_visual_data.gd) e [`docs/architecture/UI_1_1A_IMPLEMENTATION_REPORT.md`](UI_1_1A_IMPLEMENTATION_REPORT.md).
+### 6.3 Arquivos Modificados na Revisão R1
+- **Arquivos modificados:** [`tests/integration/test_ui_1_1a_visual_data.gd`](../../tests/integration/test_ui_1_1a_visual_data.gd) e [`docs/architecture/UI_1_1A_IMPLEMENTATION_REPORT.md`](UI_1_1A_IMPLEMENTATION_REPORT.md).
 - **Preservação integral confirmada:** nenhum código de produção (`src/`), asset (`assets/ui/d2/`, `docs/design/ui-0-r2-2/assets/`), captura visual (`docs/design/ui-1-1a/`), `tools/run_tests.ps1`, `main` ou worktree protegido foi alterado.
+
+---
+
+## 7. Adendo R2 — Validação Final da Regressão Integral Limpa com Código de Saída Zero
+
+### 7.1 Histórico Consolidado das Execuções de Regressão
+
+| Rodada / Contexto | Comando Executado | Lotes / Agrupamento | Código de Saída | Suítes / Testes | Asserções | Observações |
+|---|---|---|:---:|:---:|:---:|---|
+| **Execução Inicial UI-1.1A** | `.\tools\run_tests.ps1 -Segmented` | 42 lotes (`MaxIntegrationPerGroup = 3`) | `1` (timeout no lote 17) | 78/79 suítes concluídas (553/553 PASS) + `b1_4` isolado (16/16 PASS) | 28.017 | Concorrência de CPU com script de captura visual Godot em segundo plano. |
+| **Execução R1 (Diagnóstico)** | `.\tools\run_tests.ps1 -Segmented` | 42 lotes (`MaxIntegrationPerGroup = 3`) | `1` (timeout no lote 17) | 78/79 suítes concluídas (554/554 PASS) | 27.882 | Execução isolada comprovando que a soma das 3 suítes (`134,37 s`) excede aritmeticamente o timeout de 120 s. |
+| **Execução R2 (Oficial Limpa)** | `.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1` | 57 lotes (1 unit com 23 suítes + 56 de integração com 1 suíte/lote) | **`0`** | **79/79 suítes (570/570 PASS)** | **28.051** | **Sucesso integral absoluto. Zero timeouts, zero falhas, zero erros de suíte, zero avisos.** |
+
+### 7.2 Execução Integral Oficial (R2) — Métricas Precisas
+
+Executado no worktree isolado `C:\Projetos\Dawn_of_Kin_wt_ui_1_1a` na branch `feat/ui-1-1a-d2-visual-foundation` sem concorrência de processos:
+
+```powershell
+.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1
+```
+
+- **Código de Saída (`$LASTEXITCODE`):** **`0`**
+- **Suítes Descobertas:** **79**
+- **Particionamento em Lotes:** **57 lotes disjuntos** (1 lote `unit` com 23 suítes + 56 lotes `integration` com 1 suíte cada).
+- **Lotes Concluídos com Sucesso:** **57/57 (`PASS unit`, `PASS integration-01` a `PASS integration-56`)**
+- **Total de Suítes Executadas:** **79 / 79**
+- **Total de Testes Executados:** **570**
+- **Testes Aprovados:** **570**
+- **Testes com Falha:** **0**
+- **Erros de Suíte (`SuiteErrors`):** **0**
+- **Total de Asserções Aprovadas:** **28.051**
+- **Avisos de Tipagem Estrita:** **0**
+- **Verificação de Cobertura (`Coverage Check`):** `Discovered = 79 | ExecutedUnique = 79 | Duplicates = 0 | Missing = 0`
+- **Tempo Acumulado das Instâncias Godot (`SumGodotElapsed`):** `1.117.453,9 ms` (~`18,62 min`)
+- **Tempo Real de Parede (`TotalWallElapsed`):** `1.199.988,0 ms` (~`20,00 min`)
+
+### 7.3 Preservação Absoluta do Código e Assets (Zero Modificações)
+
+Na presente revisão R2:
+- **Código de produção (`src/`):** **ZERO alterações.**
+- **Assets (`assets/ui/d2/`, `docs/design/ui-0-r2-2/assets/`):** **ZERO alterações.**
+- **Cenas (`main.tscn`, `ui_1_d2_2_sandbox.tscn`):** **ZERO alterações.**
+- **Testes automatizados (`tests/`):** **ZERO alterações.**
+- **Script de execução (`tools/run_tests.ps1`):** **ZERO alterações** (utilizada funcionalidade nativa já existente `-MaxIntegrationPerGroup 1`).
+- **Repositório principal (`C:\Projetos\Dawn of Kin`, branch `review/t2-closeout-candidate`):** **100% intocado e protegido.**
+- **Único arquivo modificado:** este relatório técnico documental ([`UI_1_1A_IMPLEMENTATION_REPORT.md`](UI_1_1A_IMPLEMENTATION_REPORT.md)).
+
+### 7.4 Reafirmação Expressa de Proposta Candidata
+
+- A implementação **UI-1.1A** permanece formalmente como uma **candidata de implementação técnica e visual**.
+- Nenhum merge para `main` ou para a base de desenvolvimento foi realizado.
+- Nenhuma tag Git foi criada.
+- A etapa subsequente **UI-1.1B** **NÃO FOI INICIADA**.
+- O trabalho permanece estritamente interrompido para auditoria independente do ChatGPT e deliberação/homologação formal pelo proprietário.
+
 
