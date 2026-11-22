@@ -1,3 +1,5 @@
+> **Nota de Revisão:** Este plano inicial (`UI-1.0`) foi revisado após auditoria técnica independente; consulte a versão vigente em **[UI_1_0_R1_INTEGRATION_PLAN.md](UI_1_0_R1_INTEGRATION_PLAN.md)** (que incorpora Correções A–E e subdivisão `UI-1.1A`/`UI-1.1B`).
+
 # DAWN OF KIN — UI-1.0
 ## Plano Técnico de Integração da Interface D2.2 ("Marcos de Pedra e Eclipse")
 
