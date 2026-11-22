@@ -1,0 +1,141 @@
+class_name D2HudRoot
+extends Control
+## Lightweight root compositor for Dawn of Kin D2.2 HUD (UI-1.1A visual foundation).
+## Owns D2AtlasLibrary, D2ThemeFactory, responsive scaling, D2ResourceRocksView, and D2TopPlaqueView.
+## Never holds economic authority, never polls per frame, and never alters pause/camera/Esc in UI-1.1A.
+
+signal layout_updated(scale_factor: float)
+
+var _atlas: D2AtlasLibrary = D2AtlasLibrary.new()
+var _theme_factory: D2ThemeFactory = D2ThemeFactory.new()
+var _rocks_view: D2ResourceRocksView = null
+var _plaque_view: D2TopPlaqueView = null
+
+var _bound_viewport: Viewport = null
+var _current_scale: float = D2Tokens.SCALE_1080P
+var _built: bool = false
+
+
+func _ready() -> void:
+	set_process(false)
+	set_physics_process(false)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ensure_built()
+	_bind_viewport_resize()
+	_update_responsive_layout()
+
+
+func _exit_tree() -> void:
+	unbind()
+
+
+func configure(
+	settlement_inventory: SettlementInventory,
+	camp_storage_zone: CampStorageZone = null,
+	ground_pile_manager: GroundPileManager = null
+) -> void:
+	_ensure_built()
+	if _rocks_view != null:
+		_rocks_view.configure(settlement_inventory, camp_storage_zone, ground_pile_manager)
+	if _plaque_view != null:
+		_plaque_view.configure(settlement_inventory, camp_storage_zone, ground_pile_manager)
+	_update_responsive_layout()
+
+
+func unbind() -> void:
+	_unbind_viewport_resize()
+	if _rocks_view != null:
+		_rocks_view.unbind()
+	if _plaque_view != null:
+		_plaque_view.unbind()
+
+
+func refresh_all() -> void:
+	if _rocks_view != null:
+		_rocks_view.refresh()
+	if _plaque_view != null:
+		_plaque_view.refresh()
+
+
+func get_atlas_library() -> D2AtlasLibrary:
+	return _atlas
+
+
+func get_theme_factory() -> D2ThemeFactory:
+	return _theme_factory
+
+
+func get_resource_rocks_view() -> D2ResourceRocksView:
+	return _rocks_view
+
+
+func get_top_plaque_view() -> D2TopPlaqueView:
+	return _plaque_view
+
+
+func get_current_scale() -> float:
+	return _current_scale
+
+
+func get_debug_overlay_top_offset() -> float:
+	if _rocks_view == null:
+		return 12.0
+	var bounds: Rect2 = _rocks_view.get_content_bounds()
+	return bounds.end.y + 12.0 * _current_scale
+
+
+func _ensure_built() -> void:
+	if _built:
+		return
+	_built = true
+	_atlas.load_all()
+	theme = _theme_factory.build_theme()
+
+	_rocks_view = D2ResourceRocksView.new()
+	_rocks_view.name = "D2ResourceRocksView"
+	add_child(_rocks_view)
+
+	_plaque_view = D2TopPlaqueView.new()
+	_plaque_view.name = "D2TopPlaqueView"
+	add_child(_plaque_view)
+
+	var vp: Viewport = get_viewport()
+	var vp_size: Vector2 = vp.get_visible_rect().size if vp != null else Vector2(1920.0, 1080.0)
+	_current_scale = D2ScaleController.compute_scale_for_viewport(vp)
+	_rocks_view.setup_visuals(_atlas, _theme_factory, _current_scale)
+	_plaque_view.setup_visuals(_atlas, _theme_factory, vp_size, _current_scale)
+
+
+func _bind_viewport_resize() -> void:
+	var vp: Viewport = get_viewport()
+	if vp == _bound_viewport:
+		return
+	_unbind_viewport_resize()
+	_bound_viewport = vp
+	if _bound_viewport != null and not _bound_viewport.size_changed.is_connected(_on_viewport_size_changed):
+		_bound_viewport.size_changed.connect(_on_viewport_size_changed)
+
+
+func _unbind_viewport_resize() -> void:
+	if _bound_viewport != null and is_instance_valid(_bound_viewport):
+		if _bound_viewport.size_changed.is_connected(_on_viewport_size_changed):
+			_bound_viewport.size_changed.disconnect(_on_viewport_size_changed)
+	_bound_viewport = null
+
+
+func _on_viewport_size_changed() -> void:
+	_update_responsive_layout()
+
+
+func _update_responsive_layout() -> void:
+	if not _built:
+		return
+	var vp: Viewport = get_viewport()
+	var vp_size: Vector2 = vp.get_visible_rect().size if vp != null else Vector2(1920.0, 1080.0)
+	_current_scale = D2ScaleController.compute_scale_for_viewport(vp)
+	if _rocks_view != null:
+		_rocks_view.apply_scale(_current_scale)
+	if _plaque_view != null:
+		_plaque_view.apply_layout(vp_size, _current_scale)
+	layout_updated.emit(_current_scale)

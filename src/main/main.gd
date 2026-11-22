@@ -11,6 +11,7 @@ const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildin
 
 @export var use_provenance_economy: bool = false
 @export var automatic_cancellation_recovery: bool = true
+@export var use_d2_2_hud: bool = false
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -37,6 +38,7 @@ var _economy_world_ref: WeakRef = null
 var _economy_region_id: StringName = &"default"
 var _last_domain_release_result: Dictionary = {}
 var _economy_admission_reason: String = ""
+var _d2_hud_root: D2HudRoot = null
 
 
 func _ready() -> void:
@@ -80,6 +82,35 @@ func _ready() -> void:
 
 	if _resource_hud != null:
 		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
+
+	if use_d2_2_hud:
+		_setup_d2_hud()
+
+
+func _setup_d2_hud() -> void:
+	if _resource_hud != null:
+		var legacy_stockpile: SettlementStockpilePanel = _resource_hud.get_stockpile_panel()
+		if legacy_stockpile != null:
+			legacy_stockpile.unbind()
+			legacy_stockpile.visible = false
+	var ui_layer: Node = get_node_or_null("UiLayer")
+	if ui_layer == null:
+		return
+	_d2_hud_root = D2HudRoot.new()
+	_d2_hud_root.name = "D2HudRoot"
+	ui_layer.add_child(_d2_hud_root)
+	_d2_hud_root.configure(_settlement_inventory, _camp_storage_zone, _ground_pile_manager)
+	if not _d2_hud_root.layout_updated.is_connected(_on_d2_layout_updated):
+		_d2_hud_root.layout_updated.connect(_on_d2_layout_updated)
+	_on_d2_layout_updated(_d2_hud_root.get_current_scale())
+
+
+func _on_d2_layout_updated(_scale_factor: float) -> void:
+	if _d2_hud_root == null or not is_instance_valid(_d2_hud_root):
+		return
+	var debug_panel: Control = get_node_or_null("UiLayer/DebugOverlay/Panel") as Control
+	if debug_panel != null:
+		debug_panel.offset_top = _d2_hud_root.get_debug_overlay_top_offset()
 
 
 func _setup_placement(world_nav: WorldNavigation) -> void:
@@ -253,6 +284,11 @@ func _exit_tree() -> void:
 			_placement_controller.placement_confirmed.disconnect(_on_placement_confirmed)
 	if _resource_hud != null:
 		_resource_hud.unbind()
+	if _d2_hud_root != null and is_instance_valid(_d2_hud_root):
+		if _d2_hud_root.layout_updated.is_connected(_on_d2_layout_updated):
+			_d2_hud_root.layout_updated.disconnect(_on_d2_layout_updated)
+		_d2_hud_root.unbind()
+	_d2_hud_root = null
 	if _ground_pile_manager != null:
 		var world: World3D = get_world_3d()
 		if world == null and _economy_world_ref != null:
@@ -374,6 +410,10 @@ func get_selection_box_overlay() -> SelectionBoxOverlay:
 
 func get_resource_hud() -> ResourceHud:
 	return _resource_hud
+
+
+func get_d2_hud_root() -> D2HudRoot:
+	return _d2_hud_root
 
 
 func get_command_controller() -> CommandController:
