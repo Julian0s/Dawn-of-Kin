@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DAWN OF KIN — MASTER DESIGN SYSTEM D2.2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: #090B0D;
+    color: #F4EFE4;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 12px 18px 10px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #DFBC72;
+    background: linear-gradient(90deg, rgba(20,22,24,0.98) 0%, rgba(14,16,19,0.85) 100%);
+    padding: 8px 14px;
+    border-radius: 4px;
+    border-left: 4px solid #DFBC72;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .emblem {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+  }
+  .title-group h1 {
+    font-family: 'Palatino Linotype', Georgia, serif;
+    font-size: 21px;
+    letter-spacing: 0.05em;
+    color: #F4EFE4;
+    text-transform: uppercase;
+  }
+  .title-group p {
+    font-size: 11px;
+    color: #DFBC72;
+    letter-spacing: 0.03em;
+  }
+  .badges {
+    display: flex;
+    gap: 8px;
+  }
+  .badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 4px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+  .badge-gold { background: #DFBC72; color: #141618; }
+  .badge-dark { background: #1A1D20; color: #A5C98B; border: 1px solid rgba(165,201,139,0.5); }
+  .badge-alert { background: #281614; color: #F2B8AC; border: 1px solid rgba(242,184,172,0.4); }
+
+  /* MAIN GRID: 3 BALANCED COLUMNS FILLING EXACT HEIGHT */
+  .grid {
+    display: grid;
+    grid-template-columns: 570px 730px 560px;
+    gap: 10px;
+    height: 980px;
+  }
+
+  /* PANEL BOX */
+  .panel {
+    background: #111417;
+    border: 1px solid rgba(223, 188, 114, 0.35);
+    border-radius: 3px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+  }
+  .panel-title {
+    font-family: 'Palatino Linotype', Georgia, serif;
+    font-size: 12.5px;
+    font-weight: bold;
+    color: #DFBC72;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(223, 188, 114, 0.2);
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  .panel-title span {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 8.5px;
+    color: #8C8578;
+    text-transform: none;
+  }
+
+  /* LEFT COL: OFFICIAL GODOT CAPTURES */
+  .captures-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+  .capture-card {
+    background: #0E1012;
+    border: 1px solid rgba(223,188,114,0.25);
+    padding: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .capture-card img {
+    width: 100%;
+    height: 168px;
+    object-fit: cover;
+    border: 1px solid rgba(0,0,0,0.6);
+  }
+  .capture-lbl {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: #DFBC72;
+    display: flex;
+    justify-content: space-between;
+  }
+  .capture-lbl span {
+    font-weight: normal;
+    color: #A5C98B;
+  }
+
+  /* CENTER COL: COMPONENT DECONSTRUCTION */
+  .comp-showcase {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+  .comp-card {
+    background: #0E1012;
+    border: 1px solid rgba(223,188,114,0.3);
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .comp-card img {
+    width: 100%;
+    height: 112px;
+    object-fit: contain;
+    background: #08090A;
+    border: 1px solid rgba(223,188,114,0.15);
+  }
+  .comp-name {
+    font-family: 'Palatino Linotype', Georgia, serif;
+    font-size: 11px;
+    font-weight: bold;
+    color: #F4EFE4;
+  }
+  .comp-specs {
+    font-size: 8.5px;
+    color: #B8B2A5;
+    line-height: 1.3;
+  }
+  .comp-specs code {
+    color: #DFBC72;
+    font-family: monospace;
+    font-size: 8px;
+  }
+
+  /* RIGHT COL: TOKENS, STATES & GOVERNANCE */
+  .token-swatches {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+  }
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 8px;
+  }
+  .swatch-color {
+    height: 24px;
+    border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .swatch-name {
+    font-weight: bold;
+    color: #F4EFE4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .swatch-hex {
+    color: #8C8578;
+    font-family: monospace;
+  }
+
+  .type-table {
+    width: 100%;
+    font-size: 9px;
+    border-collapse: collapse;
+  }
+  .type-table th {
+    text-align: left;
+    color: #DFBC72;
+    border-bottom: 1px solid rgba(223,188,114,0.3);
+    padding: 2px 4px;
+    font-size: 8px;
+  }
+  .type-table td {
+    padding: 2px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    color: #B8B2A5;
+  }
+  .type-table td strong {
+    color: #F4EFE4;
+  }
+
+  .state-table {
+    width: 100%;
+    font-size: 8.5px;
+    border-collapse: collapse;
+  }
+  .state-table th {
+    text-align: left;
+    color: #DFBC72;
+    border-bottom: 1px solid rgba(223,188,114,0.3);
+    padding: 2px 4px;
+    font-size: 7.5px;
+  }
+  .state-table td {
+    padding: 2px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* EXTENSIBILITY CARDS GRID */
+  .ext-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .ext-card {
+    background: #0E1012;
+    border: 1px solid rgba(223,188,114,0.25);
+    padding: 4px 6px;
+    border-radius: 2px;
+  }
+  .ext-card strong {
+    color: #DFBC72;
+    font-size: 8.5px;
+  }
+  .ext-card p {
+    color: #B8B2A5;
+    font-size: 7.5px;
+    line-height: 1.25;
+    margin-top: 1px;
+  }
+
+  /* VCG BOX */
+  .vcg-box {
+    background: #0E1215;
+    border: 1px solid #385B2A;
+    border-left: 3px solid #A5C98B;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .vcg-title {
+    font-size: 9.5px;
+    font-weight: bold;
+    color: #A5C98B;
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: space-between;
+  }
+  .vcg-steps {
+    font-size: 8px;
+    color: #B8B2A5;
+    line-height: 1.35;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 6px;
+  }
+
+  /* FOOTER */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    color: #8C8578;
+    border-top: 1px solid rgba(223, 188, 114, 0.3);
+    padding-top: 4px;
+  }
+  .footer-rule {
+    color: #DFBC72;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/emblem_dawn_of_kin.png" class="emblem" alt="Emblem">
+      <div class="title-group">
+        <h1>DAWN OF KIN — MASTER DESIGN SYSTEM D2.2</h1>
+        <p>IDENTIDADE ARTÍSTICA OFICIAL · "MARCOS DE PEDRA E ECLIPSE" · ESPECIFICAÇÃO CANÔNICA DE UI/UX</p>
+      </div>
+    </div>
+    <div class="badges">
+      <div class="badge badge-gold">D2.2 APROVADA VISUALMENTE</div>
+      <div class="badge badge-dark">GODOT 4.7.2 VERIFICADO (147 FPS)</div>
+      <div class="badge badge-dark">1920×1080 & 1280×720 CANVAS</div>
+      <div class="badge badge-alert">UI-1 BLOQUEADA (DOC MASTER)</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+
+    <!-- COL 1: REAL GODOT CAPTURES & PHILOSOPHY -->
+    <div class="panel">
+      <div>
+        <div class="panel-title">
+          01. Telas Canônicas na Godot 4.7.2
+          <span>Renderizadas ao Vivo · Cena RUX-2B</span>
+        </div>
+        <div class="captures-grid">
+          <div class="capture-card">
+            <div class="capture-lbl">A. HUD NORMAL <span>1080p · Repouso</span></div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/G_godot_D2_2_hud_1920x1080.png" alt="HUD Normal">
+          </div>
+          <div class="capture-card">
+            <div class="capture-lbl">B. CONSTRUÇÃO <span>1080p · Tecla [B]</span></div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/G_godot_D2_2_construction_1920x1080.png" alt="Construção">
+          </div>
+          <div class="capture-card">
+            <div class="capture-lbl">C. LINHAGEM <span>1080p · Tecla [H]</span></div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/G_godot_D2_2_lineage_1920x1080.png" alt="Linhagem">
+          </div>
+          <div class="capture-card">
+            <div class="capture-lbl">D. MENU MONÓLITO <span>1080p · Esc / [M]</span></div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/G_godot_D2_2_menu_1920x1080.png" alt="Menu">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-title">
+          02. Filosofia Material & Morfologia D2.2
+          <span>A Tríade Canônica e Silhuetas</span>
+        </div>
+        <div style="font-size:9.5px; color:#B8B2A5; line-height:1.4; display:flex; flex-direction:column; gap:4px;">
+          <div><strong style="color:#DFBC72;">Basalto Vulcânico (#141618):</strong> Ancoragem terrosa e permanência. Rochas clivadas que sustentam estelas, estoques e comandos sem barras unificadas.</div>
+          <div><strong style="color:#F5F0E6;">Alabastro Claro (#F5F0E6):</strong> Nobreza arquitetônica. Exclusivo para maquetes construtivas, ação primordial [B] e confirmações vitais.</div>
+          <div><strong style="color:#DFBC72;">Ouro Kintsugi (#DFBC72):</strong> Suturas que unem a rocha fraturada, simbolizando a persistência da linhagem familiar sobre a terra virgem.</div>
+          <div><strong style="color:#A5C98B;">Silhuetas Chanfradas 12°–16°:</strong> Cortes oblíquos assimétricos com bevels de 4 a 10 px. Proibição absoluta de janelas ortogonais plásticas ou barras modernas.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-title">
+          03. Responsividade & Desempenho
+          <span>Canvas Items Godot 4.7.2</span>
+        </div>
+        <div style="font-size:9px; color:#B8B2A5; line-height:1.35; background:#0E1012; padding:6px 8px; border:1px solid rgba(223,188,114,0.2);">
+          <div><strong>Baseline 1080p:</strong> Escala <code>s = 1.00</code> · Viewport <code>1920×1080</code> · P95: <code>10,82 ms</code> (147 FPS)</div>
+          <div><strong>Modo HD 720p:</strong> Escala calibrada <code>s = 1.22</code> · Estelas ~<code>88 px</code> físicos · Zero overflow</div>
+          <div><strong>Atlas Batching:</strong> Apenas <code>+40 draw calls</code> sobre o baseline 3D via <code>AtlasTexture</code> (6.469 asserções).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COL 2: COMPONENT DECONSTRUCTION & MEASUREMENTS -->
+    <div class="panel">
+      <div>
+        <div class="panel-title">
+          04. Catálogo de Componentes Canônicos D2.2
+          <span>Recortes Reais do Atlas Mestre 2× Supersampled</span>
+        </div>
+        <div class="comp-showcase">
+          <div class="comp-card">
+            <div class="comp-name">Pedras de Recursos (Wood, Stone, Food)</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/detail_crops/C_tl_resources.png" alt="Resources Crop">
+            <div class="comp-specs">
+              Dim: <code>84×42 px</code> · Atlas: <code>774,522</code><br>
+              Polígono: <code>polygon(6px 0, 100% 3px, 95% 100%, 0 96%)</code><br>
+              Escalonamento rítmico: +0 px (Mad), +7 px (Ped), +2 px (Ali).
+            </div>
+          </div>
+
+          <div class="comp-card">
+            <div class="comp-name">Placa de Estação & Ciclo</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/detail_crops/C_tr_plaque.png" alt="Plaque Crop">
+            <div class="comp-specs">
+              Dim: <code>196×110 px</code> · Atlas: <code>762,280</code><br>
+              Polígono: <code>polygon(0 4px, 50% 0, 100% 4px, 97% 100%, 3% 96%)</code><br>
+              Cumeeira superior de 4 px · Clareira Inicial / Primavera Ano I.
+            </div>
+          </div>
+
+          <div class="comp-card">
+            <div class="comp-name">Estelas dos Fundadores (Alden & Brena)</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/detail_crops/C_bl_founders.png" alt="Founders Crop">
+            <div class="comp-specs">
+              Dim: <code>108×136 px</code> (Normal) / <code>108×154 px</code> (Erguida)<br>
+              Polígono: <code>polygon(6px 6px, 100% 0, 96% 100%, 0 98%)</code><br>
+              Retrato 46 px com aro dourado · Degrau de 6 px entre cônjuges.
+            </div>
+          </div>
+
+          <div class="comp-card">
+            <div class="comp-name">Lajes de Ação (Alabastro & Basalto)</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/detail_crops/C_br_commands.png" alt="Commands Crop">
+            <div class="comp-specs">
+              Maquetes [B]: <code>176×72 px</code> (Alabastro nobre claro)<br>
+              Tarefas [T] / Linhagem [H]: <code>146×72 px</code> (Basalto escuro)<br>
+              Destaque visual de alta hierarquia para edificação humana.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-title">
+          05. Maquetes de Construção & Estruturas Iniciais
+          <span>Traço Nanquim Clássico em Alabastro</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
+          <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.25); padding:6px; display:flex; gap:8px; align-items:center;">
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/d1_shelter_mini.png" style="width:52px; height:52px; object-fit:contain; background:#F5F0E6; border-radius:2px;">
+            <div style="font-size:9px;">
+              <strong style="color:#DFBC72;">Abrigo de Sobrevivência</strong><br>
+              <span style="color:#B8B2A5;">Dim: 190×218 px · Tecla [1]</span><br>
+              <span style="color:#DFBC72;">Custo: 10 Mad · 4 Ped</span>
+            </div>
+          </div>
+          <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.4); padding:6px; display:flex; gap:8px; align-items:center;">
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-2/assets/d1_depot_mini.png" style="width:52px; height:52px; object-fit:contain; background:#F5F0E6; border-radius:2px;">
+            <div style="font-size:9px;">
+              <strong style="color:#F5D996;">Depósito de Recursos (Sel)</strong><br>
+              <span style="color:#B8B2A5;">Dim: 206×244 px (Y -14px) · [2]</span><br>
+              <span style="color:#DFBC72;">Custo: 15 Mad · 8 Ped</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-title">
+          06. Componentes Contextuais & Obras no Mundo 3D
+          <span>Capturas Reais da Godot para Linhagem e Posicionamento</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
+          <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.25); padding:4px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:8.5px; font-weight:bold; color:#DFBC72;">Lâmina de Linhagem (454×214 px)</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-3/crops/live_lineage_blade.png" style="width:100%; height:74px; object-fit:cover; border-radius:2px;">
+            <div style="font-size:7.5px; color:#B8B2A5;">Resumo de patriarca/matriarca, vigor e botão de liberação comunitária (P-RUX-2).</div>
+          </div>
+          <div style="background:#0E1012; border:1px solid rgba(223,188,114,0.25); padding:4px; display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:8.5px; font-weight:bold; color:#DFBC72;">Faixa de Validação de Terreno</div>
+            <img src="file:///C:/Projetos/Dawn_of_Kin_wt_ui_0_r2_3/docs/design/ui-0-r2-3/crops/live_build_valid_bar.png" style="width:100%; height:74px; object-fit:contain; background:#08090A; border-radius:2px;">
+            <div style="font-size:7.5px; color:#B8B2A5;">Feedback em tempo real: verde para solo livre, terracota para obstrução e atalho Esc.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COL 3: DESIGN TOKENS, STATES & EXTENSIBILITY -->
+    <div class="panel">
+      <div>
+        <div class="panel-title">
+          07. Design Tokens Semânticos
+          <span>Valores Oficiais para Godot Theme</span>
+        </div>
+        
+        <!-- COLOR SWATCHES -->
+        <div class="token-swatches">
+          <div class="swatch">
+            <div class="swatch-color" style="background:#141618;"></div>
+            <div class="swatch-name">Basalt Base</div>
+            <div class="swatch-hex">#141618</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#F5F0E6;"></div>
+            <div class="swatch-name" style="color:#141618; font-weight:bold;">Alabaster</div>
+            <div class="swatch-hex">#F5F0E6</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#DFBC72;"></div>
+            <div class="swatch-name">Gold Primary</div>
+            <div class="swatch-hex">#DFBC72</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#F5D996;"></div>
+            <div class="swatch-name">Gold Hi</div>
+            <div class="swatch-hex">#F5D996</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#F4EFE4;"></div>
+            <div class="swatch-name">Ivory Text</div>
+            <div class="swatch-hex">#F4EFE4</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#1D1813;"></div>
+            <div class="swatch-name">Ink On Alab</div>
+            <div class="swatch-hex">#1D1813</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#385B2A;"></div>
+            <div class="swatch-name">Valid Green</div>
+            <div class="swatch-hex">#385B2A</div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background:#C66A58;"></div>
+            <div class="swatch-name">Error Terracotta</div>
+            <div class="swatch-hex">#C66A58</div>
+          </div>
+        </div>
+
+        <!-- TYPOGRAPHY TABLE -->
+        <table class="type-table" style="margin-top:4px;">
+          <tr>
+            <th>Token</th><th>Família</th><th>Tam. 1080p</th><th>Estilo / Uso</th>
+          </tr>
+          <tr>
+            <td><strong>type-display-lg</strong></td><td>Palatino Linotype</td><td>24 px</td><td>Título Menu Principal</td>
+          </tr>
+          <tr>
+            <td><strong>type-title-stele</strong></td><td>Palatino Linotype</td><td>14 px</td><td>Nomes dos Fundadores (Bold)</td>
+          </tr>
+          <tr>
+            <td><strong>type-data-counter</strong></td><td>Segoe UI Tabular</td><td>15 px</td><td>Valores de Recursos (Bold)</td>
+          </tr>
+          <tr>
+            <td><strong>type-button-slab</strong></td><td>Segoe UI</td><td>12 px</td><td>Comandos [B], [T], [H]</td>
+          </tr>
+        </table>
+      </div>
+
+      <div>
+        <!-- INTERACTION MATRIX -->
+        <div class="panel-title">
+          08. Matriz de Estados & Interações
+          <span>Comportamento Determinístico</span>
+        </div>
+        <table class="state-table">
+          <tr>
+            <th>Estado</th><th>Borda Kintsugi</th><th>Superfície</th><th>Elevação</th>
+          </tr>
+          <tr>
+            <td><strong style="color:#B8B2A5;">Normal</strong></td><td>rgba(223,188,114,0.45)</td><td>Basalto / Alabastro</td><td>Y Base (0 px)</td>
+          </tr>
+          <tr>
+            <td><strong style="color:#F5D996;">Hover</strong></td><td>#F5D996 (Ouro Claro)</td><td>+8% Luminosidade</td><td>Y Base</td>
+          </tr>
+          <tr>
+            <td><strong style="color:#A5C98B;">Selecionado</strong></td><td>#F5D996 Dupla Linha</td><td>Contraste Elevado</td><td>Y -14 a -22 px (Erguida)</td>
+          </tr>
+          <tr>
+            <td><strong style="color:#C66A58;">Desabilitado</strong></td><td>rgba(140,130,120,0.25)</td><td>Dessaturada 50%</td><td>Y Base (Sem evento)</td>
+          </tr>
+        </table>
+      </div>
+
+      <div>
+        <!-- EXTENSIBILITY RULES -->
+        <div class="panel-title">
+          09. Diretrizes para Telas Futuras
+          <span>Preservação de Silhueta & Materialidade</span>
+        </div>
+        <div class="ext-grid">
+          <div class="ext-card">
+            <strong>População / Clã</strong>
+            <p>Monólito lateral de basalto com mini-estelas e retratos entalhados.</p>
+          </div>
+          <div class="ext-card">
+            <strong>Inventário Geral</strong>
+            <p>Lajes de basalto compartimentadas com divisores kintsugi finos.</p>
+          </div>
+          <div class="ext-card">
+            <strong>Linhagem T5</strong>
+            <p>Altar de 3 corpos com elos dourados conectando gerações.</p>
+          </div>
+          <div class="ext-card">
+            <strong>Oficinas T4</strong>
+            <p>Maquetes nobres em alabastro com relevos de ferramentas.</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <!-- VCG PROTOCOL -->
+        <div class="vcg-box">
+          <div class="vcg-title">
+            10. VISUAL CONSISTENCY GATE (VCG)
+            <span>Checklist Mandatória de 10 Passos</span>
+          </div>
+          <div class="vcg-steps">
+            <div>1. Conferência de Tokens</div>
+            <div>6. Teste 1080p nítido</div>
+            <div>2. Reutilização de Assets</div>
+            <div>7. Filtros Stop vs Ignore</div>
+            <div>3. Silhuetas chanfradas</div>
+            <div>8. Comparação com D2.2</div>
+            <div>4. Coerência com 4 cantos</div>
+            <div>9. Relatório de desvios</div>
+            <div>5. Teste 720p sem corte</div>
+            <div>10. Decisão do Proprietário</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-rule">
+      REGRA PERMANENTE DE PROTEÇÃO DA IDENTIDADE: VEDADA QUALQUER MODIFICAÇÃO, MODERNIZAÇÃO OU SIMPLIFICAÇÃO POR AGENTES DE IA SEM AUTORIZAÇÃO DOCUMENTADA.
+    </div>
+    <div>Dawn of Kin · Visual Design System Mestre D2.2 · Branch: design/ui-0-r2-3-design-system</div>
+  </div>
+
+</body>
+</html>
