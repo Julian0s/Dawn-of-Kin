@@ -49,6 +49,7 @@ var _remove_c4_workers_btn: Button = null
 var _toast_remaining_sec: float = 0.0
 var _built_ui: bool = false
 var _use_context_inspector: bool = false
+var _suppress_placement_status_banner: bool = false
 
 
 func _ready() -> void:
@@ -113,6 +114,18 @@ func use_game_catalog() -> void:
 func use_context_inspector() -> void:
 	_use_context_inspector = true
 	_refresh_site_panel()
+
+
+func set_placement_status_banner_suppressed(suppressed: bool) -> void:
+	_suppress_placement_status_banner = suppressed
+	if _suppress_placement_status_banner and _status_panel != null:
+		_toast_remaining_sec = 0.0
+		set_process(false)
+		_status_panel.visible = false
+
+
+func is_placement_status_banner_suppressed() -> bool:
+	return _suppress_placement_status_banner
 
 
 func configure(
@@ -518,6 +531,10 @@ func _on_placement_started(def: BuildingDefinition) -> void:
 	_toast_remaining_sec = 0.0
 	set_process(false)
 	_sync_button_states()
+	if _suppress_placement_status_banner:
+		if _status_panel != null:
+			_status_panel.visible = false
+		return
 	if _status_panel != null and def != null:
 		_status_title_label.text = "Posicionando: %s (%.1f × %.1f m) — Esq.: confirmar | Dir./Esc: cancelar" % [
 			def.display_name,
@@ -543,6 +560,10 @@ func _on_placement_confirmed(
 	_result: PlacementValidator.ValidationResult
 ) -> void:
 	_sync_button_states()
+	if _suppress_placement_status_banner:
+		if _status_panel != null:
+			_status_panel.visible = false
+		return
 	if _status_panel != null and def != null and _construction_manager == null:
 		_status_title_label.text = "Posição válida confirmada: %s em (%.1f, %.1f)" % [
 			def.display_name,
@@ -562,6 +583,10 @@ func _on_placement_rejected(
 	result: PlacementValidator.ValidationResult
 ) -> void:
 	_sync_button_states()
+	if _suppress_placement_status_banner:
+		if _status_panel != null:
+			_status_panel.visible = false
+		return
 	if _status_panel != null and result != null:
 		_status_detail_label.text = result.reason_text if not result.reason_text.is_empty() else "Posição inválida."
 		_status_detail_label.add_theme_color_override(&"font_color", INVALID_TEXT_COLOR)
@@ -570,6 +595,10 @@ func _on_placement_rejected(
 
 func _on_hover_state_changed(valid: bool, reason_text: String, _world_pos: Vector3) -> void:
 	if _placement_controller == null or not _placement_controller.is_placement_active():
+		return
+	if _suppress_placement_status_banner:
+		if _status_panel != null:
+			_status_panel.visible = false
 		return
 	if _status_panel == null:
 		return

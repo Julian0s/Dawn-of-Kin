@@ -96,6 +96,47 @@ const POLYGON_LINEAGE_BLADE: Array[Vector2] = [
 	Vector2(3.0, 210.0),
 ]
 
+const POLYGON_MAQUETTE_SHELTER: Array[Vector2] = [
+	Vector2(6.0, 4.0),
+	Vector2(190.0, 0.0),
+	Vector2(184.0, 218.0),
+	Vector2(0.0, 214.0),
+]
+
+const POLYGON_MAQUETTE_DEPOT_SEL: Array[Vector2] = [
+	Vector2(5.0, 0.0),
+	Vector2(206.0, 5.0),
+	Vector2(202.0, 244.0),
+	Vector2(0.0, 236.0),
+]
+
+const POLYGON_BUILD_VALID_BAR: Array[Vector2] = [
+	Vector2(10.0, 0.0),
+	Vector2(640.0, 2.0),
+	Vector2(630.0, 38.0),
+	Vector2(0.0, 38.0),
+]
+
+# --- Canonical D2.2 Action Slabs, Construction Dock & Placement Status Bar (1080p baseline, logical px) ---
+const ACTION_SLAB_MAQUETES_SIZE: Vector2 = Vector2(176.0, 72.0)
+const ACTION_SLAB_CMD_SIZE: Vector2 = Vector2(146.0, 72.0)
+const ACTION_SLAB_GAP_X: float = 12.0
+const ACTION_SLAB_MARGIN_RIGHT: float = 24.0
+const ACTION_SLAB_MARGIN_BOTTOM: float = 22.0
+const ACTION_SLAB_ACTIVE_LIFT_Y: float = 6.0
+
+const MAQUETTE_NORMAL_SIZE: Vector2 = Vector2(190.0, 218.0)
+const MAQUETTE_SELECTED_SIZE: Vector2 = Vector2(206.0, 244.0)
+const MAQUETTE_GAP_X: float = 14.0
+const MAQUETTE_MARGIN_RIGHT: float = 24.0
+const MAQUETTE_BASE_MARGIN_BOTTOM: float = 118.0
+const MAQUETTE_SELECTED_LIFT_Y: float = 14.0
+
+const STATUS_BAR_BASE_CONTENT_SIZE: Vector2 = Vector2(640.0, 38.0)
+const STATUS_BAR_DISPLAY_SIZE: Vector2 = Vector2(760.0, 38.0)
+const STATUS_BAR_MARGIN_TOP: float = 24.0
+const STATUS_BAR_SIDE_CLEARANCE_X: float = 16.0
+
 # --- Canonical D2.2 Founder Steles & Lineage Blade Dimensions (1080p baseline, logical px) ---
 const STELE_CONTENT_SIZE: Vector2 = Vector2(108.0, 136.0)
 const STELE_RAISED_CONTENT_SIZE: Vector2 = Vector2(108.0, 154.0)

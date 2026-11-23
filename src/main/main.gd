@@ -102,6 +102,8 @@ func _setup_d2_hud() -> void:
 	_d2_hud_root = D2HudRoot.new()
 	_d2_hud_root.name = "D2HudRoot"
 	ui_layer.add_child(_d2_hud_root)
+	var build_defs: Array[BuildingDefinition] = [SHELTER_BASIC_DEFINITION, STORAGE_DEPOT_DEFINITION]
+	var active_placement: PlacementController = _placement_controller if _economy_admission_reason.is_empty() else null
 	_d2_hud_root.configure(
 		_settlement_inventory,
 		_camp_storage_zone,
@@ -109,7 +111,9 @@ func _setup_d2_hud() -> void:
 		_camera_rig,
 		_economy_clock,
 		_selection_manager,
-		get_units()
+		get_units(),
+		active_placement,
+		build_defs
 	)
 	if not _d2_hud_root.layout_updated.is_connected(_on_d2_layout_updated):
 		_d2_hud_root.layout_updated.connect(_on_d2_layout_updated)
@@ -164,7 +168,9 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 		_placement_test_overlay.configure_test_workers(_test_workers_controller)
 		_placement_test_overlay.use_game_catalog()
 		_placement_test_overlay.use_context_inspector()
-	if _placement_controller != null:
+		if use_d2_2_hud:
+			_placement_test_overlay.set_placement_status_banner_suppressed(true)
+	if _placement_controller != null and not use_d2_2_hud:
 		var construction_hud := ConstructionHud.new()
 		construction_hud.name = "ConstructionHud"
 		$UiLayer.add_child(construction_hud)

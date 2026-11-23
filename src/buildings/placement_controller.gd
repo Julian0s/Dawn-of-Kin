@@ -16,6 +16,7 @@ signal placement_rejected(
 	result: PlacementValidator.ValidationResult
 )
 signal hover_state_changed(valid: bool, reason_text: String, world_position: Vector3)
+signal confirm_pending_changed(pending: bool)
 
 const DYNAMIC_HOVER_REFRESH_INTERVAL_SEC: float = 0.12
 
@@ -343,6 +344,8 @@ func confirm_at_world_pos(world_pos: Vector3) -> PlacementValidator.ValidationRe
 
 	if _active_confirm_token == null:
 		_confirm_in_flight = false
+	elif _confirm_in_flight:
+		confirm_pending_changed.emit(true)
 	return sync_returned[0]
 
 
@@ -360,8 +363,11 @@ static func _on_async_confirm_complete(
 		return
 	if req_generation != controller._confirm_generation:
 		return
+	var was_pending: bool = controller._confirm_in_flight and controller._active_confirm_token != null
 	controller._confirm_in_flight = false
 	controller._active_confirm_token = null
+	if was_pending:
+		controller.confirm_pending_changed.emit(false)
 	if not controller.is_placement_active() or controller._active_definition != target_def:
 		return
 	controller._apply_confirm_outcome(target_def, world_pos, async_result)
@@ -398,11 +404,14 @@ func _apply_confirm_outcome(
 
 
 func _cancel_pending_confirm() -> void:
+	var was_pending: bool = _confirm_in_flight
 	_confirm_generation += 1
 	_confirm_in_flight = false
 	if _active_confirm_token != null:
 		_active_confirm_token.cancel()
 		_active_confirm_token = null
+	if was_pending:
+		confirm_pending_changed.emit(false)
 
 
 func _connect_world_signals() -> void:
