@@ -191,3 +191,80 @@ A implementação **UI-1.1B** é submetida formalmente como **proposta candidata
 - **Tag:** não criada.
 - **Cutover (`use_d2_2_hud`):** permanece `false` em `src/main/main.tscn`.
 - **UI-1.2 e etapas futuras:** não iniciadas.
+
+---
+
+## 11. Adendo R1 — Correção Dirigida da Propriedade de Pausa Compartilhada e Sincronização Orientada a Eventos da Placa
+
+> **Branch de Revisão R1:** `fix/ui-1-1b-r1-pause-ownership` (worktree isolado `C:\Projetos\Dawn_of_Kin_wt_ui_1_1b_r1`)  
+> **Commit Base Auditado:** `e0ac201d9af96dc203eeadae01acdc7939978e6c` (`feat/ui-1-1b-d2-interaction-pause`, preservado intacto)  
+> **SHA Técnico da Correção R1 (código + testes):** `4afe3a0d5aa36c6e8a37395135739e45c1884dcd`
+
+### 11.1 Causa Comprovada dos Dois Problemas (Auditoria Independente)
+
+1. **Problema A — Lease cooperativo externo podia despausar uma pausa não gerenciada preexistente:**
+   - Na implementação original (`e0ac201`), `acquire_tree_pause_lease()` e `release_tree_pause_lease()` armazenavam apenas um dicionário plano de `owner_id` em `SceneTree` (`dok_pause_authorities`) sem registrar se o contrato cooperativo havia de fato promovido a transição `SceneTree.paused: false → true`.
+   - Assim, quando um subsistema externo não cooperativo definia `tree.paused = true` antes de qualquer lease e, em seguida, uma autoridade cooperativa adquiria e liberava seu lease, `release_tree_pause_lease()` via `leases.is_empty() and tree.paused` e executava `tree.paused = false` — destruindo a pausa externa preexistente. Além disso, se a HUD solicitasse pausa após esse lease externo, ela observava `other_leases == true` e assumia equivocadamente propriedade cooperativa.
+2. **Problema B — Estado visual da placa não atualizava após mudanças de lease enquanto `SceneTree.paused` permanecia `true`:**
+   - `D2SimulationPauseController` dependia de `NOTIFICATION_PAUSED` / `NOTIFICATION_UNPAUSED` (emitidos pela Godot apenas quando `SceneTree.paused` muda de valor booleano) ou de chamadas diretas da própria HUD para emitir `pause_state_changed`.
+   - Quando uma autoridade externa adquiria ou liberava um lease cooperativo enquanto `SceneTree.paused` já era `true` (ex.: HUD já pausada via `||`), nenhuma notificação era disparada à HUD — deixando o botão `1×` habilitado durante pausa externa ou preso desabilitado após a liberação externa até um clique/resize/refresh manual.
+
+### 11.2 Evidências TDD (Testes RED → GREEN)
+
+Antes de alterar qualquer linha em `src/`, foram adicionados 3 novos testes cobrindo integralmente ambos os problemas e todas as variações exigidas:
+- `tests/unit/test_ui_1_1b_polygon_and_pause.gd::test_problem_a_cooperative_lease_must_not_unpause_preexisting_unmanaged_pause` (`32` asserções):
+  - **RED (antes da correção):** **FAIL (`5` falhas)** — reproduziu exatamente a destruição da pausa externa não gerenciada ao liberar 1 lease, 2 leases em ordem inversa, HUD + lease externo, e destruição do controlador.
+  - **GREEN (após a correção):** **PASS (`32/32` asserções)** — incluindo cenário totalmente cooperativo inicialmente despausado, aquisições repetidas idempotentes e destruição segura do controlador.
+- `tests/unit/test_ui_1_1b_polygon_and_pause.gd::test_problem_b_plaque_syncs_immediately_on_cooperative_lease_transitions` (`37` asserções):
+  - **RED (antes da correção):** **FAIL (`2` falhas)** — comprovou que `1×` não desabilitava ao adquirir lease externo com HUD pausada e não reabilitava na ordem inversa ao liberar o lease externo.
+  - **GREEN (após a correção):** **PASS (`37/37` asserções)** — transição imediata sem clique, resize, refresh manual ou polling (`ctrl.is_processing() == false`, `plaque.is_processing() == false`), tanto na ordem direta quanto na ordem inversa e na liberação inversa.
+- `tests/integration/test_ui_1_1b_hitboxes_and_pause.gd::test_06_r1_shared_pause_lease_ownership_and_real_click_plaque_sync` (`20` asserções, sob `use_provenance_economy = true`):
+  - **RED (antes da correção):** **FAIL (`4` falhas)** — reproduziu ambos os defeitos em `MainScene` real com cliques reais via `vp.push_input()` em `||` e `1×`.
+  - **GREEN (após a correção):** **PASS (`20/20` asserções)** — clique real em `||` pausa, lease externo desabilita `1×` imediatamente (clique real em `1×` não despausa), liberação externa reabilita `1×` imediatamente sem refresh manual, clique real em `1×` retoma simulação e destrava a câmera; pausa não gerenciada sobrevive intacta a aquisição/liberação de lease cooperativo em `MainScene`.
+
+### 11.3 Contrato Final de Propriedade de Pausa e Sincronização Orientada a Eventos
+
+- **Registro Único no `SceneTree` (`dok_pause_authorities`):** dicionário estruturado com 4 campos (`leases`, `cooperative_owns_pause`, `unmanaged_external_observed`, `listeners` via `WeakRef`), sem autoloads, sem polling e sem modificar `Engine.time_scale` ou `EconomyClockController.set_paused()`.
+- **Regra Conservadora de Aquisição (`acquire_tree_pause_lease`):**
+  - Se `not tree.paused`: o registro cooperativo assume a transição `false → true` (`cooperative_owns_pause = true`, `unmanaged_external_observed = false`) e pausa a árvore.
+  - Se `tree.paused == true` e (`leases.is_empty()` ou `not cooperative_owns_pause`): marca `unmanaged_external_observed = true` e `cooperative_owns_pause = false` (regra conservadora preservando a pausa externa não gerenciada).
+  - Aquisições repetidas do mesmo `owner_id` são estritamente idempotentes (`return false`).
+- **Regra Conservadora de Liberação (`release_tree_pause_lease`):**
+  - A árvore só recebe `tree.paused = false` quando **simultaneamente**: `leases.is_empty()` **E** `cooperative_owns_pause == true` **E** `not unmanaged_external_observed`. Em qualquer dúvida ou pausa externa preexistente, **nunca** executa `unpause` destrutivo.
+- **Fonte Única de Verdade:** `request_pause()`, `release_pause()` e `release_all_owned_pauses()` de `D2SimulationPauseController` delegam diretamente a `acquire_tree_pause_lease()` e `release_tree_pause_lease()`, garantindo coerência absoluta entre a HUD e quaisquer autoridades externas cooperativas.
+- **Sincronização Orientada a Eventos (`_notify_tree_listeners`):**
+  - Toda mutação em `leases` notifica sincronamente (sobre snapshot com limpeza automática de `WeakRef`s mortos) cada `D2SimulationPauseController` ativo, que atualiza a trava da câmera e emite `pause_state_changed` sempre que `(any_paused, hud_paused, externally_paused, can_hud_resume_simulation)` muda.
+  - `D2TopPlaqueView._refresh_pause_controls()` habilita `1×` durante pausa somente quando `not ext_paused` e `can_hud_resume_simulation() == true`, garantindo que `1×` nunca prometa retomada completa enquanto houver lease externo ou outro motivo ativo.
+
+### 11.4 Escopo Estrito de Arquivos Modificados na R1 (Zero Alteração Visual / Assets)
+
+Comparação Git contra `e0ac201d9af96dc203eeadae01acdc7939978e6c` (`git diff --name-only`):
+1. [`src/ui/d2/d2_simulation_pause_controller.gd`](../../src/ui/d2/d2_simulation_pause_controller.gd)
+2. [`src/ui/d2/components/d2_top_plaque_view.gd`](../../src/ui/d2/components/d2_top_plaque_view.gd)
+3. [`tests/unit/test_ui_1_1b_polygon_and_pause.gd`](../../tests/unit/test_ui_1_1b_polygon_and_pause.gd)
+4. [`tests/integration/test_ui_1_1b_hitboxes_and_pause.gd`](../../tests/integration/test_ui_1_1b_hitboxes_and_pause.gd)
+5. [`docs/architecture/UI_1_1B_IMPLEMENTATION_REPORT.md`](UI_1_1B_IMPLEMENTATION_REPORT.md) (este adendo)
+
+Confirmado via `git diff` contra `e0ac201`: **0 alterações** em `assets/ui/d2/`, `docs/design/`, `src/camera/`, `src/main/`, `src/ui/d2/d2_tokens.gd`, `src/ui/d2/d2_ui_escape_router.gd`, `src/ui/d2/components/d2_polygonal_slab.gd`, `src/ui/d2/components/d2_slab_button.gd`, `src/ui/d2/components/d2_resource_rocks_view.gd`, `tools/` ou GDD.
+
+### 11.5 Validação Completa Pós-Correção R1
+
+- **Validação Estática (`.\tools\validate.ps1`):** **PASSED** — `199` scripts GDScript verificados, **`0` erros, `0` avisos**.
+- **Suítes Focadas (`.\tools\run_tests.ps1 -Filter "test_ui_1_1"`):** **4/4 suítes · 20/20 testes aprovados · 568 asserções · 0 falhas · 0 erros**.
+- **Regressão Integral Completa (`.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1`):**
+  - **Código de Saída (`$LASTEXITCODE`):** **`0`**
+  - **Lotes Disjuntos:** **`58 / 58 PASS`** (`PASS unit` [24 suítes] + `PASS integration-01`..`57` [1 suíte/lote])
+  - **Suítes Descobertas e Executadas:** **`81 / 81`** (`Discovered=81 | ExecutedUnique=81 | Duplicates=0 | Missing=0`)
+  - **Testes Executados e Aprovados:** **`582 / 582`** (`+3` testes R1 sobre os 579 anteriores)
+  - **Falhas / Erros de Suíte / Timeouts / Avisos:** **`0 / 0 / 0 / 0`**
+  - **Total de Asserções:** **`28.413`**
+  - **Tempo Acumulado Godot / Parede:** `926.140,2 ms` (~`15,44 min`) / `963.577,8 ms` (~`16,06 min`)
+
+### 11.6 Riscos Residuais e Estado dos Worktrees (R1)
+
+- **Limitação residual conhecida do booleano global da Godot:** Continua válida a fronteira física da engine: se um código externo **não cooperativo** gravar `get_tree().paused = true` diretamente *após* o contrato cooperativo já ter pausado a árvore (sem chamar `acquire_tree_pause_lease()`), a Godot não emite sinal de escrita redundante em `SceneTree.paused`. Todo subsistema cooperativo do jogo deve obrigatoriamente usar `acquire_tree_pause_lease()` / `release_tree_pause_lease()`. Qualquer pausa externa não gerenciada **preexistente** agora está 100% protegida tanto contra a HUD quanto contra leases cooperativos externos.
+- **Worktrees:**
+  - `C:\Projetos\Dawn_of_Kin_wt_ui_1_1b_r1` (`fix/ui-1-1b-r1-pause-ownership`): branch de revisão R1 isolada e publicada.
+  - `C:\Projetos\Dawn_of_Kin_wt_ui_1_1b` (`feat/ui-1-1b-d2-interaction-pause` @ `e0ac201`), `C:\Projetos\Dawn_of_Kin_wt_ui_1_1a` (`a02aa97`), `C:\Projetos\Dawn of Kin` e demais worktrees: **100% preservados e intocados**.
+- **Parada Obrigatória:** Sem merge, sem tag, `use_d2_2_hud = false`, `UI-1.2` bloqueada, aguardando nova auditoria do ChatGPT e aceite expresso do proprietário.
+
