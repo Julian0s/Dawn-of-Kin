@@ -2,7 +2,9 @@ class_name D2ResourceRocksView
 extends Control
 ## D2.2 Top-Left 3 stepped independent river-stone resource monoliths (Wood, Stone, Food).
 ## Strictly signal-driven via SettlementInventory.inventory_changed and HudFormatter; zero polling.
-## In UI-1.1A all controls remain MOUSE_FILTER_IGNORE (polygonal hitboxes arrive in UI-1.1B).
+## In UI-1.1B, each solid stone slab uses D2PolygonalSlab (_has_point + Geometry2D.is_point_in_polygon)
+## to block RTS clicks/scroll/Edge Pan strictly inside the stone silhouette while keeping the
+## 10 px transparent shadow_pad, chamfer corners, gaps, icons, labels, and container pass-through.
 
 const RESOURCE_ORDER: Array[StringName] = [&"wood", &"stone", &"food"]
 const ICON_KEYS: Array[String] = ["ico_wood", "ico_stone", "ico_food"]
@@ -13,7 +15,7 @@ var _inventory: SettlementInventory = null
 var _camp_zone: CampStorageZone = null
 var _pile_manager: GroundPileManager = null
 
-var _slabs: Array[TextureRect] = []
+var _slabs: Array[D2PolygonalSlab] = []
 var _icons: Array[TextureRect] = []
 var _value_labels: Array[Label] = []
 var _built: bool = false
@@ -25,6 +27,7 @@ var _apply_count: int = 0
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	set_process(false)
 	set_physics_process(false)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -72,7 +75,7 @@ func apply_scale(scale_factor: float) -> void:
 	if not _built or _atlas == null:
 		return
 	var meta: Dictionary = _atlas.get_region_metadata("resource_rock")
-	var pad: float = float(meta.get("pad", 10.0))
+	var pad: float = float(meta.get("pad", D2Tokens.ATLAS_SHADOW_PAD))
 	var rw: float = float(meta.get("w", 104.0))
 	var rh: float = float(meta.get("h", 62.0))
 	var s: float = _scale_factor
@@ -85,11 +88,11 @@ func apply_scale(scale_factor: float) -> void:
 		var rx: float = x0 + float(i) * (D2Tokens.ROCK_CONTENT_SIZE.x + D2Tokens.ROCK_GAP_X) * s
 		var ry: float = y0 + D2Tokens.ROCK_OFFSETS_Y[i] * s
 
-		var slab: TextureRect = _slabs[i]
+		var slab: D2PolygonalSlab = _slabs[i]
 		var slab_sz := Vector2(rw * s, rh * s)
 		slab.position = Vector2(rx - pad * s, ry - pad * s)
-		slab.custom_minimum_size = slab_sz
-		slab.size = slab_sz
+		slab.configure_polygon(D2Tokens.POLYGON_RESOURCE_ROCK, D2Tokens.ROCK_CONTENT_SIZE, pad)
+		slab.set_scaled_size(slab_sz)
 
 		var icon: TextureRect = _icons[i]
 		icon.position = Vector2(rx + D2Tokens.ROCK_ICON_OFFSET.x * s, ry + D2Tokens.ROCK_ICON_OFFSET.y * s)
@@ -144,6 +147,16 @@ func is_bound_to_inventory(inventory: SettlementInventory) -> bool:
 	return _inventory != null and _inventory == inventory and _inventory.inventory_changed.is_connected(_on_inventory_changed)
 
 
+func get_slab(index: int) -> D2PolygonalSlab:
+	if index < 0 or index >= _slabs.size():
+		return null
+	return _slabs[index]
+
+
+func get_slabs() -> Array[D2PolygonalSlab]:
+	return _slabs.duplicate()
+
+
 func get_content_bounds() -> Rect2:
 	var s: float = _scale_factor
 	var x0: float = D2Tokens.ROCK_ORIGIN.x * s
@@ -172,14 +185,14 @@ func _build_nodes() -> void:
 	_icons.clear()
 	_value_labels.clear()
 	var rock_tex: AtlasTexture = _atlas.get_region_texture("resource_rock") if _atlas != null else null
+	var meta: Dictionary = _atlas.get_region_metadata("resource_rock") if _atlas != null else {}
+	var pad: float = float(meta.get("pad", D2Tokens.ATLAS_SHADOW_PAD))
 	for i: int in range(3):
 		var res_name: String = String(RESOURCE_ORDER[i])
-		var slab := TextureRect.new()
+		var slab := D2PolygonalSlab.new()
 		slab.name = "RockSlab_%s" % res_name
 		slab.texture = rock_tex
-		slab.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		slab.stretch_mode = TextureRect.STRETCH_SCALE
-		slab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slab.configure_polygon(D2Tokens.POLYGON_RESOURCE_ROCK, D2Tokens.ROCK_CONTENT_SIZE, pad)
 		add_child(slab)
 		_slabs.append(slab)
 

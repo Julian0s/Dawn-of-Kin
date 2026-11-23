@@ -1,8 +1,10 @@
 class_name D2HudRoot
 extends Control
-## Lightweight root compositor for Dawn of Kin D2.2 HUD (UI-1.1A visual foundation).
-## Owns D2AtlasLibrary, D2ThemeFactory, responsive scaling, D2ResourceRocksView, and D2TopPlaqueView.
-## Never holds economic authority, never polls per frame, and never alters pause/camera/Esc in UI-1.1A.
+## Lightweight root compositor for Dawn of Kin D2.2 HUD (UI-1.1A + UI-1.1B).
+## Owns D2AtlasLibrary, D2ThemeFactory, responsive scaling, D2ResourceRocksView,
+## D2TopPlaqueView, D2SimulationPauseController (PROCESS_MODE_ALWAYS), and
+## D2UiEscapeRouter (pass-through in UI-1.1B).
+## Never holds economic authority and never polls per frame.
 
 signal layout_updated(scale_factor: float)
 
@@ -10,13 +12,24 @@ var _atlas: D2AtlasLibrary = D2AtlasLibrary.new()
 var _theme_factory: D2ThemeFactory = D2ThemeFactory.new()
 var _rocks_view: D2ResourceRocksView = null
 var _plaque_view: D2TopPlaqueView = null
+var _pause_controller: D2SimulationPauseController = null
+var _escape_router: D2UiEscapeRouter = null
 
 var _bound_viewport: Viewport = null
 var _current_scale: float = D2Tokens.SCALE_1080P
 var _built: bool = false
 
 
+func _init() -> void:
+	# Must be ALWAYS so Godot's Viewport::_gui_find_control_at_pos() traverses down to
+	# D2TopPlaqueView (PROCESS_MODE_ALWAYS) during SceneTree pause.
+	# D2HudRoot itself does zero processing (set_process(false), MOUSE_FILTER_IGNORE),
+	# while D2ResourceRocksView stays explicitly PROCESS_MODE_PAUSABLE.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process(false)
 	set_physics_process(false)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -33,22 +46,31 @@ func _exit_tree() -> void:
 func configure(
 	settlement_inventory: SettlementInventory,
 	camp_storage_zone: CampStorageZone = null,
-	ground_pile_manager: GroundPileManager = null
+	ground_pile_manager: GroundPileManager = null,
+	camera_rig: RtsCameraRig = null,
+	economy_clock: EconomyClockController = null
 ) -> void:
 	_ensure_built()
+	if _pause_controller != null:
+		_pause_controller.configure(camera_rig, economy_clock)
 	if _rocks_view != null:
 		_rocks_view.configure(settlement_inventory, camp_storage_zone, ground_pile_manager)
 	if _plaque_view != null:
 		_plaque_view.configure(settlement_inventory, camp_storage_zone, ground_pile_manager)
+		_plaque_view.bind_pause_controller(_pause_controller)
 	_update_responsive_layout()
 
 
 func unbind() -> void:
 	_unbind_viewport_resize()
-	if _rocks_view != null:
+	if _rocks_view != null and is_instance_valid(_rocks_view):
 		_rocks_view.unbind()
-	if _plaque_view != null:
+	if _plaque_view != null and is_instance_valid(_plaque_view):
 		_plaque_view.unbind()
+	if _pause_controller != null and is_instance_valid(_pause_controller):
+		_pause_controller.unbind()
+	if _escape_router != null and is_instance_valid(_escape_router):
+		_escape_router.clear_handlers()
 
 
 func refresh_all() -> void:
@@ -56,6 +78,8 @@ func refresh_all() -> void:
 		_rocks_view.refresh()
 	if _plaque_view != null:
 		_plaque_view.refresh()
+	if _pause_controller != null:
+		_pause_controller.sync_external_state()
 
 
 func get_atlas_library() -> D2AtlasLibrary:
@@ -72,6 +96,14 @@ func get_resource_rocks_view() -> D2ResourceRocksView:
 
 func get_top_plaque_view() -> D2TopPlaqueView:
 	return _plaque_view
+
+
+func get_pause_controller() -> D2SimulationPauseController:
+	return _pause_controller
+
+
+func get_escape_router() -> D2UiEscapeRouter:
+	return _escape_router
 
 
 func get_current_scale() -> float:
@@ -92,6 +124,14 @@ func _ensure_built() -> void:
 	_atlas.load_all()
 	theme = _theme_factory.build_theme()
 
+	_pause_controller = D2SimulationPauseController.new()
+	_pause_controller.name = "D2SimulationPauseController"
+	add_child(_pause_controller)
+
+	_escape_router = D2UiEscapeRouter.new()
+	_escape_router.name = "D2UiEscapeRouter"
+	add_child(_escape_router)
+
 	_rocks_view = D2ResourceRocksView.new()
 	_rocks_view.name = "D2ResourceRocksView"
 	add_child(_rocks_view)
@@ -105,6 +145,7 @@ func _ensure_built() -> void:
 	_current_scale = D2ScaleController.compute_scale_for_viewport(vp)
 	_rocks_view.setup_visuals(_atlas, _theme_factory, _current_scale)
 	_plaque_view.setup_visuals(_atlas, _theme_factory, vp_size, _current_scale)
+	_plaque_view.bind_pause_controller(_pause_controller)
 
 
 func _bind_viewport_resize() -> void:

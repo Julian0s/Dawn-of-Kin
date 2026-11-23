@@ -30,11 +30,16 @@ func _wait_nav_ready(main_root: MainScene) -> void:
 	await wait_physics_frames(2)
 
 
-func _assert_all_controls_mouse_ignore(node: Control) -> void:
-	assert_eq(node.mouse_filter, Control.MOUSE_FILTER_IGNORE, "UI-1.1A node must remain MOUSE_FILTER_IGNORE: %s" % node.name)
+func _assert_ui_1_1b_mouse_filter_contract(node: Control) -> void:
+	if node is D2PolygonalSlab or node is D2SlabButton:
+		assert_eq(node.mouse_filter, Control.MOUSE_FILTER_STOP, "Solid slab/button must use MOUSE_FILTER_STOP: %s" % node.name)
+		assert_false(node.mouse_force_pass_scroll_events, "Solid slab/button must block scroll pass-through: %s" % node.name)
+		assert_eq(node.focus_mode, Control.FOCUS_NONE, "Solid slab/button must use FOCUS_NONE: %s" % node.name)
+	else:
+		assert_eq(node.mouse_filter, Control.MOUSE_FILTER_IGNORE, "Containers, icons, labels, and inert slots must remain MOUSE_FILTER_IGNORE: %s" % node.name)
 	for child: Node in node.get_children():
 		if child is Control:
-			_assert_all_controls_mouse_ignore(child as Control)
+			_assert_ui_1_1b_mouse_filter_contract(child as Control)
 
 
 func test_legacy_mode_default_is_completely_intact() -> void:
@@ -89,9 +94,9 @@ func test_dual_mode_hides_duplicate_stockpile_and_preserves_non_migrated_ui() ->
 	assert_not_null(main_root.get_node_or_null("UiLayer/ConstructionHud"), "ConstructionHud must remain available")
 	assert_not_null(main_root.get_node_or_null("UiLayer/BuildingInspectorPanel"), "BuildingInspectorPanel must remain available")
 
-	# Safeguard 2: all UI-1.1A controls strictly non-interactive
-	_assert_all_controls_mouse_ignore(d2)
-	assert_false(d2.get_top_plaque_view().has_interactive_buttons(), "Top plaque must have zero interactive buttons in UI-1.1A")
+	# Safeguard 2 (updated for UI-1.1B): polygonal slabs + ||/1x use STOP; containers/labels/icons/2x/4x/Menu remain IGNORE
+	_assert_ui_1_1b_mouse_filter_contract(d2)
+	assert_true(d2.get_top_plaque_view().has_inert_unimplemented_controls(), "Top plaque must keep 2x, 4x, and Menu strictly inert in UI-1.1B")
 
 	# Safeguard 3: external pause & time_scale untouched
 	assert_false(get_tree().paused)

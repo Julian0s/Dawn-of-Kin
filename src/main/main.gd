@@ -99,7 +99,13 @@ func _setup_d2_hud() -> void:
 	_d2_hud_root = D2HudRoot.new()
 	_d2_hud_root.name = "D2HudRoot"
 	ui_layer.add_child(_d2_hud_root)
-	_d2_hud_root.configure(_settlement_inventory, _camp_storage_zone, _ground_pile_manager)
+	_d2_hud_root.configure(
+		_settlement_inventory,
+		_camp_storage_zone,
+		_ground_pile_manager,
+		_camera_rig,
+		_economy_clock
+	)
 	if not _d2_hud_root.layout_updated.is_connected(_on_d2_layout_updated):
 		_d2_hud_root.layout_updated.connect(_on_d2_layout_updated)
 	_on_d2_layout_updated(_d2_hud_root.get_current_scale())

@@ -1,27 +1,35 @@
 class_name D2TopPlaqueView
 extends Control
-## D2.2 Top-Right peaked dark kintsugi plaque displaying region identity and truthful
-## storage exposure status.
-## Safeguard 2 (UI-1.1A): time slots (||, 1x, 2x, 4x) and Menu indicator are strictly
-## inert visual placeholders (MOUSE_FILTER_IGNORE, muted disabled styling, zero callbacks).
-## Zero invented seasons, calendar dates, or simulated speeds.
+## D2.2 Top-Right peaked dark kintsugi plaque displaying region identity, truthful
+## storage exposure status, and real pause/resume controls (|| and 1x in UI-1.1B).
+##
+## Rules enforced in UI-1.1B:
+## - process_mode = PROCESS_MODE_ALWAYS so || and 1x remain responsive during SceneTree pause.
+## - Solid stone body uses D2PolygonalSlab (_has_point + Geometry2D.is_point_in_polygon).
+## - Only || (pause) and 1x (resume HUD pause) are active D2SlabButton controls.
+## - 2x, 4x, and · ☰ MENU remain strictly disabled/inert (zero BaseButton, zero callbacks).
+## - When an external pause is active, 1x is disabled and never claims authority to clear it.
+## - Zero invented seasons, calendar dates, or simulated speed multipliers.
 
 const REGION_TITLE: String = "CLAREIRA INICIAL"
 const STAGE_SUBTITLE: String = "Acampamento"
-const INERT_TIME_LABELS: Array[String] = ["||", "1×", "2×", "4×"]
-const INERT_TIME_WIDTHS: Array[float] = [22.0, 28.0, 26.0, 26.0]
+const TIME_LABELS: Array[String] = ["||", "1×", "2×", "4×"]
+const TIME_WIDTHS: Array[float] = [22.0, 28.0, 26.0, 26.0]
 
 var _atlas: D2AtlasLibrary = null
 var _theme_factory: D2ThemeFactory = null
 var _inventory: SettlementInventory = null
 var _camp_zone: CampStorageZone = null
 var _pile_manager: GroundPileManager = null
+var _pause_controller: D2SimulationPauseController = null
 
-var _slab: TextureRect = null
+var _slab: D2PolygonalSlab = null
 var _region_label: Label = null
 var _stage_label: Label = null
-var _time_boxes: Array[Panel] = []
-var _time_labels: Array[Label] = []
+var _pause_button: D2SlabButton = null
+var _resume_button: D2SlabButton = null
+var _inert_time_boxes: Array[Panel] = []
+var _inert_time_labels: Array[Label] = []
 var _exposure_label: Label = null
 var _menu_inert_label: Label = null
 
@@ -34,7 +42,12 @@ var _has_rendered: bool = false
 var _apply_count: int = 0
 
 
+func _init() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process(false)
 	set_physics_process(false)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -59,6 +72,7 @@ func setup_visuals(
 		_build_nodes()
 	apply_layout(_viewport_size, _scale_factor)
 	refresh()
+	_refresh_pause_controls()
 
 
 func configure(
@@ -76,11 +90,22 @@ func configure(
 	refresh()
 
 
+func bind_pause_controller(pause_controller: D2SimulationPauseController) -> void:
+	if _pause_controller != pause_controller:
+		_disconnect_pause_controller()
+		_pause_controller = pause_controller
+		if _pause_controller != null and not _pause_controller.pause_state_changed.is_connected(_on_pause_state_changed):
+			_pause_controller.pause_state_changed.connect(_on_pause_state_changed)
+	_refresh_pause_controls()
+
+
 func unbind() -> void:
 	_disconnect_inventory()
+	_disconnect_pause_controller()
 	_inventory = null
 	_camp_zone = null
 	_pile_manager = null
+	_pause_controller = null
 
 
 func apply_layout(viewport_size: Vector2, scale_factor: float) -> void:
@@ -90,7 +115,7 @@ func apply_layout(viewport_size: Vector2, scale_factor: float) -> void:
 		return
 	var s: float = _scale_factor
 	var meta: Dictionary = _atlas.get_region_metadata("top_plaque")
-	var pad: float = float(meta.get("pad", 10.0))
+	var pad: float = float(meta.get("pad", D2Tokens.ATLAS_SHADOW_PAD))
 	var rw: float = float(meta.get("w", 216.0))
 	var rh: float = float(meta.get("h", 130.0))
 	var pw: float = D2Tokens.PLAQUE_CONTENT_SIZE.x * s
@@ -103,8 +128,8 @@ func apply_layout(viewport_size: Vector2, scale_factor: float) -> void:
 
 	var slab_sz := Vector2(rw * s, rh * s)
 	_slab.position = Vector2(px - pad * s, py - pad * s)
-	_slab.custom_minimum_size = slab_sz
-	_slab.size = slab_sz
+	_slab.configure_polygon(D2Tokens.POLYGON_TOP_PLAQUE, D2Tokens.PLAQUE_CONTENT_SIZE, pad)
+	_slab.set_scaled_size(slab_sz)
 
 	_region_label.position = Vector2(px + 10.0 * s, py + 11.0 * s)
 	_region_label.size = Vector2(pw - 20.0 * s, 14.0 * s)
@@ -121,17 +146,34 @@ func apply_layout(viewport_size: Vector2, scale_factor: float) -> void:
 	var total_w: float = (22.0 + 28.0 + 26.0 + 26.0 + 15.0) * s
 	var sx: float = px + (pw - total_w) * 0.5
 	var sy: float = py + 55.0 * s
+	var bh: float = 21.0 * s
 	var slot_font_px: int = maxi(9, int(round(10.5 * s)))
-	for j: int in range(4):
-		var bw: float = INERT_TIME_WIDTHS[j] * s
-		var bh: float = 21.0 * s
-		_time_boxes[j].position = Vector2(sx, sy)
-		_time_boxes[j].size = Vector2(bw, bh)
-		_time_labels[j].position = Vector2(sx, sy)
-		_time_labels[j].size = Vector2(bw, bh)
-		_time_labels[j].add_theme_font_size_override(&"font_size", slot_font_px)
+
+	# Slot 0: || (active D2SlabButton)
+	var bw0: float = TIME_WIDTHS[0] * s
+	_pause_button.position = Vector2(sx, sy)
+	_pause_button.set_scaled_size(Vector2(bw0, bh))
+	_pause_button.apply_typography(sans_reg, sans_bold, slot_font_px)
+	sx += bw0 + 5.0 * s
+
+	# Slot 1: 1x (active D2SlabButton)
+	var bw1: float = TIME_WIDTHS[1] * s
+	_resume_button.position = Vector2(sx, sy)
+	_resume_button.set_scaled_size(Vector2(bw1, bh))
+	_resume_button.apply_typography(sans_reg, sans_bold, slot_font_px)
+	sx += bw1 + 5.0 * s
+
+	# Slots 2 (2x) and 3 (4x): strictly inert disabled panels
+	for idx: int in range(2):
+		var slot_idx: int = idx + 2
+		var bw: float = TIME_WIDTHS[slot_idx] * s
+		_inert_time_boxes[idx].position = Vector2(sx, sy)
+		_inert_time_boxes[idx].size = Vector2(bw, bh)
+		_inert_time_labels[idx].position = Vector2(sx, sy)
+		_inert_time_labels[idx].size = Vector2(bw, bh)
+		_inert_time_labels[idx].add_theme_font_size_override(&"font_size", slot_font_px)
 		if sans_reg != null:
-			_time_labels[j].add_theme_font_override(&"font", sans_reg)
+			_inert_time_labels[idx].add_theme_font_override(&"font", sans_reg)
 		sx += bw + 5.0 * s
 
 	var footer_y: float = py + 82.0 * s
@@ -188,8 +230,40 @@ func get_apply_count() -> int:
 	return _apply_count
 
 
+func get_slab() -> D2PolygonalSlab:
+	return _slab
+
+
+func get_pause_button() -> D2SlabButton:
+	return _pause_button
+
+
+func get_resume_button() -> D2SlabButton:
+	return _resume_button
+
+
+func get_interactive_button_count() -> int:
+	return _count_button_descendants(self)
+
+
 func has_interactive_buttons() -> bool:
-	return _has_button_descendant(self)
+	return _count_button_descendants(self) > 0
+
+
+func has_inert_unimplemented_controls() -> bool:
+	if not _built:
+		return false
+	if _inert_time_boxes.size() != 2 or _inert_time_labels.size() != 2:
+		return false
+	for box: Panel in _inert_time_boxes:
+		if box.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			return false
+	for lbl: Label in _inert_time_labels:
+		if lbl.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			return false
+	if _menu_inert_label == null or _menu_inert_label.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+		return false
+	return get_interactive_button_count() == 2
 
 
 func get_content_bounds() -> Rect2:
@@ -207,15 +281,16 @@ func is_bound_to_inventory(inventory: SettlementInventory) -> bool:
 
 func _build_nodes() -> void:
 	_built = true
-	_time_boxes.clear()
-	_time_labels.clear()
+	_inert_time_boxes.clear()
+	_inert_time_labels.clear()
 
-	_slab = TextureRect.new()
+	var meta: Dictionary = _atlas.get_region_metadata("top_plaque") if _atlas != null else {}
+	var pad: float = float(meta.get("pad", D2Tokens.ATLAS_SHADOW_PAD))
+
+	_slab = D2PolygonalSlab.new()
 	_slab.name = "TopPlaqueSlab"
 	_slab.texture = _atlas.get_region_texture("top_plaque") if _atlas != null else null
-	_slab.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_slab.stretch_mode = TextureRect.STRETCH_SCALE
-	_slab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_slab.configure_polygon(D2Tokens.POLYGON_TOP_PLAQUE, D2Tokens.PLAQUE_CONTENT_SIZE, pad)
 	add_child(_slab)
 
 	_region_label = Label.new()
@@ -236,28 +311,41 @@ func _build_nodes() -> void:
 	_stage_label.add_theme_color_override(&"font_color", D2Tokens.COLOR_TEXT_PRIMARY_IVORY)
 	add_child(_stage_label)
 
+	_pause_button = D2SlabButton.new()
+	_pause_button.name = "PauseButton"
+	_pause_button.set_label_text(TIME_LABELS[0])
+	_pause_button.pressed.connect(_on_pause_button_pressed)
+	add_child(_pause_button)
+
+	_resume_button = D2SlabButton.new()
+	_resume_button.name = "Resume1xButton"
+	_resume_button.set_label_text(TIME_LABELS[1])
+	_resume_button.pressed.connect(_on_resume_button_pressed)
+	add_child(_resume_button)
+
 	var disabled_box_style := StyleBoxFlat.new()
 	disabled_box_style.bg_color = D2Tokens.COLOR_DISABLED_FILL
 	disabled_box_style.border_color = D2Tokens.COLOR_DISABLED_BORDER
 	disabled_box_style.set_border_width_all(1)
 
-	for j: int in range(4):
+	for idx: int in range(2):
+		var slot_idx: int = idx + 2
 		var box := Panel.new()
-		box.name = "InertTimeSlot_%d" % j
+		box.name = "InertTimeSlot_%d" % slot_idx
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_theme_stylebox_override(&"panel", disabled_box_style)
 		add_child(box)
-		_time_boxes.append(box)
+		_inert_time_boxes.append(box)
 
 		var lbl := Label.new()
-		lbl.name = "InertTimeLabel_%d" % j
-		lbl.text = INERT_TIME_LABELS[j]
+		lbl.name = "InertTimeLabel_%d" % slot_idx
+		lbl.text = TIME_LABELS[slot_idx]
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lbl.add_theme_color_override(&"font_color", D2Tokens.COLOR_DISABLED_TEXT)
 		add_child(lbl)
-		_time_labels.append(lbl)
+		_inert_time_labels.append(lbl)
 
 	_exposure_label = Label.new()
 	_exposure_label.name = "ExposureLabel"
@@ -278,6 +366,57 @@ func _build_nodes() -> void:
 	add_child(_menu_inert_label)
 
 
+func _refresh_pause_controls() -> void:
+	if not _built or _pause_button == null or _resume_button == null:
+		return
+	var any_paused: bool = false
+	var hud_paused: bool = false
+	var ext_paused: bool = false
+	if _pause_controller != null and is_instance_valid(_pause_controller):
+		any_paused = _pause_controller.is_paused()
+		hud_paused = _pause_controller.is_hud_paused()
+		ext_paused = _pause_controller.is_externally_paused()
+
+	if ext_paused:
+		# External pause active: 1x MUST NOT appear authorized to clear external pause.
+		_pause_button.set_interactive_enabled(true)
+		_pause_button.set_active_state(hud_paused)
+		_pause_button.set_external_pause_indicator(not hud_paused)
+		_resume_button.set_interactive_enabled(false)
+		_resume_button.set_active_state(false)
+		_resume_button.set_external_pause_indicator(false)
+	elif any_paused:
+		# HUD-owned pause active: || highlighted gold, 1x enabled to resume.
+		_pause_button.set_interactive_enabled(true)
+		_pause_button.set_active_state(true)
+		_pause_button.set_external_pause_indicator(false)
+		_resume_button.set_interactive_enabled(true)
+		_resume_button.set_active_state(false)
+		_resume_button.set_external_pause_indicator(false)
+	else:
+		# Normal running simulation: 1x highlighted gold (canonical D2.2 state), || enabled.
+		_pause_button.set_interactive_enabled(true)
+		_pause_button.set_active_state(false)
+		_pause_button.set_external_pause_indicator(false)
+		_resume_button.set_interactive_enabled(true)
+		_resume_button.set_active_state(true)
+		_resume_button.set_external_pause_indicator(false)
+
+
+func _on_pause_button_pressed() -> void:
+	if _pause_controller != null and is_instance_valid(_pause_controller):
+		_pause_controller.request_pause(D2SimulationPauseController.REASON_HUD_PAUSE)
+
+
+func _on_resume_button_pressed() -> void:
+	if _pause_controller != null and is_instance_valid(_pause_controller):
+		_pause_controller.release_pause(D2SimulationPauseController.REASON_HUD_PAUSE)
+
+
+func _on_pause_state_changed(_is_any_paused: bool, _is_hud_paused: bool, _is_externally_paused: bool) -> void:
+	_refresh_pause_controls()
+
+
 func _on_inventory_changed() -> void:
 	refresh()
 
@@ -287,10 +426,16 @@ func _disconnect_inventory() -> void:
 		_inventory.inventory_changed.disconnect(_on_inventory_changed)
 
 
-static func _has_button_descendant(node: Node) -> bool:
+func _disconnect_pause_controller() -> void:
+	if _pause_controller != null and is_instance_valid(_pause_controller):
+		if _pause_controller.pause_state_changed.is_connected(_on_pause_state_changed):
+			_pause_controller.pause_state_changed.disconnect(_on_pause_state_changed)
+
+
+static func _count_button_descendants(node: Node) -> int:
+	var count: int = 0
 	for child: Node in node.get_children():
 		if child is BaseButton:
-			return true
-		if _has_button_descendant(child):
-			return true
-	return false
+			count += 1
+		count += _count_button_descendants(child)
+	return count

@@ -42,6 +42,7 @@ var _pending_drag_pixels: Vector2 = Vector2.ZERO
 var _window_has_focus: bool = false
 var _mouse_inside_window: bool = false
 var _last_mouse_pos: Vector2 = -Vector2.ONE
+var _input_locked: bool = false
 
 
 func _ready() -> void:
@@ -76,9 +77,18 @@ func _notification(what: int) -> void:
 func _input(event: InputEvent) -> void:
 	if _is_dragging and event.is_action_released(InputActions.CAMERA_DRAG):
 		_is_dragging = false
+	if event is InputEventMouseMotion:
+		var motion: InputEventMouseMotion = event as InputEventMouseMotion
+		_last_mouse_pos = motion.position
+		var viewport: Viewport = get_viewport()
+		if viewport != null and viewport.get_visible_rect().has_point(motion.position):
+			_mouse_inside_window = true
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _input_locked:
+		return
+
 	var viewport: Viewport = get_viewport()
 
 	if event.is_action_pressed(InputActions.CAMERA_ZOOM_IN):
@@ -121,10 +131,37 @@ func _process(_delta: float) -> void:
 
 
 func step_camera(real_delta: float) -> void:
+	if _input_locked:
+		_clear_transient_input_state()
+		return
 	_update_zoom(real_delta)
 	_apply_pending_drag()
 	_update_pan(real_delta)
 	_apply_rig_transforms()
+
+
+func set_input_locked(locked: bool) -> void:
+	if _input_locked == locked:
+		if locked:
+			_clear_transient_input_state()
+			_target_distance = _current_distance
+		return
+	_input_locked = locked
+	_clear_transient_input_state()
+	if locked:
+		_target_distance = _current_distance
+	else:
+		_last_tick_usec = Time.get_ticks_usec()
+
+
+func is_input_locked() -> bool:
+	return _input_locked
+
+
+func _clear_transient_input_state() -> void:
+	_pan_velocity_xz = Vector2.ZERO
+	_is_dragging = false
+	_pending_drag_pixels = Vector2.ZERO
 
 
 func set_map_bounds(bounds: Rect2) -> void:
@@ -244,6 +281,9 @@ func _update_pan(real_delta: float) -> void:
 
 
 func _collect_pan_direction() -> Vector2:
+	if _input_locked:
+		return Vector2.ZERO
+
 	var dir: Vector2 = Input.get_vector(
 		InputActions.CAMERA_PAN_LEFT,
 		InputActions.CAMERA_PAN_RIGHT,
@@ -253,7 +293,7 @@ func _collect_pan_direction() -> Vector2:
 
 	if edge_pan_enabled and not _is_dragging and _window_has_focus and _mouse_inside_window:
 		var viewport: Viewport = get_viewport()
-		if viewport != null:
+		if viewport != null and not _is_pointer_over_blocking_gui(viewport):
 			var scale_factor: float = 1.0
 			var win: Window = viewport.get_window()
 			if win != null and win.size.y > 64:
@@ -270,6 +310,17 @@ func _collect_pan_direction() -> Vector2:
 	if dir.length_squared() > 1.0:
 		dir = dir.normalized()
 	return dir
+
+
+func _is_pointer_over_blocking_gui(viewport: Viewport) -> bool:
+	if viewport == null:
+		return false
+	var hovered: Control = viewport.gui_get_hovered_control()
+	if hovered == null or not is_instance_valid(hovered):
+		return false
+	if not hovered.is_visible_in_tree():
+		return false
+	return hovered.mouse_filter != Control.MOUSE_FILTER_IGNORE
 
 
 func _apply_rig_transforms() -> void:

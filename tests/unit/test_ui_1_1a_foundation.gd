@@ -90,8 +90,9 @@ func test_rocks_and_plaque_signal_sync_idempotence_and_no_polling() -> void:
 	assert_eq(plaque.get_exposure_tone(), HudFormatter.ExposureTone.EXPOSED_ACTIVE, "Plaque exposure must reflect active decaying resources")
 	assert_eq(plaque.get_exposure_text(), "● EXPOSTO")
 
-	# Safeguard 2: zero interactive buttons and zero invented seasons/calendar
-	assert_false(plaque.has_interactive_buttons(), "UI-1.1A plaque must not instantiate interactive buttons")
+	# Safeguard 2 (updated for UI-1.1B): only || and 1x are active buttons; 2x, 4x, Menu remain inert; zero invented seasons/calendar
+	assert_eq(plaque.get_interactive_button_count(), 2, "Top plaque must instantiate only || and 1x interactive buttons in UI-1.1B")
+	assert_true(plaque.has_inert_unimplemented_controls(), "2x, 4x, and Menu controls must remain strictly inert in UI-1.1B")
 	assert_eq(plaque.get_stage_subtitle_text(), "Acampamento")
 	assert_false(plaque.get_stage_subtitle_text().contains("Primavera"), "Plaque must not display unimplemented seasons")
 	assert_false(plaque.get_stage_subtitle_text().contains("Ano"), "Plaque must not display unimplemented calendar years")

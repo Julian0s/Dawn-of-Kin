@@ -32,6 +32,63 @@ const COLOR_DISABLED_FILL: Color = Color(0.0, 0.0, 0.0, 0.14)
 const COLOR_DISABLED_BORDER: Color = Color(0.55, 0.51, 0.44, 0.25)
 const COLOR_DISABLED_TEXT: Color = Color(0.58, 0.56, 0.50, 0.62)
 
+# --- Interactive Plaque Time Controls (matches ui0_r2_2_d2_faithful_showcase.gd) ---
+const COLOR_TIME_BTN_NORMAL_FILL: Color = Color(0.0, 0.0, 0.0, 0.18)
+const COLOR_TIME_BTN_NORMAL_BORDER: Color = Color(0.875, 0.737, 0.447, 0.35)
+const COLOR_TIME_BTN_HOVER_FILL: Color = Color(0.875, 0.737, 0.447, 0.16)
+const COLOR_TIME_BTN_HOVER_BORDER: Color = Color(0.961, 0.851, 0.588, 0.78)
+const COLOR_TIME_BTN_ACTIVE_FILL: Color = Color(0.875, 0.737, 0.447, 0.28)
+const COLOR_TIME_BTN_ACTIVE_BORDER: Color = Color(0.875, 0.737, 0.447, 1.0)
+const COLOR_TIME_BTN_PRESSED_FILL: Color = Color(0.875, 0.737, 0.447, 0.38)
+const COLOR_TIME_BTN_EXTERNAL_PAUSE_FILL: Color = Color(0.918, 0.706, 0.392, 0.16)
+const COLOR_TIME_BTN_EXTERNAL_PAUSE_BORDER: Color = Color(0.918, 0.706, 0.392, 0.55)
+
+# --- Canonical D2.2 Shadow Pad & Polygonal Silhouettes (content-space coordinates) ---
+const ATLAS_SHADOW_PAD: float = 10.0
+
+const POLYGON_RESOURCE_ROCK: Array[Vector2] = [
+	Vector2(6.0, 0.0),
+	Vector2(84.0, 3.0),
+	Vector2(79.0, 42.0),
+	Vector2(0.0, 38.0),
+]
+
+const POLYGON_TOP_PLAQUE: Array[Vector2] = [
+	Vector2(0.0, 4.0),
+	Vector2(98.0, 0.0),
+	Vector2(196.0, 4.0),
+	Vector2(190.0, 110.0),
+	Vector2(6.0, 106.0),
+]
+
+const POLYGON_FOUNDER_STELE: Array[Vector2] = [
+	Vector2(6.0, 6.0),
+	Vector2(108.0, 0.0),
+	Vector2(104.0, 136.0),
+	Vector2(0.0, 133.28),
+]
+
+const POLYGON_FOUNDER_STELE_RAISED: Array[Vector2] = [
+	Vector2(6.0, 6.0),
+	Vector2(108.0, 0.0),
+	Vector2(104.0, 154.0),
+	Vector2(0.0, 150.92),
+]
+
+const POLYGON_SLAB_MAQUETES: Array[Vector2] = [
+	Vector2(8.0, 0.0),
+	Vector2(176.0, 4.0),
+	Vector2(170.0, 72.0),
+	Vector2(0.0, 69.0),
+]
+
+const POLYGON_SLAB_CMD_BASALT: Array[Vector2] = [
+	Vector2(8.0, 0.0),
+	Vector2(146.0, 4.0),
+	Vector2(140.0, 72.0),
+	Vector2(0.0, 69.0),
+]
+
 # --- Canonical D2.2 Dimensions (1080p baseline, logical px) ---
 const ROCK_CONTENT_SIZE: Vector2 = Vector2(84.0, 42.0)
 const ROCK_GAP_X: float = 10.0
