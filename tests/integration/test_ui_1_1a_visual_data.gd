@@ -89,18 +89,22 @@ func test_dual_mode_hides_duplicate_stockpile_and_preserves_non_migrated_ui() ->
 	assert_false(legacy_stockpile.is_bound_to_inventory(main_root.get_settlement_inventory()), "Hidden legacy stockpile must be unbound")
 	assert_false(main_root.get_resource_hud().is_bound_to_selection_manager(main_root.get_selection_manager()), "Hidden legacy ResourceHud must not hold duplicate selection listener")
 
-	# Non-migrated functional UIs stay operational; migrated D2.2 blade replaces SelectedUnitPanel
+	# Non-migrated functional UIs stay operational; migrated D2.2 views replace SelectedUnitPanel & ConstructionHud
 	var leader: Unit = main_root.get_units()[0]
 	main_root.get_selection_manager().select_single(leader)
 	await wait_process_frames(1)
 	assert_false(legacy_unit_panel.is_visible_in_tree(), "Migrated SelectedUnitPanel must stay hidden in D2.2 mode (UI-1.2)")
 	assert_true(d2.get_lineage_blade_view().visible, "D2LineageBladeView must replace SelectedUnitPanel in D2.2 mode")
-	assert_not_null(main_root.get_node_or_null("UiLayer/ConstructionHud"), "ConstructionHud must remain available")
-	assert_not_null(main_root.get_node_or_null("UiLayer/BuildingInspectorPanel"), "BuildingInspectorPanel must remain available")
+	assert_null(main_root.get_node_or_null("UiLayer/ConstructionHud"), "Migrated ConstructionHud must not exist in D2.2 mode (UI-1.3)")
+	assert_not_null(d2.get_action_slabs_view(), "D2ActionSlabsView must replace ConstructionHud toggle in D2.2 mode")
+	assert_not_null(d2.get_construction_dock_view(), "D2ConstructionDockView must replace ConstructionHud catalog in D2.2 mode")
+	assert_not_null(d2.get_placement_status_bar(), "D2PlacementStatusBar must exist in D2.2 mode")
+	assert_not_null(main_root.get_node_or_null("UiLayer/BuildingInspectorPanel"), "BuildingInspectorPanel must remain available until UI-1.4")
 
-	# Safeguard 2 (updated for UI-1.1B): polygonal slabs + ||/1x use STOP; containers/labels/icons/2x/4x/Menu remain IGNORE
+	# Safeguard 2 (updated for UI-1.1B/1.3): polygonal slabs + active buttons use STOP; containers/labels/icons/inert slots remain IGNORE
 	_assert_ui_1_1b_mouse_filter_contract(d2)
-	assert_true(d2.get_top_plaque_view().has_inert_unimplemented_controls(), "Top plaque must keep 2x, 4x, and Menu strictly inert in UI-1.1B")
+	assert_true(d2.get_top_plaque_view().has_inert_unimplemented_controls(), "Top plaque must keep 2x, 4x, and Menu strictly inert")
+	assert_true(d2.get_action_slabs_view().has_inert_unimplemented_controls(), "Action slabs must keep Tarefas [T] and Linhagem [H] strictly inert in UI-1.3")
 
 	# Safeguard 3: external pause & time_scale untouched
 	assert_false(get_tree().paused)

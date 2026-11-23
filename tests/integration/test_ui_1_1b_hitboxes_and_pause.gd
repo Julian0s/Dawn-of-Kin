@@ -597,28 +597,29 @@ func test_05_escape_router_passthrough_and_legacy_mode_intact() -> void:
 
 	var d2: D2HudRoot = main_root.get_d2_hud_root()
 	var router: D2UiEscapeRouter = d2.get_escape_router()
+	var dock: D2ConstructionDockView = d2.get_construction_dock_view()
 	var sel: SelectionManager = main_root.get_selection_manager()
 	var input_ctrl: RtsInputController = main_root.get_input_controller()
 	var placement: PlacementController = main_root.get_placement_controller()
-	var construction_hud: ConstructionHud = main_root.get_node("UiLayer/ConstructionHud") as ConstructionHud
 	var leader: Unit = main_root.get_units()[0]
 
 	assert_not_null(router)
-	assert_true(router.is_pass_through_mode(), "UI-1.1B Escape router must operate strictly in pass-through mode")
+	assert_null(main_root.get_node_or_null("UiLayer/ConstructionHud"), "Legacy ConstructionHud must not exist in D2.2 mode (UI-1.3)")
+	assert_eq(router.get_registered_handler_ids(), [D2HudRoot.ESC_HANDLER_MAQUETTES, D2HudRoot.ESC_HANDLER_PLACEMENT], "UI-1.3 must register strictly Maquettes (30) and Placement (40) handlers")
 
-	# 1. ConstructionHud catalog open -> Esc closes ONLY catalog (does NOT clear unit selection!)
+	# 1. D2ConstructionDockView open -> Esc closes ONLY dock via PRIORITY_MAQUETTES (does NOT clear unit selection!)
 	sel.select_single(leader)
-	var catalog: Control = construction_hud.get_node("Catalog") as Control
-	catalog.visible = true
+	dock.set_dock_open(true)
+	assert_true(dock.is_dock_open())
 	await _push_escape(vp)
-	assert_false(catalog.visible, "Esc must close legacy ConstructionHud catalog via ConstructionHud._input()")
-	assert_eq(sel.get_selected_units().size(), 1, "Esc closing catalog must NOT double-cancel unit selection")
+	assert_false(dock.is_dock_open(), "Esc must close D2ConstructionDockView via PRIORITY_MAQUETTES")
+	assert_eq(sel.get_selected_units().size(), 1, "Esc closing dock must NOT double-cancel unit selection")
 
-	# 2. Placement active -> Esc cancels ONLY placement (does NOT clear unit selection!)
+	# 2. Placement active -> Esc cancels ONLY placement via PRIORITY_PLACEMENT (does NOT clear unit selection!)
 	placement.start_placement(SHELTER_DEF)
 	assert_true(placement.is_placement_active())
 	await _push_escape(vp)
-	assert_false(placement.is_placement_active(), "Esc must cancel active placement cleanly")
+	assert_false(placement.is_placement_active(), "Esc must cancel active placement cleanly via PRIORITY_PLACEMENT")
 	assert_eq(sel.get_selected_units().size(), 1, "Esc cancelling placement must NOT double-cancel unit selection")
 
 	# 3. Active box drag -> Esc cancels ONLY drag (does NOT clear existing selection!)
