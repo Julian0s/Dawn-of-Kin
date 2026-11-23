@@ -195,14 +195,14 @@ Este adendo sincroniza integralmente a série `UI-1` com o estado real verificad
 
 | Incremento | Estado Atual | Referência / Evidência |
 |---|---|---|
-| **UI-1.1A** | **`HOMOLOGADO`** | Fundação visual, assets runtime `res://assets/ui/d2/`, pedras de recursos e placa superior (ancestral de `c4a6361`). |
-| **UI-1.1B** | **`HOMOLOGADO`** | Hitboxes poligonais (`_has_point`), `D2SimulationPauseController`, trava de câmera e `D2UiEscapeRouter` pass-through (ancestral de `c4a6361`). |
-| **UI-1.2** | **`HOMOLOGADO`** | `D2FounderStelesView` no canto inferior esquerdo, `9f84d33` (ancestral de `c4a6361`). |
-| **UI-1.3 + R1 (`R-01`)** | **`HOMOLOGADO`** (23/11/2026) | `D2ActionSlabsView`, `D2ConstructionDockView`, `D2PlacementStatusBar`, integração `PlacementController`/`D2UiEscapeRouter` + 3 `.gdignore` em `docs/design/ui-0-r2*/godot_showcase/` (`fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`: `0` erros / `0` avisos em `validate.ps1`, `85/85` suítes / `592/592` testes na regressão da R1, `8/8` itens manuais aprovados em `720p` e `1080p`). `main.tscn` preserva `use_d2_2_hud = false`. |
+| **UI-1.1A** | **`HOMOLOGADO` *(não integrado à `main`)*** | Fundação visual, assets runtime `res://assets/ui/d2/`, pedras de recursos e placa superior (`a02aa97`, ancestral de `c4a6361`). |
+| **UI-1.1B** | **`HOMOLOGADO` *(não integrado à `main`)*** | Hitboxes poligonais (`_has_point`), `D2SimulationPauseController`, trava de câmera e `D2UiEscapeRouter` pass-through (`a6542ca`, ancestral de `c4a6361`). |
+| **UI-1.2** | **`HOMOLOGADO` *(não integrado à `main`)*** | `D2FounderStelesView` e estrutura inicial de `D2LineageBladeView` no canto inferior esquerdo (`9f84d33`, ancestral de `c4a6361`). |
+| **UI-1.3 + R1 (`R-01`)** | **`HOMOLOGADO` *(não integrado à `main`)*** (23/11/2026) | `D2ActionSlabsView`, `D2ConstructionDockView`, `D2PlacementStatusBar`, integração `PlacementController`/`D2UiEscapeRouter` + 3 `.gdignore` em `docs/design/ui-0-r2*/godot_showcase/` (`fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`: `0` erros / `0` avisos em `validate.ps1`, `85/85` suítes / `592/592` testes / `28.989` asserções na regressão histórica da R1, `8/8` itens manuais aprovados em `720p` e `1080p`). `main.tscn` preserva `use_d2_2_hud = false`. |
 | **UI-1.4 (`R-05A`)** | **`PLANEJADO` / `BLOQUEADO`** | Aguarda `R-02A`, `R-02B`, `R-03A`–`R-03D` e `R-04A`–`R-04C`. |
 | **Transição `R-05B` (`D-ERR-1 B`)** | **`DECIDIDO` / `PLANEJADO`** | Ativação controlada de `use_d2_2_hud = true` na `MainScene` imediatamente após homologação da `UI-1.4`. |
 | **UI-1.5 (`R-06A`)** | **`PLANEJADO` / `BLOQUEADO`** | Reposicionada **após `T3.7` e `T3.8`** (`D-ERR-2 C`) para integrar salvamento/carregamento real. |
-| **UI-1.6 (`R-06B`)** | **`PLANEJADO` / `BLOQUEADO`** | Lâmina de Linhagem + integração final da lista flutuante de tarefas (`D-11`) + convivência com debug. |
+| **UI-1.6 (`R-06B`)** | **`PLANEJADO` / `BLOQUEADO`** | Lajes `[T]` e `[H]`, integração final da lista flutuante de tarefas (`D-11`) e convivência com `DebugOverlay`. |
 | **UI-1.7 (`R-07`)** | **`PLANEJADO` / `BLOQUEADO`** | Redefinida por `D-ERR-1 B` como encerramento definitivo da HUD D2.2, retirada controlada de legados e benchmark. |
 
 ### 9.2 Reconciliação Textual da `D2PlacementStatusBar` (`UI-1.3 R1`)
@@ -213,18 +213,18 @@ Este adendo sincroniza integralmente a série `UI-1` com o estado real verificad
 ### 9.3 Roteiro Reconciliado de `UI-1.4` a `UI-1.7` (`D-ERR-1 B` e `D-ERR-2 C`)
 
 1. **`R-05A / UI-1.4` — Inspetor de Canteiro e Edifício D2.2 (`D2BuildingInspectorMonolith`):**
-   - Implementado **após `R-04A`–`R-04C`**, já alinhado integralmente ao **novo contrato de construção canônico** (`D-01`, `D-02`, `D-13`, `P-REC-1`, `P-REC-2`): exibe progresso de montagem, construtores atribuídos, prioridade e cancelamento com prévia de reembolso proporcional direto ao estoque (`50%` arredondado para baixo).
+   - Implementado **após `R-04A`–`R-04C`**, já alinhado integralmente ao **novo contrato de construção canônico** (`D-01`, `D-02`, `D-13`, `P-REC-1`, `P-REC-2`): exibe progresso de montagem, construtores atribuídos, prioridade e cancelamento com prévia de **reembolso `R2 simples` direto ao estoque (`100%` dos recursos pagos quando `p = 0`; `floor(Q_pago × (1 − p))` quando `0 < p ≤ 1`, sem multiplicador adicional `η = 0,50`, com destino prioritário depósito protegido com capacidade disponível → pilhas válidas e preservação de exposição sem rejuvenescer recursos)**.
    - **Não** expõe controles do contrato antigo aposentado em `R-04C` (complementação manual `DEC-11B`, fila de suprimento físico de obra ou recuperação física de sobras `D3-04`/`D3-07`).
    - Registra handler `priority 50` no `D2UiEscapeRouter`.
 2. **`R-05B` — Transição Autorizada da HUD D2.2 na `MainScene` (`D-ERR-1 B`):**
    - Incremento curto e dedicado que ativa **`use_d2_2_hud = true` por padrão em `main.tscn`** após homologação da `UI-1.4`.
-   - Mantém comandos ainda não implementados de `UI-1.5` (Menu/Salvar/Carregar/Configurações) e `UI-1.6` (Linhagem completa/drawer final) **honestamente indisponíveis**, sem placeholders falsos.
+   - Mantém comandos ainda não implementados de `UI-1.5` (Menu/Salvar/Carregar/Configurações) e `UI-1.6` (lajes `[T]`/`[H]` finais) **honestamente indisponíveis**, sem placeholders falsos.
    - Preserva compatibilidade com testes legados (`use_d2_2_hud = false` onde aplicável até `R-07`).
 3. **`T3.7` (Depósito Rústico) → `T3.8` (Persistência, Salvamento e Carregamento):**
    - Executadas **antes da `UI-1.5`** (`D-ERR-2 C`) para que a UI de menu já nasça conectada ao sistema real de salvamento/carregamento e ao estoque protegido real (eliminando botões simulados).
 4. **`R-06A / UI-1.5` — Menu Principal, Pausa, Configurações e Save/Load Real:**
    - Implementa `D2MainMenuMonolith` (`d2_2_menu_monolith.png`), tela de Configurações D2.2, fallback final do `D2UiEscapeRouter` (`priority 90`), protocolo de encerramento econômico seguro (`Correção D`) e integração direta com o `SaveManager` real da `T3.8`.
-5. **`R-06B / UI-1.6` — Lâmina de Linhagem, Lista de Tarefas (`D-11`) e Coexistência com Debug:**
-   - Implementa `D2LineageBladeView` (conectada à Casa Fundadora `D-03`/`D-04`/`D-05`), integração final D2.2 da lista flutuante recolhível de tarefas comunitárias (`D-11`, nascida funcionalmente em `R-03D`) e convivência definitiva sem sobreposição com o `DebugOverlay`.
+5. **`R-06B / UI-1.6` — Tarefas `[T]`, Linhagem `[H]`, Lista de Tarefas (`D-11`) e Coexistência com Debug:**
+   - Ativa as lajes `[T]` e `[H]` conectadas à Casa Fundadora (`D-04`/`D-05`/`D-10`, sem simular genealogia `T5`), realiza a integração final D2.2 da lista flutuante de tarefas comunitárias (`D-11`, nascida funcionalmente em `R-03D`) e garante convivência definitiva sem sobreposição com o `DebugOverlay`.
 6. **`R-07 / UI-1.7` — Encerramento Definitivo da HUD D2.2, Retirada de Legados e Benchmark:**
    - Redefinida por `D-ERR-1 B`: deixa de ser a primeira ativação da HUD D2.2 e passa a cobrir a **retirada controlada dos componentes legados**, revisão integral de acessibilidade/VCG (`1280×720` e `1920×1080`), verificação de tipografia aberta (`DT-03` quando aplicável) e benchmark gráfico formal (`1920×1080`, Intel UHD 620, CA).

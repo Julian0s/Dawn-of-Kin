@@ -1,15 +1,15 @@
 # DAWN OF KIN
 
 **Documento Mestre de Design (GDD Único Consolidado)**  
-**Versão Interna:** **v1.3 — Candidata Documental de Reconciliação Canônica (`R-02A`)** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)  
+**Versão Interna:** **v1.3 — Candidata Documental de Reconciliação Canônica (`R-02A R1`)** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)  
 **Data:** 23 de novembro de 2026  
-**Uso:** Documento mestre único consolidado de Game Design, atualizando a revisão `v1.2` (`R4.1`, `6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovada em `16/11/2026`) para incorporar todas as decisões canônicas posteriores (`D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B`, `D-ERR-2 C`, Design System `D2.2` e homologação `UI-1.3 R1`).  
+**Uso:** Documento mestre único consolidado de Game Design, atualizando a revisão `v1.2` (`R4.1`, `6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovada em `16/11/2026`) para incorporar todas as decisões canônicas posteriores (`D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B`, `D-ERR-2 C`, Design System `D2.2` e homologação `UI-1.3 R1`), preservando integralmente as regras aprovadas não substituídas da `v1.2`.  
 **Base Técnica Auditada:** `fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e` (`+148` commits lineares à frente da `main` em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`)  
 **Roadmap e Matriz de Rastreabilidade:** [ROADMAP_MESTRE.md](ROADMAP_MESTRE.md)  
 **Nome de Trabalho:** *Dawn of Kin* («Aurora da Linhagem»); disponibilidade comercial e registro de marca permanecem **`ABERTO`** antes da publicação.
 
-> **Governança e Status Normativo (`R-02A`):**
-> - **Status desta revisão (`v1.3`):** `CANDIDATA DOCUMENTAL R-02A` — submetida à auditoria independente do ChatGPT e à homologação expressa do proprietário antes de qualquer integração à `main`.
+> **Governança e Status Normativo (`R-02A R1`):**
+> - **Status desta revisão (`v1.3`):** `CANDIDATA DOCUMENTAL R-02A R1` — submetida à auditoria independente do ChatGPT e à homologação expressa do proprietário antes de qualquer integração à `main`.
 > - **Autoridade de Decisões:** Uma versão anterior de documento não prevalece sobre decisão posterior expressamente aprovada pelo proprietário; da mesma forma, código presente no repositório não se torna canônico ou homologado automaticamente sem aprovação formal.
 > - **Bloqueio de Implementação:** Esta reconciliação documental **não** autoriza implementação de `R-02B`, `R-03A`, `UI-1.4`, `T3.7` ou qualquer etapa futura.
 >
@@ -83,7 +83,7 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
   - Ainda durante o **Capítulo 1**, depois que o casal constrói seu primeiro abrigo, ocorre um evento misterioso, preferencialmente em uma noite apropriada.
   - A natureza ao redor fica estranhamente silenciosa; uma figura sombria surge à distância e dirige algumas palavras ao casal *(exemplo provisório, não texto final obrigatório: «Saudações, visitantes... O dia se aproxima.»)*.
   - A entidade **não luta, não ataca e não explica sua identidade**; após a mensagem, desaparece.
-  - **Regra Canônica:** Esta é a **única aparição pessoal direta** do Ser de Trevas nos capítulos atualmente planejados. O Ser de Luz **não** aparece no Capítulo 1 e não há concessão explícita de bênção após o abrigo.
+  - **Regra Canônica:** Esta é a **única aparição pessoal direta** do Ser de Trevas nos capítulos atualmente planejados. Ele poderá continuar influenciando animais, o ambiente e grupos humanos em capítulos futuros, sem reaparecer pessoalmente. O Ser de Luz **não** aparece no Capítulo 1, não há confronto entre entidades e não há cena de concessão de bênção após o abrigo.
 - **Transição para o Capítulo 2 — A Família no Primeiro Inverno (`DECIDIDO` — `D-07`, `D-12`, `P-REC-3`):**
   - O casal percorre o primeiro ciclo sazonal (primavera → verão → outono → inverno), consolidando sobrevivência, estoque e preparo para o frio.
   - Durante o **primeiro inverno** — **antes do nascimento do primeiro filho dos fundadores** — chega uma **família visitante**, formada por **um casal e uma criança**, também sobreviventes trazidos pelo fenômeno.
@@ -106,31 +106,47 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
 ## 3. Família, Linhagem, Casa Fundadora e População (`PLANEJADO T5`; metadados mínimos em `R-03B`)
 
 ### 3.1 Criação do Casal, Personagens Modulares e Herança Visual (`DECIDIDO` e `PROPOSTA` — `v1.1` §7.1–7.4 + `DEC-16`)
-- **Criação do Casal Inicial (`DECIDIDO`):** Os dois protagonistas serão escolhidos a partir de modelos-base personalizáveis (formato do rosto/detalhes faciais, modelo/textura/cor do cabelo, cor dos olhos, tom de pele em ampla paleta natural e botão **Randomizar**).
-- **Sistema de Cores (`DECIDIDO` — `R3-E`):** Cabelo e olhos com seleção livre de cores (inclusive incomuns); pele em paleta ampla de tonalidades naturais; roupas personalizáveis mas **não hereditárias**. Apenas os traços biológicos escolhidos influenciam os descendentes.
-- **Peças Modulares e Padronização de Esqueleto (`DECIDIDO` — `DEC-16`):** Componentes 3D intercambiáveis (**Cabeça**, **Cabelo**, **Corpo**, **Vestuário**) com **esqueleto único padronizado por faixa etária** e padronização técnica obrigatória para Godot (escala, pivô, peso de ossos e encaixes).
-- **Herança Visual e Crescimento Consistente (`DECIDIDO`):** Seis traços herdáveis obrigatórios (formato/proporções faciais, cor dos olhos, tom de pele, cor/textura natural do cabelo, tendência de altura e tendência de constituição física), com modelos corporais adequados às quatro fases (`Bebê → Criança → Jovem → Adulto`).
-- **`PROPOSTA` TÉCNICA (`DEC-16`):** Orçamento indicativo de `~1.500–3.500` triângulos por personagem, shaders recoloríveis por instância e detalhamento de *sockets* permanecem propostas sujeitas a medição na Intel UHD 620.
+- **Criação do Casal Inicial (`DECIDIDO`):** Os dois protagonistas serão escolhidos a partir de modelos-base personalizáveis:
+  - Formato do rosto e detalhes faciais (`olhos, nariz e mandíbula`).
+  - Modelo, textura e cor do cabelo.
+  - Cor dos olhos.
+  - Tom de pele dentro de uma ampla faixa de tonalidades naturais.
+  - Botão **Randomizar**, capaz de gerar combinações válidas de aparência.
+- **Sistema de Cores (`DECIDIDO` — `R3-E`):** Cabelo e olhos com seleção livre de cores (inclusive cores incomuns); pele em paleta ampla de tonalidades naturais; roupas personalizáveis mas **não hereditárias**. Apenas os traços biológicos escolhidos para os protagonistas influenciam hereditariamente a aparência dos descendentes, seguindo estritamente os seis traços herdáveis aprovados.
+- **Peças Modulares e Padronização de Esqueleto (`DECIDIDO` — `DEC-16`):** Componentes 3D intercambiáveis (**Cabeça**, **Cabelo**, **Corpo**, **Vestuário**) com **esqueleto único padronizado por faixa etária** e padronização técnica obrigatória para Godot (escala, pivô, peso de ossos e encaixes) para evitar duplicação entre variantes (inclusive oriundas de Blender ou Tripo AI).
+- **Herança Visual e Crescimento Consistente (`DECIDIDO`):**
+  - Cada filho terá sua aparência determinada por uma **combinação probabilística das características biológicas dos pais**, com pequenas variações (**aproximação visual de hereditariedade, não simulação genética científica**).
+  - **Seis traços herdáveis obrigatórios:**
+    1. Formato do rosto e proporções faciais.
+    2. Cor dos olhos.
+    3. Tom de pele.
+    4. Cor e textura natural do cabelo.
+    5. Tendência de altura.
+    6. Tendência de constituição física.
+  - Modelos corporais apropriados para as quatro fases (`Bebê → Criança → Jovem → Adulto`), preservando a identidade visual reconhecível **entre fases e entre carregamentos de partidas salvas**.
+  - **`ABERTO`:** Intensidade das variações hereditárias, eventual influência de gerações anteriores/ancestrais e limites numéricos das características corporais.
+- **`PROPOSTA` TÉCNICA (`DEC-16`):** Orçamento indicativo de `~1.500–3.500` triângulos por personagem, shaders/materiais recoloríveis por instância/superfície e detalhamento de *sockets* permanecem propostas técnicas sujeitas a medição empírica na Intel UHD 620.
 
 ### 3.2 Nomes, Sobrenomes e Identidade Persistente (`DECIDIDO` e `PROPOSTA` — `v1.1` §7.5 + `DEC-16`)
-- Todo humano externo possui **nome próprio persistente** mesmo antes de integrar o assentamento do jogador (sem identificadores genéricos como `Aldeão 1`).
-- O casal protagonista e cada família possuem **Nome + Sobrenome Familiar**; filhos herdam o sobrenome.
-- Renomeação manual opcional nunca altera o `ID` interno imutável, genealogia, vínculos ou residência, e **nunca pode ser revertida pelo sistema automático**.
-- Nascimentos recebem nome inédito automaticamente (com exceção rara de homenagem a pai/mãe), editável livremente sem pausar o jogo à força.
-- **`PROPOSTA` TÉCNICA:** Serviço modular `Identity/NameService` desacoplado de modelos 3D, profissão e equipamentos.
+- **Personagens Externos (`DECIDIDO`):** Todo humano fora do núcleo inicial dos protagonistas possui **nome próprio persistente** mesmo antes de integrar o assentamento do jogador (personagens de outras comunidades já surgem com nomes próprios pré-gerados, sem identificadores genéricos como `Aldeão 1`, e **o nome não muda aleatoriamente entre encontros ou carregamentos**).
+- **Nome e Sobrenome da Linhagem (`DECIDIDO` — `DEC-16`):** O casal protagonista e cada família possuem **Nome + Sobrenome Familiar** (definido ou sorteado na criação); filhos herdam o sobrenome da família.
+- **Renomeação Opcional e Invariância de Identidade (`DECIDIDO`):** Ao passar a integrar o acampamento ou comunidade do jogador, o personagem pode ser renomeado manualmente (opcional). Alterar o nome **nunca** altera o `ID` interno imutável, genealogia, vínculos familiares, relacionamentos, histórico ou residência, e **nomes definidos manualmente pelo jogador nunca podem ser substituídos/revertidos pelo sistema automático**.
+- **Nomes Automáticos para Filhos (`DECIDIDO`):** Nascimentos na comunidade recebem nome próprio inédito automaticamente (consultando nomes já usados **na comunidade e na residência** para evitar repetições). **Irmãos não recebem nomes idênticos automaticamente**, salvo **exceção rara permitida** em que um filho recebe o nome do pai ou uma filha o da mãe como homenagem familiar (nunca padrão). A sugestão automática pode ser editada livremente sem pausar o jogo à força.
+- **`ABERTO`:** Uso de sobrenomes compostos, influência cultural/regional nas listas, homenagem a avós e nomes iguais em comunidades distintas.
+- **`PROPOSTA` TÉCNICA:** Serviço modular `Identity/NameService` totalmente desacoplado de modelos 3D, profissão e equipamentos.
 
 ### 3.3 Ciclo de Vida, Limites por Idade e Calendário (`DECIDIDO` e `ABERTO` — `DEC-04`, `D-08`, `P-REC-3`)
-- **Quatro Fases (`DECIDIDO`):** **Bebê (`0–2 anos`) → Criança (`3–11 anos`) → Jovem (`12–17 anos`) → Adulto (`18+ anos`)**. Ao atingir **Adulto (18 anos)**, os personagens **param de envelhecer** (sem morte por velhice).
+- **Quatro Fases (`DECIDIDO`):** **Bebê (`0–2 anos`) → Criança (`3–11 anos`) → Jovem (`12–17 anos`) → Adulto (`18+ anos`)**. Ao atingir **Adulto (18 anos)**, os personagens **param de envelhecer** (sem morte por velhice). **A progressão das idades ocorre pelo calendário do jogo, não em tempo real.**
 - **Atuação e Restrições por Idade (`DECIDIDO` — `DEC-04`):**
   - **Bebê (`0–2`):** Dependente; permanece protegido na residência familiar (visível no painel da casa/família, **não** é unidade RTS selecionável ou comandável no mapa).
-  - **Criança (`3–11`):** Visível e selecionável (quando elegível pela Casa Fundadora); colabora apenas em **tarefas leves e seguras** (colher frutos, pequenas cargas leves), **proibida** de cortar árvores, quebrar pedras, construir pesado ou combater.
+  - **Criança (`3–11`):** Visível e colabora apenas em **tarefas leves e seguras** (colher frutos, pequenas cargas leves), **proibida** de cortar árvores, quebrar pedras, construir pesado ou combater *(selecionável para controle pessoal quando integrante da Casa Fundadora conforme `D-04`/`D-10`; crianças de famílias comuns atuam pelo trabalho comunitário leve)*.
   - **Jovem (`12–17`):** Trabalha em coleta, construção e atividades apropriadas à idade; **não pode casar** e a **especialização combatente plena é reservada aos adultos**.
   - **Adulto (`18+`):** Aptidão plena para todas as profissões, vocações combatentes, casamento e residência.
 - **Calendário Sazonal e Ritmo Experimental (`D-08`, `P-REC-3` — `PLANEJADO T4/T5`):**
   - **Velocidades Previstas (`DECIDIDO`):** Pausa (`||`), `1×`, `2×` e `4×` *(na HUD D2.2 atual apenas `||` e `1×` estão implementados e homologados — `DT-05`)*.
   - **Duração das Estações (`PROPOSTA` / HIPÓTESE EXPERIMENTAL — `D-08`):** A faixa de **2 a 3 horas por estação** (consequência aritmética de `8–12 h` por ciclo completo de 4 estações) é preservada estritamente como **hipótese experimental de teste**, **não** como duração final homologada.
-  - **Relação Estações × Anos do Mundo × Envelhecimento Humano (`ABERTO` — `P-REC-3`):** Permanece explicitamente **`ABERTO`** para calibração empírica em `T4/T5`. **Não** se deve presumir automaticamente que 1 ano de envelhecimento humano precise equivaler literalmente a 1 ciclo completo de 4 estações sem especificação aprovada.
-  - **Diretriz Anti-Espera Artificial (`DECIDIDO`):** Distribuir atividades significativas ao longo das estações e do crescimento familiar sem alongar artificialmente tempos de coleta ou construção apenas para preencher relógio.
+  - **Relação Estações × Anos do Mundo × Envelhecimento Humano (`ABERTO` — `P-REC-3`):** Permanece explicitamente **`ABERTO`** para calibração empírica em `T4/T5` (incluindo congelamento do calendário em eventos). **Não** se deve presumir automaticamente que 1 ano de envelhecimento humano precise equivaler literalmente a 1 ciclo completo de 4 estações sem especificação aprovada.
+  - **Diretrizes Anti-Espera Artificial (`DECIDIDO`):** Distribuir atividades significativas de sobrevivência, construção, agricultura e exploração ao longo das estações e do crescimento familiar; permitir atividades simultâneas; introduzir mudanças observáveis conforme os filhos amadurecem; e **evitar alongar artificialmente** tempos de coleta ou construção apenas para preencher relógio.
 
 ### 3.4 Casa Fundadora, Residência, Nascimentos e Genealogia (`DECIDIDO` — `D-04`, `D-06`, `D-10`, `DEC-02`, `DEC-03`, `DEC-04`)
 - **Casa Fundadora e Alcance do Controle Pessoal (`DECIDIDO` — `D-04`, `D-10` — `PLANEJADO R-03B/R-03C/T5`):**
@@ -143,57 +159,62 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
   - Residências (incluindo a Casa Principal e Casas Familiares) são geridas **pelo exterior, sem interiores jogáveis** (`DESCARTADO` interior jogável), mantendo todos os vínculos familiares e núcleos residenciais registrados nos dados.
   - **Escolha do Jogador para Casais Descendentes (`D-06`):** Quando um descendente da Casa Fundadora forma casal (Adulto `18+`), **o jogador escolhe** se o novo casal permanece residindo na **Casa Principal** ou muda-se para uma **casa própria** (mantendo a afiliação à Casa Fundadora separada da residência física).
 - **Afinidade, Nascimentos, Consanguinidade e Viuvez (`DECIDIDO` — `DEC-02`, `DEC-03`, `DEC-04`, `v1.1` §7.7):**
-  - Moradores têm autonomia para criar afinidades e formar casais persistentes (não emparelhamento aleatório diário), respeitando idade adulta (`18+`), bloqueio de consanguinidade até **primos de 1º grau** e vínculo residencial.
-  - **Gatilho Autônomo de Nascimento (`DEC-03`):** Discreto e autônomo (iniciando-se no **Capítulo 2** conforme `D-12`/`P-REC-3`); exige casal residindo junto, vaga de dependente disponível, estabilidade alimentar coletiva e intervalo progressivo crescente conforme o número de filhos do casal. *(Vagas exatas e curva numérica: `ABERTO`).*
-  - **Viuvez e Orfandade (`DEC-04`):** O cônjuge sobrevivente mantém titularidade da casa e guarda dos menores (podendo recasar após luto); se ambos os pais morrerem, os avós (casal líder) ou parentes acolhem as crianças.
-  - **População (`DECIDIDO`):** Sem teto artificial predeterminado; regulada por moradia, alimentos e capacidade técnica.
+  - Moradores comuns têm autonomia para criar afinidades e formar casais **persistentes** (**casais não são emparelhados aleatoriamente a cada dia pelo sistema**), respeitando idade adulta (`18+`), bloqueio de consanguinidade até **primos de 1º grau** (**pais/filhos, irmãos, tios/sobrinhos e primos de 1º grau**) e vínculo residencial. No Capítulo 3, personagens **Adultos (`18+`)** de comunidades vizinhas pacíficas podem criar afinidade, casar com descendentes adultos do jogador e **mudar-se para a vila** quando houver moradia disponível.
+  - **Gatilho Autônomo de Nascimento (`DEC-03`):** Discreto e autônomo (**sem cenas íntimas ou microssimulação de gravidez**), iniciando-se no **Capítulo 2** conforme `D-12`/`P-REC-3`; exige: (1) casal residindo junto, (2) vaga de dependente (`Bebê`/`Criança`) disponível na residência, (3) estabilidade alimentar no estoque coletivo e (4) **intervalo progressivo** que cresce conforme o número de filhos já tidos pelo mesmo casal — evitando comportamento de "fábrica de humanos" **sem impor teto rígido artificial de 1–3 filhos**. *(Vagas exatas por casa e curva numérica de intervalo: `ABERTO`).*
+  - **Viuvez e Orfandade (`DEC-04`):** O cônjuge sobrevivente mantém titularidade da casa e guarda dos filhos menores, podendo recasar **após período de luto no calendário**; se ambos os pais de menores morrerem, os avós (casal líder) ou parentes acolhem as crianças.
+  - **População (`DECIDIDO`):** Sem teto artificial predeterminado; regulada por moradia, alimentos e capacidade técnica **(com simulação simplificada para moradores distantes)**.
 
 ---
 
 ## 4. Trabalho, Economia Física e Construção
 
 ### 4.1 Coleta Física, Consumo Alimentar e Armazenamento (`DECIDIDO`, `IMPLEMENTADO` e `PLANEJADO`)
-- **Consumo Alimentar Coletivo sem Fome/Sede Individual (`DECIDIDO` / `PLANEJADO`):**
-  - Não existem barras individuais de fome ou sede nem cozimento ingrediente por ingrediente. Cada habitante terá necessidade periódica descontada do estoque coletivo compartilhado de alimentos (a implementar em etapa futura; taxas e penalidades: `PROPOSTA`/`ABERTO`).
+- **Consumo Alimentar Coletivo sem Fome/Sede Individual (`DECIDIDO` em regra / `PLANEJADO (NÃO IMPLEMENTADO)` — `R3-A`):**
+  - Não existem barras individuais de fome ou sede nem cozimento complexo ingrediente por ingrediente.
+  - Cada habitante possui uma necessidade periódica de alimentos descontada do **estoque coletivo compartilhado de alimentos**, de modo que **o crescimento populacional aumenta proporcionalmente a demanda alimentar**.
+  - A **estabilidade alimentar** do estoque coletivo participa das condições necessárias para novos nascimentos (§3.4).
+  - *Estado real (`c4a6361`):* A implementação atual de `T2`/`T3` ainda **não** executa consumo alimentar periódico por habitante (`PLANEJADO (NÃO IMPLEMENTADO)`).
+  - *Calibração (`PROPOSTA` / `ABERTO`):* Taxas numéricas exatas de consumo por idade e consequências graduais da escassez alimentar (como eventual redução de produtividade ou risco para moradores comuns) permanecem como `PROPOSTA` / `ABERTO` sujeitas a balanceamento.
 - **Fontes e Atividades Alimentares (`DECIDIDO`):**
   - *`IMPLEMENTADO` e `ATIVO NA MAINSCENE` (T2):* coleta física de frutos em arbustos (`food_bush`), madeira (`wood_tree`) e pedra (`stone_rock`).
-  - *`PLANEJADO`:* pesca, caça, plantações/roças e criação de animais — todos compatíveis com transporte físico e estoque coletivo.
-- **Coleta e Entrega Estritamente Físicas (`DECIDIDO` / `IMPLEMENTADO` / `HOMOLOGADO` — `P-REC-2`):**
-  - Recursos extraídos (`wood` peso `2`, `stone` peso `3`, `food` peso `1` — provisórios em `data/resources/*.tres`) são carregados em `UnitCarryLoad` (`0%` a `100%` da capacidade base provisória `20`, com desaceleração proporcional de `4,8 m/s` vazio até `2,88 m/s` cheio e evolução futura de capacidade `PLANEJADO`).
-  - **Proibição de Crédito Instantâneo na Coleta:** Materiais coletados **jamais** entram magicamente no estoque; só são creditados após descarga física em armazenamento válido (`CampStorageZone` hoje; futuros depósitos protegidos em `T3.7`), preservando a proveniência (`FREE_GATHERED`) e a separação entre quantidade unitária e peso.
+  - *`PLANEJADO` (visão completa, sem antecipar para a demo sem suporte documental):* pesca, caça, plantações/roças e criação de animais — todos compatíveis com transporte físico e estoque coletivo compartilhado.
+- **Coleta e Entrega Estritamente Físicas e Capacidade Evolutiva (`DECIDIDO` / `IMPLEMENTADO` / `HOMOLOGADO` — `P-REC-2`):**
+  - Recursos extraídos (`wood` peso `2`, `stone` peso `3`, `food` peso `1` — provisórios em `data/resources/*.tres`) são carregados em `UnitCarryLoad` (`0%` a `100%` da capacidade base provisória `20`, com desaceleração proporcional de `4,8 m/s` vazio até `2,88 m/s` cheio) e **permitem futura evolução da capacidade individual de carga por características, profissão, equipamentos ou melhorias** (`DECIDIDO` em regra / `PLANEJADO`, sem valores numéricos fixados na T2).
+  - **Proibição de Crédito Instantâneo na Coleta:** Materiais coletados **jamais** entram magicamente no estoque; só são creditados após descarga física em armazenamento válido (`CampStorageZone` hoje; futuros depósitos protegidos em `T3.7`), preservando a proveniência (`FREE_GATHERED`) e a separação rigorosa entre quantidade unitária e peso.
   - **Retorno Automático na Coleta (`IMPLEMENTADO` T2):** Ao atingir `100%` da capacidade ou quando não couber mais uma unidade (`UnitCarryLoad.can_fit_one`), o trabalhador interrompe a extração e descarrega automaticamente.
-- **Armazenamento Inicial vs. Depósito Rústico (`D5`, `D8`):**
+- **Armazenamento Inicial vs. Depósito Rústico e Itens no Mundo (`D5`, `D8`):**
   - *`IMPLEMENTADO` e `ATIVO NA MAINSCENE` (T2):* pilhas físicas expostas na `CampStorageZone` (`5,6 × 4,4 m` no `TestMap`).
-  - *`DECIDIDO` / `PLANEJADO T3.7`:* **Depósito Rústico** com proteção real (`decay = 0,0`, capacidade provisória `50 madeiras, 50 pedras, 30 alimentos` — `D4`/`D5`), sob autoridade única `SettlementInventory` (`CompositeStorageSource`). **Não afirmar proteção funcional antes da conclusão da `T3.7`.**
+  - *`DECIDIDO` / `PLANEJADO T3.7 / T4+`:* **Depósito Rústico** com proteção real (`decay = 0,0`, capacidade provisória `50 madeiras, 50 pedras, 30 alimentos` — `D4`/`D5`), sob autoridade única `SettlementInventory` (`CompositeStorageSource`), e suporte futuro a múltiplos depósitos e armazenamento em outras regiões (`D8`), mantendo que **materiais eventualmente largados fora de armazenamento válido não integram o estoque coletivo até transporte físico**. **Não afirmar proteção funcional antes da conclusão da `T3.7`.**
 
 ### 4.2 Deterioração por Categoria (`DECIDIDO` — `DEC-11A` **RATIFICADA**)
 - **Alimentos e Madeira** mantidos expostos no chão sofrem desgaste temporal configurável (`decay_food_provisional.tres`, `decay_wood_provisional.tres`).
 - **Pedra bruta exposta não sofre deterioração temporal** (`decay_stone_provisional.tres` com `can_decay = false` — `IMPLEMENTADO` e `HOMOLOGADO`).
+- **Futuras categorias de recursos terão perfis próprios**, sem presumir desgaste automático idêntico.
 - **Nota Histórica de Transição (`DEC-11B` — `SUBSTITUÍDO` em transição `P-REC-1`):** A regra de perda direta sobre reservas de obra (Alternativa B) e a complementação manual de reserva deteriorada (`DEC-11B`, implementada na `T3.5.2`) pertencem exclusivamente ao fluxo antigo de reserva em pilha (`D2`). Elas permanecem ativas em código apenas durante a transição e deixam de existir quando o novo modelo de débito imediato (`D-01`) for validado e aposentado o legado em `R-04B`/`R-04C`.
 
 ### 4.3 Construção Canônica (`DECIDIDO` — `D-01`, `D-02`, `D-13`, `P-REC-1`, `P-REC-2` — `PLANEJADO R-04`)
 - **Posicionamento Contínuo sem Grid (`D6` — `IMPLEMENTADO` / `HOMOLOGADO` / `ATIVO NA MAINSCENE`):**
   - Edifícios vistos e geridos pelo exterior; `CampStorageZone` protegida contra obras na T3; validação de inclinação ($\le 10^\circ$), desnível ($\le 0,35\text{ m}$), colisões, conectividade em malha candidata assíncrona e inclusão regional no `WorldNavigation` pós-conclusão (`DEC-19` N1).
 - **Parâmetros Provisórios `D4` (`DECIDIDO` como provisórios em `data/buildings/*.tres`):**
-  - **Abrigo Básico (`shelter_basic`):** $4,0 \times 4,0\text{ m}$, **12 Madeiras + 6 Pedras**, **30,0 s-construtor**, máx. **2 construtores**.
-  - **Depósito Rústico (`storage_depot`):** $5,0 \times 4,0\text{ m}$, **18 Madeiras + 10 Pedras**, **45,0 s-construtor**, máx. **2 construtores**; proteção real de **50 madeiras, 50 pedras e 30 alimentos** com `decay = 0,0` (`D5` — **`PLANEJADO T3.7`**).
+  - **Abrigo Básico (`shelter_basic`):** $4,0 \times 4,0\text{ m}$, **12 Madeiras + 6 Pedras** *(referência histórica de peso `42`)*, **30,0 s-construtor**, máx. **2 construtores**.
+  - **Depósito Rústico (`storage_depot`):** $5,0 \times 4,0\text{ m}$, **18 Madeiras + 10 Pedras** *(referência histórica de peso `66`)*, **45,0 s-construtor**, máx. **2 construtores**; proteção real de **50 madeiras, 50 pedras e 30 alimentos** com `decay = 0,0` (`D5` — **`PLANEJADO T3.7`**).
   - **Restrição (`P-REC-2`):** **Não** introduzir alimentos como custo de construção sem autorização específica.
 - **Novo Modelo Canônico de Construção (`DECIDIDO` / `PLANEJADO R-04` — NÃO implementado ainda):**
   1. **Débito Imediato Atômico (`D-01`, `P-REC-2`):** Ao confirmar uma posição válida, o sistema verifica o estoque disponível integral via `SettlementInventory` (recusando integralmente em déficit sem cobrar nada) e executa o **débito imediato e atômico** dos materiais necessários, com rollback integral em caso de falha na criação do canteiro.
   2. **Prioridade de Armazenamento no Débito (`D-13`, `P-REC-2`):** Ao debitar recursos para construção, consumir **primeiro o estoque disponível em depósitos protegidos** e **depois as pilhas expostas**, para todas as categorias de recursos aplicáveis. *(Interface preparada em `R-04`; validação operacional real com depósitos protegidos ocorre exclusivamente em `T3.7`.)*
   3. **Montagem Direta sem Transporte ao Canteiro (`D-01`):** Não é mais necessário transportar fisicamente materiais das pilhas até o canteiro. Ao criar o canteiro, registra-se tarefa comunitária `BUILD_SITE`; trabalhadores (até `max_builders`, hoje `2`) caminham diretamente ao canteiro e executam a montagem até conclusão em `BuildingInstance` + rebake assíncrono (`DEC-19`).
   4. **Cancelamento `R2 Simples` com Arredondamento `floor` (`D-02`, `P-REC-2`):**
-     - **Antes de iniciar a montagem (`progresso == 0%`):** devolver **100%** dos recursos pagos.
-     - **Após iniciar a montagem (`progresso p > 0%`):** devolver diretamente ao armazenamento válido, por recurso $R$:
+     - **Antes de iniciar a montagem (`p = 0`):** devolver **100%** dos recursos pagos.
+     - **Após iniciar a montagem (`0 < p ≤ 1`):** devolver diretamente ao armazenamento válido, por recurso $R$, **sem multiplicador adicional $\eta = 0,50$** (que pertencia exclusivamente ao contrato histórico `D3`, substituído):
        $$M_{\text{reembolso}}(R) = \left\lfloor Q_{\text{pago}}(R) \times (1 - p) \right\rfloor$$
      - **Destino do Reembolso e Anti-Exploração (`P-REC-2`):** Creditar **primeiro nos depósitos protegidos com capacidade disponível** e o eventual excedente nas pilhas válidas do acampamento (`CampStorageZone`), **preservando os dados de exposição dos materiais** para impedir que ciclos de construir e cancelar renovem artificialmente a vida útil de recursos perecíveis.
 - **Implementação Histórica Atualmente Ativa em Transição (`P-REC-1`):**
-  - No código atual (`c4a6361`), a `MainScene` ainda executa o fluxo antigo (`T3.3`–`T3.6.3`: reserva em pilha `D2`, transporte físico ao canteiro `D9`/`DEC-18`, complementação manual `DEC-11B`, e custódia/recolha física `D3` $\eta = 0,50$).
+  - No código atual (`c4a6361`), a `MainScene` ainda executa o fluxo antigo (`T3.3`–`T3.6.3`: reserva em pilha `D2`, transporte físico ao canteiro `D9`/`DEC-18`, complementação manual `DEC-11B`, e custódia/recolha física `D3` com fator histórico $\eta = 0,50$).
   - Conforme **`P-REC-1`**, toda essa infraestrutura, seus testes e os retestes pendentes `D3-04`/`D3-07` permanecem preservados (sem declarar `T3.6.4-R1` homologada) e só serão aposentados formalmente em **`R-04C`**, **após** o novo fluxo `D-01`/`D-02` ser implementado, validado e homologado em **`R-04B`**.
 
 ### 4.4 Economia Cooperativa, Vestuário, Ferramentas e Comércio Futuro (`DECIDIDO` — `DEC-12`, `v1.1` §8, `PLANEJADO`)
-- **Sem Salários ou Moeda Interna (`DECIDIDO` — `DEC-12` / `DESCARTADO` salário interno):** A comunidade opera de forma cooperativa.
-- **Vestuário, Ferramentas e Arsenal Compartilhado (`DECIDIDO` — `v1.1` §8, `PLANEJADO T5/T6`):** Roupas produzidas e ferramentas/armas integram o arsenal compartilhado, com atribuição automática por profissão/vocação e opção simples de atribuição manual, sem inventário individual multi-slot de MMORPG.
+- **Sem Salários ou Moeda Interna (`DECIDIDO` — `DEC-12` / `DESCARTADO` salário interno):** A comunidade opera de forma cooperativa, sem pagamento de salário nem compra individual de itens.
+- **Vestuário, Ferramentas e Arsenal Compartilhado (`DECIDIDO` — `v1.1` §8, `PLANEJADO T5/T6`):** Roupas produzidas (substituindo os trapos iniciais) e ferramentas/armas integram o estoque e arsenal compartilhados, com atribuição automática por profissão/vocação e opção simples de atribuição manual, sempre **sem** inventário individual multi-slot de MMORPG. *(Critérios detalhados de atribuição automática e efeitos/durabilidade do vestuário: `ABERTO`.)*
 - **Comércio entre Comunidades (`PLANEJADO Cap. 3`):** Trocas comerciais apenas entre comunidades distintas nos capítulos avançados (`ABERTO` em detalhes).
 
 ---
@@ -209,29 +230,30 @@ Para manter a consistência narrativa e o mistério durante a campanha, distingu
 | **3. Dom** | Capacidade sobrenatural latente ou despertada. | **Alento** (recuperação inicial), proteção luminosa, canalização da Luz. | Já existe em potencial nas pessoas em diferentes ritmos; desperta por aprendizado, treino e mentoria; não obrigatório para todos. |
 
 ### 5.2 Regras do Sistema de Dons Latentes (`DECIDIDO` — `PLANEJADO`)
-1. **Despertar, não Concessão:** Os protagonistas ajudam a identificar e despertar capacidades latentes que já existem nas pessoas.
-2. **Aptidões Individuais e Sem Exclusividade Genética:** Nem todos despertam dons; outras linhagens e comunidades também podem manifestá-los.
-3. **Treino, Experiência e Independência Física:** Guerreiros e Arqueiros dependem de treino físico e equipamento; nenhuma vocação exige contador arbitrário de população (exige idade adulta para combatentes plenos, aprendizado, equipamento e infraestrutura).
+1. **Despertar, não Concessão:** Os protagonistas **não concedem** poderes sobrenaturais a outras pessoas; eles ajudam a identificar, compreender e despertar capacidades latentes que já existem nos indivíduos.
+2. **Aptidões Individuais e Sem Exclusividade Genética:** A manifestação de dons não é obrigatória para todos os habitantes; ocorre em diferentes ritmos e escolhas pessoais, e outras linhagens e comunidades também podem manifestá-los.
+3. **Treinamento, Experiência e Mentoria:** O controle e a eficácia dos dons crescem com uso e treino; **aprendizes experientes poderão futuramente ensinar outros habitantes**.
+4. **Independência das Vocações Físicas e Especializações:** **Guerreiros** e **Arqueiros** desenvolvem-se por treinamento físico e equipamento, sem depender de poderes sobrenaturais; **Curandeiros** combinam cuidados práticos com eventual despertar de capacidades especiais; **Canalizadores da Luz** constituem especialização avançada posterior (adiados para quando o crescimento da vila justificar). Nenhuma vocação exige contador arbitrário de população (exige idade adulta para combatentes plenos, aprendizado/instrutor, equipamentos e infraestrutura).
 
 ### 5.3 Cura Inicial dos Líderes: *Alento* vs. Proteção pós-Derrota (`DECIDIDO` — `PLANEJADO T6`)
-- ***Alento* (Nome Provisório):** Habilidade limitada de recuperação de ferimentos que desperta nos protagonistas durante a sobrevivência; não ressuscita mortos e não substitui alimentação, cuidados ou moradia.
-- **Proteção Especial dos Líderes (`DEC-07`, `D-04`):** Exclusiva dos **2 protagonistas originais** — impede morte definitiva em combate (evento de recuperação com penalidade temporária). Filhos, descendentes, cônjuges externos e demais moradores **podem morrer**.
+- ***Alento* (Nome Provisório):** Habilidade ativa limitada de recuperação de ferimentos que desperta naturalmente nos protagonistas durante a sobrevivência, de uso simples e compreensível, com **intervalo de recarga ou custo temporário sujeito a balanceamento (sem sistema complexo de mana no primeiro lançamento)**. Evolui com a experiência, mas **não ressuscita mortos** e **não substitui** alimentação, cuidados médicos, moradia ou proteção.
+- **Proteção Especial dos Líderes (`DEC-07`, `D-04`):** Exclusiva dos **2 protagonistas originais** — impede morte definitiva em combate (ao caírem em derrota, ocorre evento especial de recuperação/resgate com penalidade temporária, ex.: exaustão). Filhos, descendentes, cônjuges externos e demais moradores **não** possuem essa proteção e **podem morrer**.
 
 ---
 
 ## 6. Evolução da Comunidade (Cinco Níveis Reconciliados) (`DECIDIDO` — `DEC-13`, `PLANEJADO`)
 
-A comunidade avança por **marcos concretos de desenvolvimento e construção**, sem barra de XP e sem depender de aparição/bênção do Ser de Luz:
+A comunidade avança por **marcos concretos de desenvolvimento e construção**, sem barra de XP, sem depender de aparição/bênção do Ser de Luz e **sem exigir mais trabalhadores do que a família pode possuir naquele momento**:
 
 | Nível | Marco Visual | Desbloqueios Coerentes (`DECIDIDO` — `PLANEJADO`) |
 |---|---|---|
-| **1** | **Acampamento** | Pilhas físicas na `CampStorageZone` (`IMPLEMENTADO`), coleta física (`IMPLEMENTADO`), **Abrigo Básico**, **Depósito Rústico** (proteção na `T3.7`) e elemento previsto de **Fogueira** (`PROPOSTA`). Sobrevivência do primeiro ano (Cap. 1), manifestação inicial do *Alento* e aparição única do Ser de Trevas após o abrigo. |
-| **2** | **Propriedade** | Primeiras **Casas Familiares**, **Roça** (agricultura contínua), **Costura/Tecelagem**, cuidados básicos/ervas e defesa rudimentar (lanças simples), compatíveis com o núcleo familiar e primeiros sobreviventes acolhidos (Cap. 2). |
+| **1** | **Acampamento** | Pilhas físicas na `CampStorageZone` (`IMPLEMENTADO`), coleta física (`IMPLEMENTADO`), **Abrigo Básico**, **Depósito Rústico** (proteção na `T3.7`) e elemento previsto de **Fogueira** (`PROPOSTA` como estrutura de acampamento, sem efeito defensivo numérico fixado). Sobrevivência do primeiro ano (Cap. 1), manifestação natural do *Alento* e aparição única do Ser de Trevas após o abrigo. |
+| **2** | **Propriedade** | Primeiras **Casas Familiares**, **Roça** (agricultura contínua), **Costura/Tecelagem** (roupas comunitárias), tratamentos básicos/ervas (**sem exigir classe Curandeiro especializada**) e treinamento rudimentar de defesa (lanças simples), compatíveis com o núcleo familiar e primeiros sobreviventes acolhidos (Cap. 2). |
 | **3** | **Povoado** | **Carpintaria** (ferramentas melhores, arco e flecha), **Criação de Animais** e **Montarias**, **Caminhos** estruturados, Paliçadas e infraestrutura inicial de treino para **Arqueiros** e defensores. |
 | **4** | **Aldeia** | Mineração, **Ferraria e Arsenal** (**Espada + Escudo** e equipamentos completos para **Guerreiros**), estrutura de cuidados/mentoria (**Curandeiros** especializados e despertar avançado de **Canalizadores da Luz**) e Torres de Defesa. |
-| **5** | **Vila** | Oficinas avançadas, **Posto de Trocas** entre comunidades (Cap. 3), fortificações pesadas e organização completa das quatro vocações para enfrentar ameaças sombrias e facções seduzidas. |
+| **5** | **Vila** | Oficinas avançadas, **Posto de Trocas** entre comunidades (Cap. 3), fortificações pesadas e organização completa das quatro vocações e exércitos para enfrentar ameaças sombrias e facções seduzidas. |
 
-*Regra do 1º Lançamento Comercial:* A progressão inicial (Níveis 1–3) sustenta plenamente a experiência familiar dos Capítulos 1 e 2; o teto tecnológico mantém identidade rústica evoluída (sem industrialização moderna — `ABERTO`).
+*Regra do 1º Lançamento Comercial:* O jogador **não** precisa alcançar os cinco níveis no primeiro lançamento (Capítulos 1 e 2); a progressão inicial (Níveis 1–3) sustenta plenamente a experiência familiar e os primeiros sobreviventes acolhidos. O teto tecnológico mantém identidade rústica evoluída (sem industrialização moderna — `ABERTO`).
 
 ---
 
@@ -245,25 +267,26 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
 - **Névoa Natural e Exploração (`DECIDIDO` — `D-07`):** Uma **névoa natural** cobre territórios inexplorados e se dissipa organicamente conforme a exploração real dos personagens. **A câmera não pode revelar artificialmente território ainda não explorado.**
 - **Mapa Técnico Atual (`IMPLEMENTADO`):** `TestMap` (`64×64 m`) permanece exclusivamente como terreno de fundação técnica durante `T1`–`T3`, sujeito posteriormente ao orçamento gráfico de streaming/LOD na Intel UHD 620 na `T4`.
 
-### 7.2 Ecologia Dinâmica e Fontes Naturais (`DECIDIDO` — `v1.0` §5, `DEC-09`, `DEC-10`)
-- **Aparência Coerente Durante a Extração (`DECIDIDO`):** Árvores não permanecem verticais após fornecer troncos; frutos podem ser colhidos sem destruir o arbusto. *(Estado atual `IMPLEMENTADO` T2: animação de queda e `DepletedVisual` temporário com tocos/cascalho.)*
+### 7.2 Atmosfera Natural, Ecologia Dinâmica e Fontes Naturais (`DECIDIDO` — `v1.0` §5/§9, `DEC-09`, `DEC-10`)
+- **Atmosfera Natural (`DECIDIDO` — `PLANEJADO T4/T7`):** Fauna e flora reconhecíveis, variações climáticas e atmosfera natural viva (**vento movendo árvores e grama, chuva, água em movimento e variação dia/noite legível**).
+- **Aparência Coerente Durante a Extração (`DECIDIDO`):** Árvores não permanecem verticais após fornecer troncos; frutos podem ser colhidos sem destruir o arbusto. *(Estado real `IMPLEMENTADO` T2/T3: árvores pequenas/frágeis usam animação de queda sem ferramentas visuais e exibem `DepletedVisual` `StumpMesh`/`RubbleMesh` mantendo colisores ativos no chão; ferramentas para árvores maduras e regeneração detalhada de frutos seguem `PLANEJADO` / `ABERTO`.)*
 - **Remoção Completa de Fontes Esgotadas (`DEC-09` — `PLANEJADO T4`):** Ao atingir `0` unidades, árvores (após queda) e pedras serão removidas 100% da cena (`queue_free()`), liberando imediatamente navegação e terreno.
-- **Regeneração Ecológica, Arbustos, Roças e Caminhos (`DEC-09`, `DEC-10` — `PLANEJADO T4/T5`):** Novas árvores (Muda → Jovem → Adulta) brotam em solo livre onde não existam construções, canteiros, `CampStorageZone` ou **Caminhos** (que bloqueiam vegetação e facilitam o passo). Arbustos regeneram frutas (podendo ser arrancados ao construir). **Roças** funcionam como campos agrícolas contínuos.
+- **Regeneração Ecológica, Arbustos, Roças e Caminhos (`DEC-09`, `DEC-10` — `PLANEJADO T4/T5`):** Novas árvores (Muda → Jovem → Adulta) brotam em solo livre onde não existam construções, canteiros, `CampStorageZone` ou **Caminhos** (que bloqueiam vegetação e facilitam o passo; *tempo exato de brotação: `ABERTO`*). Arbustos regeneram frutas sem destruir a planta (podendo ser arrancados ao construir). **Roças** funcionam como campos agrícolas contínuos **cuidados pelo Agricultor**.
 
 ---
 
 ## 8. Combate e Ameaças (`PLANEJADO T6/T8`)
 
-- **Ameaças (`DECIDIDO`):** Fauna terrestre natural (caça e predadores territoriais), **animais corrompidos pelo Ser de Trevas** (`DEC-05`, perigo episódico) e, no Capítulo 3, **grupos humanos seduzidos pelo Ser de Trevas** (`DEC-07`).
-- **Arsenal Compartilhado e Formação Automática (`DECIDIDO` — `v1.1` §8, `DEC-15`):** Armas (`Espada + Escudo`, `Lança`, `Arco e Flecha`) distribuídas a partir do arsenal compartilhado; ao comandar grupos mistos, Guerreiros avançam na frente e Arqueiros/Curandeiros/Canalizadores atuam na retaguarda, com comandos táticos dos 2 Líderes.
-- **Mortalidade vs. Proteção (`DECIDIDO`):** Moradores comuns (incluindo filhos e cônjuges externos da Casa Fundadora) podem morrer; os 2 protagonistas originais possuem proteção especial pós-derrota (distinta do *Alento*). *(Números de combate: `ABERTO`).*
+- **Ameaças (`DECIDIDO`):** Fauna terrestre natural (caça e predadores territoriais), **animais corrompidos pelo Ser de Trevas** (mais fortes e irradiando trevas — `DEC-05`, perigo episódico **especialmente à noite/locais sombrios**) e, no Capítulo 3, **grupos humanos seduzidos pelo Ser de Trevas** (`DEC-07`).
+- **Arsenal Compartilhado e Formação Automática (`DECIDIDO` — `v1.1` §8, `DEC-15`):** Armas (`Espada + Escudo`, `Lança`, `Arco e Flecha`) e ferramentas são distribuídas a partir do arsenal compartilhado (atribuição automática por profissão/vocação + opção simples de atribuição manual, sem inventário multi-slot de MMORPG). Ao comandar grupos mistos, **Guerreiros** avançam automaticamente na frente, enquanto **Arqueiros**, **Curandeiros** e **Canalizadores da Luz** atuam na retaguarda (**com cura/purificação autônoma e dissipação da aura sombria**). Os **2 Líderes originais** possuem comandos especiais táticos que **acionam ou potencializam os *skills* dos soldados**.
+- **Mortalidade vs. Proteção (`DECIDIDO`):** Moradores comuns (incluindo filhos e cônjuges externos da Casa Fundadora) podem morrer em combate; os 2 protagonistas originais possuem proteção especial pós-derrota com penalidade temporária (distinta do *Alento*). *(Parâmetros de combate `HP, dano, alcance, formações avançadas e cooldowns`: `ABERTO`).*
 
 ---
 
 ## 9. Interface, Controles, Arte e Desempenho
 
 ### 9.1 Câmera, Trabalho Comunitário e Interface D2.2 (`DECIDIDO`, `IMPLEMENTADO` e `PLANEJADO`)
-- **Câmera Isométrica (`IMPLEMENTADO` / `HOMOLOGADO` / `ATIVO NA MAINSCENE`):** `src/camera/rts_camera_rig.gd` — perspectiva `fov = 35°`, `yaw = +45°`, `pitch = -55°`, zoom suave `22–58` (padrão `36`), `WASD`/setas, `MMB` drag, scroll e Edge Scrolling (`6 px`) bloqueado sobre peças sólidas da UI e travado durante pausa (`UI-1.1B R1`).
+- **Câmera Isométrica (`IMPLEMENTADO` / `HOMOLOGADO` / `ATIVO NA MAINSCENE`):** `src/camera/rts_camera_rig.gd` — perspectiva `fov = 35°` (`near = 0.5`, `far = 250.0`), `yaw = +45°`, `pitch = -55°`, zoom suave `22–58` (padrão `36`), contenção estrita dentro de `map_bounds`, `WASD`/setas, `MMB` drag, scroll e Edge Scrolling (`6 px`) acionado na borda real da viewport, bloqueado sobre peças sólidas da UI e travado durante pausa (`UI-1.1B R1`).
 - **Controles de Trabalho e Coleta Canônicos (`DECIDIDO` — `D-03`, `D-04`, `D-05`, `D-10`, `D-11` — `PLANEJADO R-03A`–`R-03D`):**
   - Seleção de árvores, pedras e arbustos como fontes de trabalho e marcação de múltiplas fontes (clique, `Shift`, caixa iniciada sobre fonte preservando fontes externas ao conjunto).
   - Distribuição automática de trabalhadores comunitários aptos via `CommunityWorkBoard` + `CommunityTaskDispatcher`.
@@ -277,8 +300,8 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
   - *Ativação na `MainScene` (`D-ERR-1 B`):* `use_d2_2_hud = true` será ativado por padrão na `MainScene` em **`R-05B`**, logo após a homologação do inspetor D2.2 (`UI-1.4` / `R-05A`), deixando `UI-1.7` (`R-07`) para encerramento definitivo, retirada de legados e benchmark.
 
 ### 9.2 Direção Artística e Orçamento Técnico (`DECIDIDO` e `PROPOSTA`)
-- **Estilo Visual (`DECIDIDO`):** 3D isométrico estilizado vibrante naturalista, materiais PBR limpos, paisagens acolhedoras legíveis e noites misteriosas legíveis; sem realismo pesado, sem blocos rudes excessivos e sem neon/glow exagerado.
-- **Desempenho Alvo (`DECIDIDO`):** Medição empírica obrigatória na **Intel UHD Graphics 620** (`1920×1080`, `gl_compatibility`, meta $p95 \le 16,7\text{ ms}$ e `0` quadros $> 100\text{ ms}$ em tomada CA; limitação em bateria DC documentada em [KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Orçamento de triângulos por personagem e técnicas específicas (LOD, hibernação de RVO, `MultiMesh`) seguem como **`PROPOSTA`**.
+- **Estilo Visual (`DECIDIDO`):** 3D isométrico estilizado vibrante naturalista, materiais PBR limpos, paisagens acolhedoras legíveis de perspectiva alta, iluminação diurna agradável e noites misteriosas legíveis; evitar realismo pesado, aparência excessivamente blocada, neon/glow exagerado e **contornos pretos grossos**. *(Intensidade exata de estilização/shaders: `ABERTO`).*
+- **Desempenho Alvo (`DECIDIDO`):** Medição empírica obrigatória na **Intel UHD Graphics 620** (`1920×1080`, `gl_compatibility`, meta $p95 \le 16,7\text{ ms}$ e `0` quadros $> 100\text{ ms}$ em tomada CA; limitação em bateria DC documentada em [KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Orçamento de triângulos por personagem (`~1.500–3.500`) e técnicas específicas (LOD, hibernação de RVO, `MultiMesh`, shaders recoloríveis) seguem como **`PROPOSTA`**.
 
 ---
 
@@ -286,7 +309,7 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
 
 ### 10.1 Os Quatro Horizontes
 1. **A. Visão Completa do Jogo:** Obra integral abrangendo os Capítulos 1–3, linhagem multigeracional, cinco níveis da comunidade, mundo contínuo completo (vales, florestas, montanhas, rios, neve ao norte, dunas costeiras e sul subtropical), quatro estações, quatro vocações plenas, sistema de dons e mentoria, comunidades externas, trocas e guerras contra forças/seguidores das trevas.
-2. **B. Demonstração Jogável (Demo):** Experiência curta, polida e representativa contendo o casal controlável, coleta e transporte físico, estoque/depósito, construção do primeiro abrigo, trabalho comunitário fluido e HUD D2.2 em ambiente natural legível. A aparição do Ser de Trevas poderá integrar a demo se pronta, sem bloquear a validação do núcleo de sobrevivência.
+2. **B. Demonstração Jogável (Demo):** Experiência curta, polida e representativa contendo o casal controlável, coleta e transporte físico, **estoque/alimentação/depósito**, construção do primeiro abrigo, trabalho comunitário fluido e HUD D2.2 em ambiente natural legível. A aparição do Ser de Trevas poderá integrar a demo se pronta, sem bloquear a validação do núcleo de sobrevivência. *(Não exige genealogia completa, todos os biomas, exércitos ou mundo contínuo completo).*
 3. **C. Primeiro Lançamento Comercial (`Capítulos 1 e 2` — reconciliado por `P-REC-3`):** Experiência familiar completa distribuída entre o **Capítulo 1** (chegada na primavera no vale inspirado em Ueda–Chikuma, sobrevivência inicial, primeiro abrigo, **aparição única do Ser de Trevas** e chegada da **família visitante no primeiro inverno**) e o **Capítulo 2** (convivência com outros sobreviventes, **nascimento e crescimento dos filhos** `Bebê → Criança → Jovem`, agricultura `Roça`, profissões básicas, construções Níveis 1–3, ecologia dinâmica, perigos moderados e cura inicial *Alento*), sem eliminar conteúdos anteriormente aprovados nem antecipar prematuramente as guerras e facções do Capítulo 3.
 4. **D. Conteúdo Posterior (`Capítulo 3` e expansão):** Evolução completa das quatro vocações e canalização da Luz, mentoria avançada, expansão plena dos biomas do mundo contínuo, encontros e casamentos (`18+`) com outras comunidades, comércio inter-comunitário, facções humanas seduzidas e guerras contra as trevas.
 
@@ -328,7 +351,7 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
 | **Economia Salarial** | `PROPOSTA` de salários e compra de roupas (`v1.1`). | **Economia cooperativa sem salários internos**; trocas apenas entre comunidades no Cap. 3. | `DEC-12` (`DESCARTADO`) |
 | **Suprimento Físico de Obras (`D2`, `D9`/`DEC-18`)** | Reserva em pilha + transporte físico ao buffer do canteiro + papéis `SOLO_SUPPLIER`/`TRANSPORTER`. | **Débito imediato atômico (`D-01`)** + montagem direta (coleta segue física). Código antigo mantido apenas em transição até `R-04C`. | `D-01` + `P-REC-1` (`SUBSTITUÍDO`) |
 | **Complementação de Reserva Deteriorada (`DEC-11B`)** | Autorização manual no canteiro para repor reserva em pilha perdida por decaimento. | **Obsoleta no fluxo `D-01`** (não há reserva exposta de obra). Código antigo aposentado somente em `R-04C`. | `D-01` + `P-REC-1` (`SUBSTITUÍDO`) |
-| **Cancelamento `D3` ($\eta=0,50$) e Recolha Física** | Reembolso com fator `0,50` sobre incorporado + sobras físicas recuperadas por trabalhadores (`T3.6.3`/`T3.6.4-R1`). | **Reembolso `R2 simples`** (`100%` em `0%`; $\lfloor Q \times (1-p)\rfloor$ `floor` após montar) direto ao armazenamento válido, preservando exposição. | `D-02` + `P-REC-1` + `P-REC-2` (`SUBSTITUÍDO`) |
+| **Cancelamento `D3` ($\eta=0,50$) e Recolha Física** | Reembolso com fator `0,50` sobre incorporado + sobras físicas recuperadas por trabalhadores (`T3.6.3`/`T3.6.4-R1`). | **Reembolso `R2 simples`** (`100%` quando `p = 0`; $\lfloor Q_{\text{pago}} \times (1-p)\rfloor$ `floor` quando `0 < p ≤ 1`, **sem** multiplicador $\eta = 0,50$) direto ao depósito protegido livre → pilhas válidas, preservando exposição. | `D-02` + `P-REC-1` + `P-REC-2` (`SUBSTITUÍDO`) |
 | **Ordem de Débito na Construção (`P-RUX-4`)** | Recomendação preliminar da minuta `RUX-0` §8.2 de consumir pilhas expostas primeiro. | **Depósito protegido primeiro, depois pilhas expostas** (e reembolso depósito livre → pilhas) para todas as categorias aplicáveis (`T3.7`). | `D-13` + `P-REC-2` (`SUBSTITUÍDO`) |
 | **Menu Obrigatório de Equipe (`UX-0`/`UX-1`)** | Exigência de escolher equipe manualmente em toda fonte. | **Marcação automática + atribuição manual opcional restrita à Casa Fundadora** + lista flutuante de tarefas `D-11` na HUD. | `D-03` + `D-10` + `D-11` (`SUBSTITUÍDO` / reconciliado) |
 | **Residência Obrigatória de Descendentes (`v1.2` §3.4)** | Todo casal casado obrigado a ocupar casa separada (ou fixado só na Casa Principal em `RUX-0`). | **O jogador escolhe** se o casal descendente fica na Casa Principal ou ocupa casa própria; residências sem interiores jogáveis. | `D-06` (`SUBSTITUÍDO`) |

@@ -8,12 +8,13 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 | Camada / Marco | Status Real | Referência Git / Evidência |
 |---|---|---|
-| **T1 — Fundação RTS** | **`HOMOLOGADO`** | `t1-complete` (`2808799`, na `main`) — 90 testes, 1.607 asserções |
-| **T2 — Trabalho e Recursos** | **`HOMOLOGADO`** (14/11/2026) | `t2-complete` (`f7c2459`, na `main`) — 182/182 testes (27 suítes), 21/21 manuais; benchmark CA `147,33 FPS` (`p95 = 9,757 ms`), DC `55,80 FPS` (`p95 = 33,038 ms`, aceito como limitação conhecida em [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)) |
-| **T3.1, T3.2 e T3.3** | **`HOMOLOGADO`** (16/11/2026) | `t3-3-complete` (`3c6fc0b`, na `main`; `main` atual em `25e0a20`) — [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md) |
-| **UI-1.1A, UI-1.1B, UI-1.2 e UI-1.3 R1 (`R-01`)** | **`HOMOLOGADO`** (23/11/2026) | `fix/ui-1-3-r1-validation-uid` (`c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`): `validate.ps1` com `0` erros / `0` avisos (`208` scripts), `85/85` suítes (`592/592` testes, `28.989` asserções) e `8/8` itens manuais aprovados em `1280×720` e `1920×1080` |
-| **Reconciliação Documental Única (`R-02A`)** | **Candidata documental em revisão** | Branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), aguardando auditoria independente e aceite expresso do proprietário |
-| **T3.6.4-R1, UX-1, RUX-1, RUX-2A e RUX-2B** | **`NÃO HOMOLOGADO`** | Retestes `D3-04`/`D3-07` pendentes (`T3.6.4-R1`, mantido pela regra de transição `P-REC-1` até `R-04C`); sandboxes `UX-1`/`RUX-*` aguardam integração jogável na `MainScene` em `R-03A`–`R-03D` |
+| **T1 — Fundação RTS** | **`HOMOLOGADO` / `INTEGRADO`** | `t1-complete` (`2808799`, na `main`) — 90 testes, 1.607 asserções |
+| **T2 — Trabalho e Recursos** | **`HOMOLOGADO` / `INTEGRADO`** (14/11/2026) | `t2-complete` (`f7c2459`, na `main`) — 182/182 testes (27 suítes), 21/21 manuais; benchmark CA `147,33 FPS` (`p95 = 9,757 ms`), DC `55,80 FPS` (`p95 = 33,038 ms`, aceito como limitação conhecida em [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)) |
+| **T3.1–T3.6.1** | **`HOMOLOGADO` / `INTEGRADO`** | Na `main` (`25e0a20`): `T3.1`–`T3.3` (`t3-3-complete` @ `3c6fc0b`, [T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)), `T3.4` (`2a6cce6`), `T3.5.1` (`56d8e97`), `T3.5.2` (`fb31887`) e `T3.6.1` (`25e0a20`, matemática pura `D3`) |
+| **T3.6.2 Bloco A e Design System D2.2** | **`HOMOLOGADO` *(não integrados à `main`)*** | `T3.6.2 Bloco A` (`ec17f42`, `use_provenance_economy = true` na linha `c4a6361`) e Design System `D2.2` (`cdd9f2f`, homologado documentalmente) + plano `UI-1.0 R1` (`7dbfeb1`) |
+| **UI-1.1A R2, UI-1.1B R1, UI-1.2 e UI-1.3 R1 (`R-01`)** | **`HOMOLOGADO` *(não integradas à `main`)*** (23/11/2026) | `fix/ui-1-3-r1-validation-uid` (`c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`): `validate.ps1` com `0` erros / `0` avisos (`208` scripts), `85/85` suítes (`592/592` testes, `28.989` asserções na regressão histórica da R1) e `8/8` itens manuais aprovados em `1280×720` e `1920×1080` |
+| **Reconciliação Documental Única (`R-02A R1`)** | **Candidata documental em revisão** | Branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), aguardando auditoria independente e aceite expresso do proprietário |
+| **T3.6.4-R1, UX-1, RUX-1, RUX-2A e RUX-2B** | **`NÃO HOMOLOGADO`** | Retestes `D3-04`/`D3-07` pendentes (`T3.6.4-R1` @ `8deeef1`, mantido pela regra de transição `P-REC-1` até `R-04C`); sandboxes `UX-1` (`0e78f9a`) e `RUX-*` (`cddd582`) aguardam integração jogável na `MainScene` em `R-03A`–`R-03D` |
 | **Branch `main` e checkout `C:\Projetos\Dawn of Kin`** | **Ainda não atualizados** | A `main` permanece em `25e0a20` e o diretório principal local em `7293908` (com alterações locais preservadas). Organização dos worktrees e preparação da `main` ocorrerão **somente na próxima etapa planejada: `R-02B`**, após autorização expressa |
 
 - **Renderizador configurado:** `gl_compatibility`
@@ -24,10 +25,10 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 ## Documentação canônica
 
-1. **[docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md)** — Game Design Document consolidado único (candidata `v1.3` da `R-02A`).
+1. **[docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md)** — Game Design Document consolidado único (candidata `v1.3` da `R-02A R1`).
 2. **[docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md)** — Roadmap Mestre único (`R-01`–`T3.9` + horizonte `T4`–`T8`), topologia Git e Matriz de Decisões e Rastreabilidade (`D1`–`D9`, `DEC-01`–`DEC-19`, `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B`, `D-ERR-2 C`, `DT-01`–`DT-06`).
 3. **[docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md](docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md)** — Design System Mestre **D2.2 ("Marcos de Pedra e Eclipse")** e Visual Consistency Gate (VCG).
-4. **[docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md)** — Plano técnico de integração da série `UI-1` e Adendo `R-02A`.
+4. **[docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md)** — Plano técnico de integração da série `UI-1` e Adendo `R-02A R1`.
 5. **[AGENTS.md](AGENTS.md)** — Regras permanentes de engenharia, taxonomia de status e governança de colaboração.
 6. **[docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)** — Limitações medidas e pendências conhecidas.
 

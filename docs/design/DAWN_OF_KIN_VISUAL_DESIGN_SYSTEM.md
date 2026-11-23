@@ -291,7 +291,7 @@ Todos os 10 componentes abaixo estão integralmente referenciados no Atlas de pr
   - Nome do canteiro (`Canteiro: Depósito Rústico`) e estágio físico.
   - Barra de progresso de montagem da obra (no contrato canônico `D-01`/`D-02`, implementado em `R-04A`–`R-04C` antes da `UI-1.4`, os materiais são debitados atomicamente na colocação — sem fila de suprimento físico de obra nem complementação manual `DEC-11B`).
   - Lista de habitantes atribuídos automaticamente como construtores pelo sistema comunitário.
-  - Botão de prioridade de obra e botão de cancelamento com prévia de reembolso proporcional direto ao estoque (`50%` arredondado para baixo, `D-02`/`D-13`/`P-REC-2`).
+  - Botão de prioridade de obra e botão de cancelamento com prévia de **reembolso `R2 simples` direto ao estoque (`100%` dos recursos pagos quando `p = 0`; `floor(Q_pago × (1 − p))` quando `0 < p ≤ 1`, sem multiplicador adicional `η = 0,50`, com destino prioritário depósito protegido com capacidade disponível → pilhas válidas e preservação de exposição sem rejuvenescer recursos — `D-02`/`D-13`/`P-REC-2`)**.
 
 ---
 

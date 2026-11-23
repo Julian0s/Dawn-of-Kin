@@ -3,30 +3,30 @@
 ## 1. Fonte de verdade, escopo e estado real do repositório
 
 - **Documentos canônicos obrigatórios (ler antes de propor qualquer alteração):**
-  1. [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) — **GDD consolidado único** (candidata `v1.3` na reconciliação documental `R-02A`, incorporando as decisões canônicas `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B` e `D-ERR-2 C`).
+  1. [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) — **GDD consolidado único** (candidata `v1.3` na reconciliação documental `R-02A R1`, incorporando as decisões canônicas `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B` e `D-ERR-2 C`).
   2. [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) — **Roadmap Mestre único e Matriz de Decisões e Rastreabilidade** (`R-01` a `T3.9` + horizonte `T4`–`T8`).
   3. [docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md](docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md) — **Design System Mestre D2.2 ("Marcos de Pedra e Eclipse")** (Cláusula Pétrea visual na Seção 10).
-  4. [docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md) — **Plano técnico da série `UI-1`** (com Adendo de Reconciliação `R-02A`).
+  4. [docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md) — **Plano técnico da série `UI-1`** (com Adendo de Reconciliação `R-02A R1`).
 - **Projeto:** jogo single-player em **Godot 4.7.2 / GDScript tipado**, RTS isométrico 3D (`gl_compatibility`, `Jolt Physics`, referência de desempenho Intel UHD Graphics 620 em `1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
 - **Estado real verificado do projeto (em 23/11/2026):**
-  - **`T1 — Fundação RTS`:** `HOMOLOGADO` e integrado na `main` (tag `t1-complete`, commit `2808799`).
-  - **`T2 — Trabalho e Recursos`:** `HOMOLOGADO` em 14/11/2026 e integrado na `main` (tag `t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes, 21/21 manuais; benchmark CA `p95 = 9,757 ms` atendido; bateria DC `p95 = 33,038 ms` aceita como limitação conhecida não bloqueante).
-  - **`T3.1`, `T3.2` e `T3.3`:** `HOMOLOGADO` e integradas na `main` (`t3-3-complete`, commit `3c6fc0b`; `main` avançou até `25e0a20f1d6a2f10a9e059afe69759fbe263db4a` com governança/documentação da T3).
-  - **Série `UI-1` (`UI-1.1A`, `UI-1.1B`, `UI-1.2` e `UI-1.3 R1` / etapa `R-01`):** `HOMOLOGADO` em 23/11/2026 na branch `fix/ui-1-3-r1-validation-uid` (`c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`): `validate.ps1` com `0` erros / `0` avisos (`208` scripts), `85/85` suítes (`592/592` testes, `28.989` asserções) e `8/8` itens manuais aprovados em `1280×720` e `1920×1080`. Em `main.tscn`, `use_d2_2_hud = false` permanece preservado até a etapa autorizada **`R-05B`** (`D-ERR-1 B`).
-  - **Candidata documental ativa (`R-02A`):** branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), submetida a auditoria independente e aceite expresso do proprietário. **Aprovações documentais nunca autorizam implementação de código, merges, criação de tags ou exclusão de worktrees.**
+  - **`T1 — Fundação RTS`:** `HOMOLOGADO` e `INTEGRADO` na `main` (tag `t1-complete`, commit `2808799`).
+  - **`T2 — Trabalho e Recursos`:** `HOMOLOGADO` em 14/11/2026 e `INTEGRADO` na `main` (tag `t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes, 21/21 manuais; benchmark CA `p95 = 9,757 ms` atendido; bateria DC `p95 = 33,038 ms` aceita como limitação conhecida não bloqueante).
+  - **`T3.1`–`T3.6.1` na `main` (`25e0a20f1d6a2f10a9e059afe69759fbe263db4a`):** `HOMOLOGADO` e `INTEGRADO` na `main` — inclui `T3.1`–`T3.3` (`t3-3-complete` @ `3c6fc0b`), `T3.4` (`2a6cce6`), `T3.5.1` (`56d8e97`), `T3.5.2` (`fb31887`) e `T3.6.1` (`25e0a20`, módulo matemático puro `D3`). O fluxo antigo de construção (`D2`/`D3`/`DEC-11B`) permanece ativo em transição segura (`P-REC-1`) até `R-04C`.
+  - **Cadeia linear homologada (ainda NÃO integrada à `main`):** `T3.6.2 Bloco A` (`ec17f42`, `use_provenance_economy = true` ativo em `main.tscn`), Design System `D2.2` (`cdd9f2f`, homologado documentalmente), plano `UI-1.0 R1` (`7dbfeb1`) e série **`UI-1` (`UI-1.1A R2` @ `a02aa97`, `UI-1.1B R1` @ `a6542ca`, `UI-1.2` @ `9f84d33` e `UI-1.3 R1` / etapa `R-01` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`)**, homologada em 23/11/2026 (`validate.ps1` com `0` erros / `0` avisos em `208` scripts, `85/85` suítes / `592/592` testes / `28.989` asserções na regressão histórica da R1, e `8/8` itens manuais aprovados em `1280×720` e `1920×1080`). Em `main.tscn`, `use_d2_2_hud = false` permanece preservado até a etapa autorizada **`R-05B`** (`D-ERR-1 B`).
+  - **Candidata documental ativa (`R-02A R1`):** branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), submetida a auditoria independente e aceite expresso do proprietário. **Aprovações documentais nunca autorizam implementação de código, merges, criação de tags ou exclusão de worktrees.**
   - **Itens explicitamente `NÃO HOMOLOGADO` (nunca declarar como homologados):**
-    - `T3.6.4-R1` (retestes manuais `D3-04`/`D3-07` pendentes; infraestrutura preservada pela regra de transição `P-REC-1` até homologação de `R-04A`–`R-04C`).
-    - Protótipos/sandboxes `UX-1`, `RUX-1`, `RUX-2A` e `RUX-2B` (validados apenas em sandbox/testes headless; pendentes de integração jogável e aceite humano na `MainScene` em `R-03A`–`R-03D`).
+    - `T3.6.4-R1` (`8deeef1`, retestes manuais `D3-04`/`D3-07` pendentes; infraestrutura preservada pela regra de transição `P-REC-1` até homologação de `R-04B`/`R-04C`).
+    - Protótipos/sandboxes `UX-1` (`0e78f9a`) e `RUX-1`/`RUX-2A`/`RUX-2B` (`cddd582`) — validados apenas em sandbox/testes headless; pendentes de integração jogável e aceite humano na `MainScene` em `R-03A`–`R-03D`.
     - Checkout principal local `C:\Projetos\Dawn of Kin` permanece em `7293908` (com `project.godot` modificado localmente e `docs/historico/` não rastreados) até a etapa dedicada **`R-02B`**.
   - **Etapas futuras (`R-02B` a `T3.9` e `T4`–`T8`):** estritamente **`BLOQUEADO`** sem autorização específica prévia do proprietário.
 
 ## 2. Taxonomia obrigatória de status (nunca simular conclusão)
 
-Diferenciar rigorosamente em todo documento, relatório e resposta:
+Diferenciar rigorosamente em todo documento, relatório e resposta os **11 marcadores normativos** definidos em [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §1 e [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md):
 
-- **`DECIDIDO`** · **`PLANEJADO`** · **`PROPOSTA`** · **`ABERTO`** · **`IMPLEMENTADO`** · **`TESTADO AUTOMATICAMENTE`** · **`TESTADO MANUALMENTE`** · **`HOMOLOGADO`** · **`NÃO VERIFICADO`** · **`NÃO HOMOLOGADO`** · **`BLOQUEADO`**.
+- **`DECIDIDO`** · **`PLANEJADO`** · **`IMPLEMENTADO`** · **`VALIDADO`** · **`HOMOLOGADO`** · **`INTEGRADO`** · **`ATIVO NA MAINSCENE`** · **`PROPOSTA`** · **`ABERTO`** · **`SUBSTITUÍDO`** · **`DESCARTADO`**.
 
-Nunca promover automaticamente uma etapa de um marcador para outro sem evidência concreta e aceite expresso do proprietário. Sempre separar resultados históricos (com commit/SHA de origem) de resultados da execução atual.
+Em relatórios técnicos e auditorias, distinguir sempre a evidência de validação (**testado automaticamente** vs **testado manualmente**), sinalizar explicitamente itens **`NÃO VERIFICADO`**, **`NÃO HOMOLOGADO`** ou **`BLOQUEADO`**, e nunca promover automaticamente uma etapa entre estados nem misturar resultados históricos (com SHA de origem) com resultados da execução atual.
 
 ## 3. Regra permanente de acessibilidade pela `MainScene` e sequência incremental
 
