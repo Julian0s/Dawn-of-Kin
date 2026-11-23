@@ -1,96 +1,120 @@
 # Dawn of Kin
 
-Jogo single-player em 3D isométrico de sobrevivência familiar, construção de assentamento e estratégia em tempo real (RTS), desenvolvido em **Godot 4.7.2** com **GDScript**.
+Jogo single-player em 3D isométrico de sobrevivência familiar, construção de assentamento e estratégia em tempo real (RTS), desenvolvido em **Godot 4.7.2** com **GDScript tipado**.
 
-## Estado atual
+---
 
-- **Marco concluído:** **T2 — Trabalho e Recursos: CONCLUÍDA E APROVADA** (registrada com a tag Git anotada `t2-complete` e integrada na branch `main`; autorização formal concedida pelo proprietário em 14/11/2026).
-  - **Implementado e aprovado em etapas parciais (`T2.0`–`T2.5.1`):**
-    - `T2.0` / `T2.0.1`: definições de recursos, pesos (`madeira=2`, `pedra=3`, `alimentos=1`), `UnitCarryLoad`, `SettlementInventory` e atomicidade contra perda/duplicação.
-    - `T2.1`: `CampStorageZone`, `GroundResourcePile`, `GroundPileManager`, pilhas físicas individuais e deterioração centralizada por `EconomyClockController`.
-    - `T2.2` / `T2.2.1`: fontes coletáveis (`wood_tree`, `stone_rock`, `food_bush`), `WorldPicker`/`PickResult` com oclusão e rebake de `WorldNavigation`.
-    - `T2.3` / `T2.3.1`: `GatherResourceOrder`, `DeliverToCampOrder`, retorno automático com carga cheia ou esgotamento, liberação de vaga durante transporte e concorrência simultânea dos dois trabalhadores.
-    - `T2.4` / `T2.4.1` / `T2.4.2` / `T2.4.3`: composição jogável no `TestMap`/`MainScene`, tempos distintos de coleta (`1,5 s` alimentos, `2,5 s` madeira, `3,5 s` pedra), redução progressiva de velocidade proporcional ao peso e estados naturais das fontes.
-    - `T2.5` / `T2.5.1`: HUD não bloqueante (`ResourceHud`, `SettlementStockpilePanel`, `SelectedUnitPanel`) distinguindo `Peso transportado: X / Y`, porcentagem por peso e quantidades individuais (`Madeira: X un`, `Pedra: X un`, `Alimentos: X un`).
-  - **Implementado na `T2.6` e ajuste `B1`:**
-    - Correção de corrida de sincronização de `WorldNavigation` pós-rebake entre cenas no mesmo processo e ajuste de amostragem de tween em testes.
-    - **Ajuste B1:** velocidade-base de deslocamento sem carga unificada em `4,8 m/s` tanto na marcha livre quanto na aproximação para coletar recursos (`GatherResourceOrder`), com a redução de velocidade incidindo estritamente sobre a carga física transportada (`2,88 m/s` a 100% de carga; recuperação imediata a `4,8 m/s` pós-descarga no acampamento).
-    - Suíte automatizada validada: **182/182 testes verdes em 27 suítes (6.469 asserções) com zero erros e zero avisos** via `.\tools\run_tests.ps1 -Segmented`.
-  - **Desempenho medido em `1920x1080` (Intel UHD Graphics 620, `gl_compatibility`, VSync OFF):**
-    - **Tomada CA (B1.1):** mediana de `147,33 FPS` (`p50 = 6,608 ms`, `p95 = 9,757 ms`, `p99 = 11,679 ms`, pior max `25,258 ms`, `0` quadros `> 100 ms`) — **critério atendido com folga de 6,943 ms**.
-    - **Bateria DC (B1):** mediana de `55,80 FPS` (`p50 = 14,872 ms`, `p95 = 33,038 ms`, `0` quadros `> 100 ms`) — **critério de `p95 <= 16,7 ms` não atendido na bateria B1** (critério de spikes cumprido em ambas as condições).
-    - *Nota de integridade:* Os resultados sustentam associação entre alimentação e desempenho sem telemetria síncrona suficiente para comprovar o mecanismo físico específico; a aprovação em CA não atesta conformidade universal em DC, e o desempenho observado em bateria DC (`p95 = 33,038 ms` na bateria B1) foi formalmente registrado e aceito pelo proprietário em 14/11/2026 como limitação conhecida não bloqueante para encerramento da T2 ([docs/reviews/T2_Closeout_ACCEPTANCE.md](docs/reviews/T2_Closeout_ACCEPTANCE.md)).
-  - **Testes manuais (informados pelo proprietário em 14/11/2026):**
-    - Todos os 21 itens do protocolo `docs/testing/T2_manual_test_protocol.md` (A1–F2) foram executados e relatados como aprovados pelo proprietário.
-    - O item B1 (velocidade de coleta) recebeu apontamento inicial, foi corrigido no commit `8f53a3f`, retestado pelo proprietário e expressamente confirmado ("testei esta correto").
-  - **Situação de encerramento:** Fase T2 oficialmente concluída, integrada na branch `main` e marcada com a tag `t2-complete`.
-- **Fase atual (`T3 — Construção`):** **T3.1**, **T3.2** e **T3.3** concluídas, auditadas, testadas manualmente, formalmente homologadas pelo proprietário e integradas na `main` (`3c6fc0bd36fc3828af5a89662fb23cfb60d37865`, tag anotada `t3-3-complete`; ver [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md)); a etapa **T3.4** e as posteriores permanecem planejadas e **sem autorização de implementação**.
-- **Marco anterior:** T1 — Fundação RTS (**encerrada e aprovada**, registrada no commit `2808799` e tag anotada `t1-complete` com 90 testes aprovados e 1.607 asserções)
-- **Game Design Document (GDD):** [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) (`v1.2 — Conteúdo Aprovado pelo Proprietário`, revisão `R4.1`, commit `6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovado em 16/11/2026); vigora como fonte normativa única do projeto na `main` após integração autorizada (antes da integração, `docs/Dawn_of_Kin_GDD_v1.0.md` permanece vigente na `main`; a aprovação documental não libera a implementação da `T3.4`).
+## Estado real do projeto (23/11/2026)
+
+| Camada / Marco | Status Real | Referência Git / Evidência |
+|---|---|---|
+| **T1 — Fundação RTS** | **`HOMOLOGADO`** | `t1-complete` (`2808799`, na `main`) — 90 testes, 1.607 asserções |
+| **T2 — Trabalho e Recursos** | **`HOMOLOGADO`** (14/11/2026) | `t2-complete` (`f7c2459`, na `main`) — 182/182 testes (27 suítes), 21/21 manuais; benchmark CA `147,33 FPS` (`p95 = 9,757 ms`), DC `55,80 FPS` (`p95 = 33,038 ms`, aceito como limitação conhecida em [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)) |
+| **T3.1, T3.2 e T3.3** | **`HOMOLOGADO`** (16/11/2026) | `t3-3-complete` (`3c6fc0b`, na `main`; `main` atual em `25e0a20`) — [docs/testing/T3_3_closeout_ACCEPTANCE.md](docs/testing/T3_3_closeout_ACCEPTANCE.md) |
+| **UI-1.1A, UI-1.1B, UI-1.2 e UI-1.3 R1 (`R-01`)** | **`HOMOLOGADO`** (23/11/2026) | `fix/ui-1-3-r1-validation-uid` (`c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`): `validate.ps1` com `0` erros / `0` avisos (`208` scripts), `85/85` suítes (`592/592` testes, `28.989` asserções) e `8/8` itens manuais aprovados em `1280×720` e `1920×1080` |
+| **Reconciliação Documental Única (`R-02A`)** | **Candidata documental em revisão** | Branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), aguardando auditoria independente e aceite expresso do proprietário |
+| **T3.6.4-R1, UX-1, RUX-1, RUX-2A e RUX-2B** | **`NÃO HOMOLOGADO`** | Retestes `D3-04`/`D3-07` pendentes (`T3.6.4-R1`, mantido pela regra de transição `P-REC-1` até `R-04C`); sandboxes `UX-1`/`RUX-*` aguardam integração jogável na `MainScene` em `R-03A`–`R-03D` |
+| **Branch `main` e checkout `C:\Projetos\Dawn of Kin`** | **Ainda não atualizados** | A `main` permanece em `25e0a20` e o diretório principal local em `7293908` (com alterações locais preservadas). Organização dos worktrees e preparação da `main` ocorrerão **somente na próxima etapa planejada: `R-02B`**, após autorização expressa |
+
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
+- **Próxima etapa planejada (após homologação da `R-02A`):** **`R-02B`** — Preservação de alterações locais/históricos, organização controlada dos worktrees e preparação segura da `main` (ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md)).
 
-### Pendências conhecidas e limites provisórios
+---
 
-- Desempenho em bateria DC na Intel UHD 620 (`p95 = 33,038 ms` na bateria B1, não atendendo `p95 <= 16,7 ms`, vs. `9,757 ms` em CA na bateria B1.1; `0` quadros `> 100 ms` em ambas; aceito expressamente pelo proprietário em 14/11/2026 como limitação conhecida não bloqueante da T2, detalhado em `docs/KNOWN_ISSUES.md`).
-- Itens visuais provisórios declarados em T2.4.3 (oscilação simples no feedback de coleta e pilhas geométricas provisórias; sem bloqueio funcional para a T2).
-- Decisões `D1` e `DEC-17` definidas no planejamento arquitetural da T3 ([docs/architecture/T3_architecture_PROPOSAL.md](docs/architecture/T3_architecture_PROPOSAL.md)): a `T3.8` implementará persistência mínima versionada em disco (`schema_version = 1`) como núcleo extensível do `SaveManager` antes da expansão completa da T4 (etapas `T3.4`–`T3.8` planejadas e aguardando autorização).
+## Documentação canônica
+
+1. **[docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md)** — Game Design Document consolidado único (candidata `v1.3` da `R-02A`).
+2. **[docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md)** — Roadmap Mestre único (`R-01`–`T3.9` + horizonte `T4`–`T8`), topologia Git e Matriz de Decisões e Rastreabilidade (`D1`–`D9`, `DEC-01`–`DEC-19`, `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B`, `D-ERR-2 C`, `DT-01`–`DT-06`).
+3. **[docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md](docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md)** — Design System Mestre **D2.2 ("Marcos de Pedra e Eclipse")** e Visual Consistency Gate (VCG).
+4. **[docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md)** — Plano técnico de integração da série `UI-1` e Adendo `R-02A`.
+5. **[AGENTS.md](AGENTS.md)** — Regras permanentes de engenharia, taxonomia de status e governança de colaboração.
+6. **[docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)** — Limitações medidas e pendências conhecidas.
+
+---
+
+## Diferença entre a `MainScene` e os sandboxes visuais
+
+É fundamental não confundir o jogo principal com as cenas de avaliação isoladas:
+
+- **`MainScene` (`res://src/main/main.tscn` — executada por `F5` ou `.\tools\run_game.ps1`):**
+  - É a cena principal do jogo.
+  - Por decisão deliberada e preservada na `UI-1.3 R1`, `main.tscn` mantém **`use_d2_2_hud = false`** (HUD legada ativa) até a etapa autorizada **`R-05B`** (`D-ERR-1 B`), após a homologação da `UI-1.4`.
+  - Os controles de trabalho comunitário autônomo (`RUX-*`) e a nova construção com débito imediato (`D-01`/`D-02`) **ainda não foram integrados à `MainScene`** — entrarão de forma jogável e verificável respectivamente em `R-03A`–`R-03D` e `R-04A`–`R-04C`.
+- **Sandbox visual da `UI-1.3 R1` (`res://tests/visual/ui_1_d2_2_sandbox.tscn`):**
+  - Instancia a `MainScene` com **`use_d2_2_hud = true`**, exibindo a HUD D2.2 homologada até `UI-1.3 R1`: pedras de recursos escalonadas, placa superior com pausa real (`||`/`1×`), estelas dos fundadores, lajes de ação, mesa retrátil de maquetes (`[B]`, `[1]`, `[2]`) e faixa `D2PlacementStatusBar` no centro superior.
+- **Sandboxes históricos não homologados (`tests/visual/ux_1_*.tscn`, `rux_*.tscn`):**
+  - Cenas técnicas intermediárias de prototipação (`UX-1`, `RUX-1`, `RUX-2A`, `RUX-2B`). Não representam funcionalidades homologadas na `MainScene`.
+
+---
 
 ## Requisitos de ambiente
 
 - **Godot Engine:** `4.7.2.stable.official` (Windows 64-bit).
-- Se o executável não estiver no `PATH`, defina a variável de ambiente `GODOT_BIN` apontando para o executável da Godot, ou utilize os scripts em `tools/`.
+- Se o executável não estiver no `PATH`, defina a variável de ambiente `GODOT_BIN` apontando para `Godot_v4.7.2-stable_win64.exe`, ou utilize os scripts em `tools/`.
 - **Git:** 2.55+.
+
+---
+
+## Como executar, validar e testar
+
+No PowerShell, a partir da raiz do worktree/checkout desejado:
+
+```powershell
+# 1. Validar importação headless, checagem estática (--check-only) e startup da cena principal
+.\tools\validate.ps1
+
+# 2. Executar a suíte completa de regressão de forma confiável em lotes segmentados
+.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1
+
+# 2b. Executar apenas um subconjunto focado de testes
+.\tools\run_tests.ps1 -Filter "tests/unit"
+
+# 3. Executar o jogo principal (MainScene, use_d2_2_hud = false; 1280x720 por padrão)
+.\tools\run_game.ps1
+.\tools\run_game.ps1 -Resolution "1920x1080"
+
+# 4. Abrir o sandbox visual homologado da UI-1.3 R1 (HUD D2.2 ativa) na Godot 4.7.2
+#    Cena: res://tests/visual/ui_1_d2_2_sandbox.tscn
+& $env:GODOT_BIN --path . --resolution 1280x720 res://tests/visual/ui_1_d2_2_sandbox.tscn
+& $env:GODOT_BIN --path . --resolution 1920x1080 res://tests/visual/ui_1_d2_2_sandbox.tscn
+
+# 5. Executar benchmark de desempenho (Intel UHD Graphics 620, 1920x1080)
+.\tools\perf.ps1 -Mode t2
+.\tools\perf.ps1 -Mode all
+```
+
+---
 
 ## Estrutura de pastas
 
 ```text
 Dawn of Kin/
 ├─ project.godot                       # Configuração da engine, camadas 3D, InputMap e avisos GDScript
-├─ AGENTS.md                           # Regras permanentes de engenharia
+├─ AGENTS.md                           # Regras permanentes de engenharia e governança
 ├─ README.md                           # Este arquivo
+├─ assets/                             # Assets runtime (inclui res://assets/ui/d2/ da UI-1.1A)
+├─ data/                               # Recursos .tres (personagens, recursos econômicos, edifícios)
 ├─ docs/
-│  ├─ Dawn_of_Kin_GDD.md               # GDD único consolidado v1.2 (conteúdo R4.1 aprovado em 16/11/2026; fonte normativa única quando integrado à main)
-│  ├─ T1_Implementation_Plan.md        # Plano técnico da T1 e critérios AC-01..AC-16
-│  ├─ KNOWN_ISSUES.md                  # Limitações e pendências reais medidas
-│  ├─ architecture/                    # Arquitetura da T1 e proposta consolidada da T3
-│  ├─ audits/                          # Auditoria global e matriz de consolidação do GDD
-│  ├─ reviews/                         # Rascunhos, dossiês e aceite da T2
-│  └─ testing/                         # Protocolos manuais (T1–T3.3), notas técnicas e aceite T3.3 (T2 aprovada 21/21 em 14/11/2026; T3.3 homologada 16/11/2026)
-├─ levels/test_map/                    # Mapa demonstrativo de testes (`TestMap`, 64×64 m)
+│  ├─ Dawn_of_Kin_GDD.md               # GDD único consolidado (v1.3 candidata R-02A)
+│  ├─ ROADMAP_MESTRE.md                # Roadmap Mestre único e Matriz de Decisões/Rastreabilidade
+│  ├─ KNOWN_ISSUES.md                  # Limitações medidas e pendências reais
+│  ├─ architecture/                    # Planos técnicos (UI-1.0 R1 + históricos T1/T3/UX/RUX com adendos)
+│  ├─ design/                          # Design System Mestre D2.2 e referências visuais congeladas
+│  ├─ audits/                          # Auditorias históricas e matrizes de consolidação
+│  ├─ reviews/                         # Dossiês e registros de aceite
+│  └─ testing/                         # Protocolos manuais, aceites e relatórios de candidatas
+├─ levels/test_map/                    # Mapa demonstrativo (`TestMap`, 64×64 m)
 ├─ src/                                # Código-fonte (buildings, camera, core, economy, main, navigation, rts, ui, units)
 ├─ tests/
 │  ├─ unit/                            # Testes unitários puros
 │  ├─ integration/                     # Testes de integração com física e navegação reais
-│  ├─ perf/                            # Benchmarks em janela (T1 e T2), análise RVO e estresse
-│  └─ visual/                          # Cenários visuais e diagnósticos (inclui scenario_t2_decay.gd)
+│  ├─ perf/                            # Benchmarks em janela, análise RVO e estresse
+│  └─ visual/                          # Cenas visuais (inclui ui_1_d2_2_sandbox.tscn)
 └─ tools/                              # Scripts PowerShell (validate, run_tests, run_game, perf)
 ```
 
-## Como executar, validar e testar
-
-No PowerShell, a partir da raiz do projeto (`C:\Projetos\Dawn of Kin`):
-
-```powershell
-# 1. Validar importação headless, checagem estática (--check-only) e startup da cena principal
-.\tools\validate.ps1
-
-# 2. Executar a suíte completa de forma confiável em lotes disjuntos (evita timeout de 240s em processo único)
-.\tools\run_tests.ps1 -Segmented
-
-# 2b. Ou executar em processo único (excede 240s na suíte combinada completa; use -Filter para focar)
-.\tools\run_tests.ps1 -Filter "tests/unit"
-
-# 3. Executar o jogo em janela (1280x720 por padrão; ou passe -Resolution "1920x1080")
-.\tools\run_game.ps1
-
-# 3b. Observar deterioração centralizada em poucos segundos sem alterar o jogo padrão
-.\tools\run_game.ps1 -Resolution "1280x720" -ExtraArgs "--script","res://tests/visual/scenario_t2_decay.gd" -FailOnWarnings
-
-# 4. Executar benchmark T1 ou benchmark representativo T2 na Intel UHD 620
-.\tools\perf.ps1 -Mode t2
-.\tools\perf.ps1 -Mode all
-```
+---
 
 ## Convenções do projeto
 
