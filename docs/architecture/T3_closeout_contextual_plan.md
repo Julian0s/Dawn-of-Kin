@@ -1,6 +1,12 @@
 # Plano de encerramento da T3 com interação contextual
 
-**Estado: plano de execução.** Referência UX-0 em `5d4a5d088ae3a172b32216b9b49c785139bfaf7f`, filha da candidata R1 em `8deeef115d7ebe394ab31c72a6179dca62ff319c`. A main verificada no GitHub em 21/11/2026 aponta para `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`. A candidata já contém o HEAD publicado de proveniência `ec17f42`. Não reaplicar seus commits isoladamente.
+> **Adendo de Reconciliação Canônica (`R-02A` — 23/11/2026 — `SUPERADO COMO ROADMAP ATIVO`):**  
+> Este documento é preservado integralmente como **registro histórico** do plano de encerramento formulado na época da proposta `UX-0` (`5d4a5d08`). Ele **não** é mais o roadmap executivo vigente: a sequência oficial e única do projeto passa a ser exclusivamente [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md), que consolidou as decisões `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B` e `D-ERR-2 C`:
+> - A entrada contextual baseada em escolha manual obrigatória de equipe (`UX-0`/`UX-1`) foi **substituída** pelo modelo comunitário autônomo + Casa Fundadora (`R-03A`–`R-03D`);
+> - O transporte físico para obras (`D2`) e a recuperação física no mapa (`D3-04`/`D3-07`) serão **substituídos** em `R-04A`–`R-04C` pelo modelo de débito imediato e reembolso proporcional direto ao estoque (`P-REC-1` preserva a infraestrutura antiga até a homologação da substituta);
+> - A sequência pós-`R-04C` segue `D-ERR-2 C`: `R-05A (UI-1.4)` → `R-05B (HUD D2.2 padrão)` → `T3.7` → `T3.8` → `R-06A (UI-1.5)` → `R-06B (UI-1.6)` → `R-07 (UI-1.7)` → `T3.9`.
+
+**Estado histórico original: plano de execução.** Referência UX-0 em `5d4a5d088ae3a172b32216b9b49c785139bfaf7f`, filha da candidata R1 em `8deeef115d7ebe394ab31c72a6179dca62ff319c`. A main verificada no GitHub em 21/11/2026 aponta para `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`. A candidata já contém o HEAD publicado de proveniência `ec17f42`. Não reaplicar seus commits isoladamente.
 
 ## Sequência de entregas
 

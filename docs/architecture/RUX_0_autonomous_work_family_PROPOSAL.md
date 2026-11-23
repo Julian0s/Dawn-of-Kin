@@ -1,6 +1,11 @@
 # RUX-0 — Reformulação do Trabalho Comunitário, Construção Simplificada e Casa Fundadora
 
-**PROPOSTA DE REFORMULAÇÃO — PENDENTE DE REVISÃO DO PROPRIETÁRIO**
+> **Adendo de Reconciliação Canônica (`R-02A` — 23/11/2026 — `DECIDIDO CONCEITUALMENTE / EM TRANSIÇÃO PARA R-03 E R-04`):**  
+> Este documento é preservado integralmente como **registro histórico da proposta RUX-0**. Todas as decisões em aberto listadas originalmente nesta proposta foram **deliberadas e ratificadas pelo proprietário** (`D-01` a `D-13` e `P-REC-1` a `P-REC-4`), encontrando-se agora consolidadas como fonte normativa única em [Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) (`v1.3` candidata `R-02A`) e [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md):
+> - **Decisões fechadas sobre a RUX-0:** `D-01` (débito atômico imediato na construção + construtores diretos), `D-02`/`D-13`/`P-REC-1`/`P-REC-2` (cancelamento com reembolso `50%` proporcional arredondado para baixo direto ao estoque, com prioridade depósito protegido → `CampStorageZone` e retirada da infraestrutura antiga apenas após homologação de `R-04A`–`R-04C`), `D-03`–`D-05` (Casa Fundadora com controle pessoal para protagonistas, descendentes e **cônjuges externos que ingressam por casamento**, mantendo imortalidade restrita exclusivamente aos 2 protagonistas originais `DEC-07`), `D-06` (**sem** escolha manual opcional de equipe ao criar tarefa comunitária), `D-10` (opção do jogador para descendentes casados residirem na Casa Principal ou em casa própria), `D-11` (lista flutuante recolhível de tarefas comunitárias).
+> - **Estado real da implementação:** Os protótipos de sandbox `RUX-1`, `RUX-2A` e `RUX-2B` (`cddd582`) foram validados em testes automatizados, porém permanecem **`NÃO HOMOLOGADO` / `PENDENTE DE INTEGRAÇÃO NA MAINSCENE`**. Sua integração jogável e validação humana na `MainScene` ocorrerão em **`R-03A`–`R-03D`**, e a nova construção (`D-01`/`D-02`) em **`R-04A`–`R-04C`**.
+
+**Status Histórico Original: PROPOSTA DE REFORMULAÇÃO — PENDENTE DE REVISÃO DO PROPRIETÁRIO**
 
 - **Base auditada:** branch `feat/ux-1-contextual-tree`, commit `0e78f9ab282f635cfb772b2d1c5c2b256e57f3ab` (worktree `C:\Projetos\Dawn_of_Kin_wt_t3_4_5`).
 - **Engine / alvo técnico:** Godot `4.7.2.stable`, GDScript tipado estrito, `gl_compatibility`, `Jolt Physics`, Intel UHD Graphics 620 (`1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).

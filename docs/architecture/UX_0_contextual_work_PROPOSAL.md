@@ -1,6 +1,11 @@
 # UX-0 — Interface contextual de trabalho
 
-**PROPOSTA — PENDENTE DE APROVAÇÃO**
+> **Adendo de Reconciliação Canônica (`R-02A` — 23/11/2026 — `SUPERADO COMO MODELO PRINCIPAL / PARCIALMENTE ABSORVIDO`):**  
+> Este documento é preservado integralmente como **registro histórico**. O modelo de entrada baseado em menu obrigatório com escolha manual de equipe por tarefa (`UX-0` e o protótipo `UX-1`, que **nunca foi homologado**) foi **substituído** pelo modelo comunitário autônomo com controle pessoal da Casa Fundadora ([Dawn_of_Kin_GDD.md](../Dawn_of_Kin_GDD.md) `v1.3` e [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md), etapas `R-03A`–`R-03D`).  
+> - **O que permanece válido como legado técnico/conceitual:** seleção em lote de fontes com escopo finito (ex.: 5 árvores selecionadas preservam a 6ª, respeitando `DEC-08`), preservação de `WorldPicker`/`PickResult` com oclusão e transporte físico integral na coleta (`GatherResourceOrder`).  
+> - **O que foi descartado/substituído:** obrigatoriedade de escolher equipe manualmente em cada fonte (`UX-0`/`UX-1`), escolha manual opcional de equipe no clique de tarefa (descartada por `D-06`), e recuperação física de sobras no mapa (será substituída por reembolso direto ao estoque em `R-04A`–`R-04C`, observando a regra de transição `P-REC-1`).
+
+**Status Histórico Original: PROPOSTA — PENDENTE DE APROVAÇÃO**
 
 Referência técnica: Dawn of Kin, Godot 4.7.2, candidata `feat/t3-6-3-cancellation-custody` em `8deeef115d7ebe394ab31c72a6179dca62ff319c`. O escopo de UX-0 é documental. A decisão de design, a implementação e o aceite jogável têm registros distintos.
 

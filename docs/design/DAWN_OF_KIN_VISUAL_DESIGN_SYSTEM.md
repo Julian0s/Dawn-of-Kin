@@ -2,15 +2,15 @@
 ## Referência Visual Aprovada D2.2: "Marcos de Pedra e Eclipse"
 
 > **Status:** `HOMOLOGADO DOCUMENTALMENTE (UI-0 R2.3.2)` — Design System Mestre homologado pelo proprietário em 22/11/2026 após cumprimento integral das duas correções condicionantes sobre a R2.3.1 (classificação do armazenamento e procedência/licenças), com ressalvas de procedência registradas na Seção 6. Baseado na Direção D2 restaurada e aprovada visualmente (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb78c269f3a659712491de91ab1f317e919`).  
-> **Distinção de Autoridade:**  
-> - **Identidade Artística D2.2:** `APROVADA VISUALMENTE` (imutável sem ordem expressa do proprietário).  
+> **Reconciliação de Progresso (`R-02A` — 23/11/2026):**  
+> - **Identidade Artística D2.2:** `APROVADA VISUALMENTE` (imutável sem ordem expressa do proprietário — Cláusula Pétrea na Seção 10).  
 > - **Manual & Prancha R2.3.2:** `HOMOLOGADO DOCUMENTALMENTE` (referência normativa de padronização visual e VCG).  
-> - **Implementação de Produção (`UI-1`):** `BLOQUEADA` — a homologação documental **não autoriza** implementação de HUD/menus, código de produção, merges ou tags.  
+> - **Implementação de Produção (`UI-1`):** `UI-1.1A`, `UI-1.1B`, `UI-1.2` e **`UI-1.3 R1`** estão **`HOMOLOGADO`** (`fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`, aceite formal em 23/11/2026), com `use_d2_2_hud = false` preservado em `main.tscn` até a transição autorizada **`R-05B`** (`D-ERR-1 B`). As etapas **`UI-1.4` a `UI-1.7`** permanecem **`PLANEJADO` / `BLOQUEADO`** (ver [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md) e [UI_1_0_R1_INTEGRATION_PLAN.md](../architecture/UI_1_0_R1_INTEGRATION_PLAN.md)).  
 > **Hierarquia Normativa:**  
-> 1. GDD Consolidado e decisões vigentes: autoridade máxima sobre regras de gameplay, simulação e narrativa.  
+> 1. [GDD Consolidado](../Dawn_of_Kin_GDD.md) (`v1.3` candidata `R-02A`) e [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md): autoridade máxima sobre regras de gameplay, simulação, sequência de entregas e narrativa.  
 > 2. Direção Artística D2 Original (`design/ui-0-r2-identity` @ `f138177`): fonte primária de composição, silhueta e atmosfera estética.  
 > 3. Reprodução D2.2 na Godot (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb`): **identidade visual aprovada** e referência técnica de renderização.  
-> 4. Este Design System (`R2.3.2 — Homologado Documentalmente`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.
+> 4. Este Design System (`R2.3.2 — Homologado Documentalmente`, com notas de reconciliação `R-02A`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.
 
 ---
 
@@ -271,7 +271,8 @@ Todos os 10 componentes abaixo estão integralmente referenciados no Atlas de pr
 - **Finalidade:** Feedback em tempo real durante o arraste da maquete 3D sobre o terreno.
 - **Dimensões e Âncora:**
   - Atlas: `x: 8`, `y: 622`, `w: 660`, `h: 58` (conteúdo ativo: `640 × 38 px`; ampliada no showcase para `760 px`).
-  - Posição na Tela 1080p: Centro inferior (`x: 580 px`, `y: 994 px`).
+  - Posição histórica no showcase R2.2 (`1080p`): Centro inferior (`x: 580 px`, `y: 994 px`).
+  - **Reconciliação Canônica `R-02A` (`UI-1.3 R1` homologada @ `c4a6361`):** Em produção (`D2PlacementStatusBar`), a faixa é ancorada no **centro superior (`y = 24 * s`)** para evitar sobreposição com a mesa de maquetes (`D2ConstructionDockView`) no canto inferior direito em `1280×720` e `1920×1080`, preservando integralmente o corte de atlas, silhueta chanfrada, filete dourado, barra lateral de status e tokens D2.2. Posicionamento validado e aprovado manualmente pelo proprietário (`8/8` itens em ambas as resoluções).
 - **Geometria e Cores:**
   - Faixa escura com barra lateral de status de `6 px`.
   - *Local Válido:* Borda e indicador em verde esmeralda (`#385B2A` / `#A5C98B`), texto `"LOCAL VÁLIDO · Clique esquerdo para assentar maquete"`.
@@ -286,11 +287,11 @@ Todos os 10 componentes abaixo estão integralmente referenciados no Atlas de pr
   - Atlas: `x: 242`, `y: 8`, `w: 328`, `h: 244` (conteúdo ativo: `308 × 224 px`).
   - Posição na Tela 1080p: Centro-direita (`x: 1592 px`, `y: 736 px`).
 - **Geometria:** Laje espessa de basalto chanfrada com filete dourado integral.
-- **Conteúdo Interno:**
+- **Conteúdo Interno (Reconciliado `R-02A` para a futura `UI-1.4` / `R-05A`):**
   - Nome do canteiro (`Canteiro: Depósito Rústico`) e estágio físico.
-  - Barra de progresso de acumulação de materiais e horas de trabalho.
-  - Lista de habitantes atribuídos automaticamente pela coleta comunitária.
-  - Botão de prioridade de obra e botão de demolição/cancelamento.
+  - Barra de progresso de montagem da obra (no contrato canônico `D-01`/`D-02`, implementado em `R-04A`–`R-04C` antes da `UI-1.4`, os materiais são debitados atomicamente na colocação — sem fila de suprimento físico de obra nem complementação manual `DEC-11B`).
+  - Lista de habitantes atribuídos automaticamente como construtores pelo sistema comunitário.
+  - Botão de prioridade de obra e botão de cancelamento com prévia de reembolso proporcional direto ao estoque (`50%` arredondado para baixo, `D-02`/`D-13`/`P-REC-2`).
 
 ---
 
@@ -399,7 +400,7 @@ Quando sistemas futuros (`PLANEJADO` ou `PROPOSTA` no GDD) forem expressamente a
 |        (PLANEJADO T3.8)        • Preserva silhuetas chanfradas e tokens da Seção 2                 |
 +----------------------------------------------------------------------------------------------------+
 ```
-*(Nota: Outros domínios previstos no GDD — como Exploração/Cap. 2, Diplomacia/Cap. 3 e Defesa/T7 — seguem o mesmo princípio: reutilização dos tokens, silhuetas chanfradas e tríade material D2.2, sem criar kits visuais paralelos.)*
+*(Nota `R-02A`: A lista flutuante recolhível de tarefas comunitárias decidida em `D-11` — com implementação funcional em `R-03D` e acabamento D2.2 em `R-06B / UI-1.6` — bem como outros domínios previstos no GDD como Exploração/Cap. 2, Diplomacia/Cap. 3 e Defesa/T7, seguem o mesmo princípio: reutilização estrita dos tokens, silhuetas chanfradas e tríade material D2.2, sem criar kits visuais paralelos.)*
 
 ---
 
