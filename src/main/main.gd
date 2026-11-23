@@ -80,19 +80,22 @@ func _ready() -> void:
 			_placement_controller if _economy_admission_reason.is_empty() else null
 		)
 
-	if _resource_hud != null:
-		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
-
 	if use_d2_2_hud:
+		if _resource_hud != null:
+			_resource_hud.unbind()
+			_resource_hud.visible = false
+			var legacy_stockpile: SettlementStockpilePanel = _resource_hud.get_stockpile_panel()
+			if legacy_stockpile != null:
+				legacy_stockpile.visible = false
+			var legacy_unit_panel: SelectedUnitPanel = _resource_hud.get_selected_unit_panel()
+			if legacy_unit_panel != null:
+				legacy_unit_panel.visible = false
 		_setup_d2_hud()
+	elif _resource_hud != null:
+		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
 
 
 func _setup_d2_hud() -> void:
-	if _resource_hud != null:
-		var legacy_stockpile: SettlementStockpilePanel = _resource_hud.get_stockpile_panel()
-		if legacy_stockpile != null:
-			legacy_stockpile.unbind()
-			legacy_stockpile.visible = false
 	var ui_layer: Node = get_node_or_null("UiLayer")
 	if ui_layer == null:
 		return
@@ -104,7 +107,9 @@ func _setup_d2_hud() -> void:
 		_camp_storage_zone,
 		_ground_pile_manager,
 		_camera_rig,
-		_economy_clock
+		_economy_clock,
+		_selection_manager,
+		get_units()
 	)
 	if not _d2_hud_root.layout_updated.is_connected(_on_d2_layout_updated):
 		_d2_hud_root.layout_updated.connect(_on_d2_layout_updated)

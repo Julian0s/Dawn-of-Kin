@@ -89,6 +89,27 @@ const POLYGON_SLAB_CMD_BASALT: Array[Vector2] = [
 	Vector2(0.0, 69.0),
 ]
 
+const POLYGON_LINEAGE_BLADE: Array[Vector2] = [
+	Vector2(0.0, 6.0),
+	Vector2(454.0, 0.0),
+	Vector2(445.0, 214.0),
+	Vector2(3.0, 210.0),
+]
+
+# --- Canonical D2.2 Founder Steles & Lineage Blade Dimensions (1080p baseline, logical px) ---
+const STELE_CONTENT_SIZE: Vector2 = Vector2(108.0, 136.0)
+const STELE_RAISED_CONTENT_SIZE: Vector2 = Vector2(108.0, 154.0)
+const STELE_ORIGIN_X: float = 20.0
+const STELE_GAP_X: float = 14.0
+const STELE_SECOND_OFFSET_Y: float = 6.0
+const STELE_MARGIN_BOTTOM: float = 20.0
+const STELE_RAISED_LIFT_Y: float = 22.0
+const STELE_PORTRAIT_DIAMETER: float = 62.0
+
+const BLADE_CONTENT_SIZE: Vector2 = Vector2(454.0, 214.0)
+const BLADE_GAP_X: float = 14.0
+const BLADE_MARGIN_BOTTOM: float = 20.0
+
 # --- Canonical D2.2 Dimensions (1080p baseline, logical px) ---
 const ROCK_CONTENT_SIZE: Vector2 = Vector2(84.0, 42.0)
 const ROCK_GAP_X: float = 10.0

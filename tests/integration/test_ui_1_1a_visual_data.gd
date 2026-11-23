@@ -81,16 +81,20 @@ func test_dual_mode_hides_duplicate_stockpile_and_preserves_non_migrated_ui() ->
 	assert_not_null(d2, "D2HudRoot must be instantiated when use_d2_2_hud is true")
 	assert_true(d2.visible)
 
-	# Safeguard 1: zero duplicate stockpile HUD
+	# Safeguard 1 (updated for UI-1.2): zero duplicate stockpile OR selected-unit HUD
 	var legacy_stockpile: SettlementStockpilePanel = main_root.get_resource_hud().get_stockpile_panel()
-	assert_false(legacy_stockpile.visible, "Legacy stockpile panel must be hidden in D2.2 mode to prevent duplicate HUD")
+	var legacy_unit_panel: SelectedUnitPanel = main_root.get_resource_hud().get_selected_unit_panel()
+	assert_false(main_root.get_resource_hud().visible, "Legacy ResourceHud must be hidden in D2.2 mode once stockpile & selection are migrated")
+	assert_false(legacy_stockpile.is_visible_in_tree(), "Legacy stockpile panel must be hidden in D2.2 mode to prevent duplicate HUD")
 	assert_false(legacy_stockpile.is_bound_to_inventory(main_root.get_settlement_inventory()), "Hidden legacy stockpile must be unbound")
+	assert_false(main_root.get_resource_hud().is_bound_to_selection_manager(main_root.get_selection_manager()), "Hidden legacy ResourceHud must not hold duplicate selection listener")
 
-	# Non-migrated functional UIs stay operational
+	# Non-migrated functional UIs stay operational; migrated D2.2 blade replaces SelectedUnitPanel
 	var leader: Unit = main_root.get_units()[0]
 	main_root.get_selection_manager().select_single(leader)
 	await wait_process_frames(1)
-	assert_true(main_root.get_resource_hud().get_selected_unit_panel().visible, "Non-migrated SelectedUnitPanel must still work")
+	assert_false(legacy_unit_panel.is_visible_in_tree(), "Migrated SelectedUnitPanel must stay hidden in D2.2 mode (UI-1.2)")
+	assert_true(d2.get_lineage_blade_view().visible, "D2LineageBladeView must replace SelectedUnitPanel in D2.2 mode")
 	assert_not_null(main_root.get_node_or_null("UiLayer/ConstructionHud"), "ConstructionHud must remain available")
 	assert_not_null(main_root.get_node_or_null("UiLayer/BuildingInspectorPanel"), "BuildingInspectorPanel must remain available")
 
@@ -108,17 +112,21 @@ func test_dual_mode_hides_duplicate_stockpile_and_preserves_non_migrated_ui() ->
 
 	# Layout bounds & no overlap at both 1280x720 and 1920x1080
 	var debug_panel: Control = main_root.get_node("UiLayer/DebugOverlay/Panel") as Control
-	var unit_panel: Control = main_root.get_resource_hud().get_selected_unit_panel()
 	for res: Vector2i in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
 		vp.size = res
 		await wait_process_frames(3)
 		var vp_rect := Rect2(Vector2.ZERO, Vector2(res))
 		var rocks_rect: Rect2 = d2.get_resource_rocks_view().get_content_bounds()
 		var plaque_rect: Rect2 = d2.get_top_plaque_view().get_content_bounds()
+		var steles_rect: Rect2 = d2.get_founder_steles_view().get_content_bounds()
+		var blade_rect: Rect2 = d2.get_lineage_blade_view().get_content_bounds()
 		assert_true(vp_rect.encloses(rocks_rect), "Resource rocks must stay inside viewport %s" % str(res))
 		assert_true(vp_rect.encloses(plaque_rect), "Top plaque must stay inside viewport %s" % str(res))
+		assert_true(vp_rect.encloses(steles_rect), "Founder steles must stay inside viewport %s" % str(res))
+		assert_true(vp_rect.encloses(blade_rect), "Lineage blade must stay inside viewport %s" % str(res))
 		assert_false(rocks_rect.intersects(plaque_rect), "Rocks and plaque must not intersect at %s" % str(res))
-		assert_false(rocks_rect.intersects(unit_panel.get_global_rect()), "Rocks and unit panel must not intersect at %s" % str(res))
+		assert_false(rocks_rect.intersects(steles_rect), "Rocks and founder steles must not intersect at %s" % str(res))
+		assert_false(steles_rect.intersects(blade_rect), "Founder steles and lineage blade must not intersect at %s" % str(res))
 		assert_false(rocks_rect.intersects(debug_panel.get_global_rect()), "Rocks and DebugOverlay must not intersect at %s" % str(res))
 
 	# Clean teardown disconnects signals
