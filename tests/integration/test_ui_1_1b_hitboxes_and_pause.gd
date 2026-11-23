@@ -666,3 +666,71 @@ func test_05_escape_router_passthrough_and_legacy_mode_intact() -> void:
 	assert_eq(leg_sel.get_selected_units().size(), 0, "Legacy mode Esc must continue clearing selection identically")
 
 	await _teardown_main(legacy_main, vp_leg)
+
+
+func test_06_r1_shared_pause_lease_ownership_and_real_click_plaque_sync() -> void:
+	var vp := SubViewport.new()
+	vp.process_mode = Node.PROCESS_MODE_ALWAYS
+	vp.own_world_3d = true
+	vp.size = Vector2i(1920, 1080)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_test_child(vp)
+
+	var main_root: MainScene = SANDBOX_SCENE.instantiate() as MainScene
+	vp.add_child(main_root)
+	await _wait_nav_ready(main_root)
+
+	assert_true(main_root.use_provenance_economy, "R1 integration test must run under production use_provenance_economy = true")
+	var tree: SceneTree = get_tree()
+	var d2: D2HudRoot = main_root.get_d2_hud_root()
+	var plaque: D2TopPlaqueView = d2.get_top_plaque_view()
+	var pause_ctrl: D2SimulationPauseController = d2.get_pause_controller()
+	var rig: RtsCameraRig = main_root.get_node("RtsCameraRig") as RtsCameraRig
+	var btn_pause: D2SlabButton = plaque.get_pause_button()
+	var btn_resume: D2SlabButton = plaque.get_resume_button()
+	var pause_pos: Vector2 = btn_pause.position + btn_pause.size * 0.5
+	var resume_pos: Vector2 = btn_resume.position + btn_resume.size * 0.5
+
+	# Part 1 (Problem B end-to-end with REAL mouse clicks on || and 1x):
+	# 1. Real click || -> HUD pauses, 1x enabled
+	await _push_mouse_click(vp, pause_pos, MOUSE_BUTTON_LEFT)
+	assert_true(tree.paused)
+	assert_true(rig.is_input_locked())
+	assert_false(btn_resume.disabled, "1x must be enabled after HUD pause")
+
+	# 2. External cooperative authority acquires lease while paused -> 1x MUST disable immediately
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, &"r1_ext_coop"))
+	assert_true(btn_resume.disabled, "1x must immediately disable on external cooperative lease acquisition")
+
+	# Real click on disabled 1x MUST NOT unpause
+	await _push_mouse_click(vp, resume_pos, MOUSE_BUTTON_LEFT)
+	assert_true(tree.paused, "Clicking disabled 1x while external lease is held must not unpause")
+
+	# 3. External cooperative authority releases lease -> 1x MUST re-enable immediately without manual refresh!
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, &"r1_ext_coop"))
+	assert_true(tree.paused, "Tree must remain paused while HUD pause is active")
+	assert_false(btn_resume.disabled, "1x must immediately re-enable once external cooperative lease releases")
+
+	# 4. Real click on 1x resumes simulation cleanly!
+	await _push_mouse_click(vp, resume_pos, MOUSE_BUTTON_LEFT)
+	assert_false(tree.paused, "Real click on 1x must resume simulation")
+	assert_false(rig.is_input_locked())
+	assert_true(btn_resume.is_active_state())
+
+	# Part 2 (Problem A in real MainScene):
+	# Unmanaged external pause -> cooperative lease acquire & release -> tree.paused MUST stay true!
+	tree.paused = true
+	await wait_process_frames(1)
+	assert_true(btn_resume.disabled)
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, &"r1_ext_coop"))
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, &"r1_ext_coop"))
+	assert_true(tree.paused, "Releasing cooperative lease must never clear pre-existing unmanaged external pause in MainScene")
+	assert_true(btn_resume.disabled, "1x must stay disabled while unmanaged external pause remains active")
+
+	# Cleanup unmanaged pause and verify controlled economic teardown
+	tree.paused = false
+	await wait_process_frames(1)
+	assert_false(btn_resume.disabled)
+	assert_false(rig.is_input_locked())
+	await _teardown_main(main_root, vp)
+

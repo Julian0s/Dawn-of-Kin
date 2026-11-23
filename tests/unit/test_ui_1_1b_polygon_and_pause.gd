@@ -310,3 +310,138 @@ func test_escape_router_passthrough_and_priority_contract() -> void:
 	router.clear_handlers()
 	assert_true(router.is_pass_through_mode())
 	assert_eq(router.get_handler_count(), 0)
+
+
+func test_problem_a_cooperative_lease_must_not_unpause_preexisting_unmanaged_pause() -> void:
+	var tree: SceneTree = get_tree()
+	assert_false(tree.paused, "Precondition: tree starts unpaused")
+
+	# 1. Exact RED repro: unmanaged external pause -> cooperative lease acquire & release -> tree MUST stay paused!
+	tree.paused = true
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_false(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A), "Repeated lease acquire must be idempotent")
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused, "PROBLEM A: Releasing cooperative lease must NEVER unpause a pre-existing unmanaged external pause")
+
+	# 2. Variation: two cooperative authorities in reverse order on top of unmanaged external pause
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_true(tree.paused)
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused, "Releasing two cooperative leases in reverse order must preserve unmanaged external pause")
+
+	# 3. Variation: HUD joins AFTER cooperative lease on top of unmanaged external pause; both release (coop first, HUD second)
+	var ctrl := D2SimulationPauseController.new()
+	add_test_child(ctrl)
+	await wait_process_frames(1)
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(ctrl.request_pause(D2SimulationPauseController.REASON_HUD_PAUSE))
+	assert_true(ctrl.is_externally_paused())
+	assert_false(ctrl.owns_tree_pause(), "HUD must not claim tree ownership over pre-existing unmanaged external pause")
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused)
+	assert_true(ctrl.release_pause(D2SimulationPauseController.REASON_HUD_PAUSE))
+	assert_true(tree.paused, "HUD releasing after external lease must STILL preserve unmanaged external pause")
+
+	# 4. Variation: controller destroyed while unmanaged external pause + cooperative lease active
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(ctrl.request_pause(D2SimulationPauseController.REASON_HUD_PAUSE))
+	ctrl.queue_free()
+	await wait_process_frames(2)
+	assert_true(tree.paused, "Destroying controller must preserve unmanaged external pause")
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused, "Releasing remaining cooperative lease after controller destruction must STILL preserve unmanaged pause")
+
+	# Clear unmanaged external pause cleanly
+	tree.paused = false
+	await wait_process_frames(1)
+
+	# 5. Variation: Initially unpaused & 100% cooperative (two authorities) -> cleanly unpauses when last releases
+	assert_false(tree.paused)
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused)
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused, "Tree must remain paused while second cooperative lease is held")
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_false(tree.paused, "Fully cooperative pause must cleanly unpause when last lease releases")
+
+
+func test_problem_b_plaque_syncs_immediately_on_cooperative_lease_transitions() -> void:
+	var tree: SceneTree = get_tree()
+	assert_false(tree.paused)
+
+	var lib := D2AtlasLibrary.new()
+	lib.load_all()
+	var tf := D2ThemeFactory.new()
+
+	var ctrl := D2SimulationPauseController.new()
+	add_test_child(ctrl)
+
+	var plaque := D2TopPlaqueView.new()
+	add_test_child(plaque)
+	plaque.setup_visuals(lib, tf, Vector2(1920.0, 1080.0), 1.0)
+	plaque.bind_pause_controller(ctrl)
+	await wait_process_frames(1)
+
+	assert_false(ctrl.is_processing(), "Pause controller must stay event-driven with zero _process polling")
+	assert_false(plaque.is_processing(), "Plaque must stay event-driven with zero _process polling")
+
+	var btn_pause: D2SlabButton = plaque.get_pause_button()
+	var btn_resume: D2SlabButton = plaque.get_resume_button()
+
+	# --- Sequence 1: HUD pauses -> external acquires lease -> external releases lease -> HUD resumes ---
+	btn_pause.pressed.emit()
+	assert_true(tree.paused)
+	assert_false(btn_resume.disabled, "Step 2: 1x must be enabled when HUD solely owns pause")
+	assert_true(btn_pause.is_active_state())
+
+	# Step 3 & 4: External acquires cooperative lease while tree.paused stays true -> immediate HUD sync!
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(ctrl.is_externally_paused(), "Controller must report external pause immediately")
+	assert_true(btn_resume.disabled, "PROBLEM B Step 4: 1x MUST immediately disable when external cooperative lease is acquired")
+
+	# Step 5 & 6: External releases lease while HUD stays paused -> immediate HUD sync without manual refresh!
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_true(tree.paused, "Tree must stay paused because HUD still holds hud_pause")
+	assert_false(ctrl.is_externally_paused(), "Controller must immediately clear external pause state")
+	assert_false(btn_resume.disabled, "PROBLEM B Step 6: 1x MUST immediately re-enable when external lease releases without manual refresh")
+
+	# Step 7 & 8: Clicking 1x resumes simulation cleanly
+	btn_resume.pressed.emit()
+	assert_false(tree.paused, "Step 8: Clicking 1x must resume simulation")
+	assert_false(btn_pause.is_active_state())
+	assert_true(btn_resume.is_active_state())
+
+	# --- Sequence 2 (Reverse order): External acquires -> HUD pauses -> External releases -> HUD resumes ---
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_true(tree.paused)
+	assert_true(btn_resume.disabled, "Reverse order: 1x must disable immediately when external lease starts pause")
+	assert_true(btn_pause.is_external_pause_indicator())
+
+	btn_pause.pressed.emit()
+	assert_true(ctrl.is_hud_paused())
+	assert_true(btn_resume.disabled, "Reverse order: 1x must stay disabled while external lease is still held")
+	assert_true(btn_pause.is_active_state())
+
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_B))
+	assert_true(tree.paused, "Reverse order: tree must remain paused while HUD still holds pause")
+	assert_false(btn_resume.disabled, "Reverse order: 1x must immediately re-enable once external lease releases")
+
+	btn_resume.pressed.emit()
+	assert_false(tree.paused, "Reverse order: 1x must resume simulation cleanly")
+	assert_true(btn_resume.is_active_state())
+
+	# --- Sequence 3 (Reverse release): External acquires -> HUD pauses -> HUD releases -> External releases ---
+	assert_true(D2SimulationPauseController.acquire_tree_pause_lease(tree, EXT_LEASE_A))
+	btn_pause.pressed.emit()
+	assert_true(ctrl.release_pause(D2SimulationPauseController.REASON_HUD_PAUSE))
+	assert_true(tree.paused)
+	assert_true(btn_resume.disabled, "1x must remain disabled while external lease still holds pause")
+	assert_true(btn_pause.is_external_pause_indicator())
+	assert_true(D2SimulationPauseController.release_tree_pause_lease(tree, EXT_LEASE_A))
+	assert_false(tree.paused, "Simulation must resume once external lease releases")
+	assert_false(btn_resume.disabled)
+	assert_true(btn_resume.is_active_state())
+

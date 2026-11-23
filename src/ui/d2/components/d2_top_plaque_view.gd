@@ -372,10 +372,12 @@ func _refresh_pause_controls() -> void:
 	var any_paused: bool = false
 	var hud_paused: bool = false
 	var ext_paused: bool = false
+	var can_resume: bool = false
 	if _pause_controller != null and is_instance_valid(_pause_controller):
 		any_paused = _pause_controller.is_paused()
 		hud_paused = _pause_controller.is_hud_paused()
 		ext_paused = _pause_controller.is_externally_paused()
+		can_resume = _pause_controller.can_hud_resume_simulation()
 
 	if ext_paused:
 		# External pause active: 1x MUST NOT appear authorized to clear external pause.
@@ -386,11 +388,11 @@ func _refresh_pause_controls() -> void:
 		_resume_button.set_active_state(false)
 		_resume_button.set_external_pause_indicator(false)
 	elif any_paused:
-		# HUD-owned pause active: || highlighted gold, 1x enabled to resume.
+		# HUD-owned pause active: || highlighted gold, 1x enabled only when releasing hud_pause can resume.
 		_pause_button.set_interactive_enabled(true)
 		_pause_button.set_active_state(true)
 		_pause_button.set_external_pause_indicator(false)
-		_resume_button.set_interactive_enabled(true)
+		_resume_button.set_interactive_enabled(can_resume)
 		_resume_button.set_active_state(false)
 		_resume_button.set_external_pause_indicator(false)
 	else:
