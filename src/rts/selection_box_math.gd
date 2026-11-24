@@ -97,6 +97,9 @@ static func is_source_in_box(
 		return false
 	if source == null or not is_instance_valid(source) or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return false
+	var cam_world: World3D = camera.get_world_3d()
+	if cam_world != null and source.get_world_3d() != cam_world:
+		return false
 
 	var world_anchor: Vector3 = get_source_world_anchor(source)
 	if camera.is_position_behind(world_anchor):

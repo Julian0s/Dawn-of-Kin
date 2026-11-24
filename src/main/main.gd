@@ -8,10 +8,15 @@ const WOOD_DEFINITION: ResourceDefinition = preload("res://data/resources/wood.t
 const STONE_DEFINITION: ResourceDefinition = preload("res://data/resources/stone.tres")
 const SHELTER_BASIC_DEFINITION: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
 const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildings/storage_depot.tres")
+const TREE_SOURCE_SCENE: PackedScene = preload("res://src/economy/sources/tree_source.tscn")
+const ROCK_SOURCE_SCENE: PackedScene = preload("res://src/economy/sources/rock_source.tscn")
+const BUSH_SOURCE_SCENE: PackedScene = preload("res://src/economy/sources/bush_source.tscn")
 
 @export var use_provenance_economy: bool = false
 @export var automatic_cancellation_recovery: bool = true
 @export var use_d2_2_hud: bool = false
+## Explicit R-03A playable multi-source grove on MainScene (preserves TestMap's 6 canonical sources).
+@export var include_playable_community_grove: bool = true
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -19,12 +24,15 @@ const STORAGE_DEPOT_DEFINITION: BuildingDefinition = preload("res://data/buildin
 @onready var _selection_manager: SelectionManager = $SelectionManager
 @onready var _command_controller: CommandController = $CommandController
 @onready var _input_controller: RtsInputController = $RtsInputController
+@onready var _community_work_board: CommunityWorkBoard = get_node_or_null("CommunityWorkBoard") as CommunityWorkBoard
+@onready var _community_task_dispatcher: CommunityTaskDispatcher = get_node_or_null("CommunityTaskDispatcher") as CommunityTaskDispatcher
 @onready var _destination_marker: DestinationMarker = $DestinationMarker
 @onready var _economy_clock: EconomyClockController = get_node_or_null("EconomyClockController") as EconomyClockController
 @onready var _placement_controller: PlacementController = get_node_or_null("PlacementController") as PlacementController
 @onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
 @onready var _resource_hud: ResourceHud = get_node_or_null("UiLayer/ResourceHud") as ResourceHud
 @onready var _placement_test_overlay: PlacementTestOverlay = get_node_or_null("UiLayer/PlacementTestOverlay") as PlacementTestOverlay
+@onready var _autonomous_gather_feedback: AutonomousGatherFeedback = get_node_or_null("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
 
 var _time_provider: SimulatedWorldTimeProvider = null
 var _camp_storage_zone: CampStorageZone = null
@@ -32,6 +40,7 @@ var _ground_pile_manager: GroundPileManager = null
 var _settlement_inventory: SettlementInventory = null
 var _construction_sites_root: Node3D = null
 var _construction_manager: ConstructionManager = null
+var _community_extra_sources_root: Node3D = null
 var _test_workers_controller: TemporaryTestWorkersController = null
 var _economy_domain_owner_token: RefCounted = null
 var _economy_world_ref: WeakRef = null
@@ -51,6 +60,7 @@ func _ready() -> void:
 			if child is Unit:
 				(child as Unit).set_world_navigation(world_nav)
 
+	_setup_playable_community_grove(world_nav)
 	_setup_economy(world_nav)
 	_setup_construction(world_nav)
 	if use_provenance_economy:
@@ -79,6 +89,8 @@ func _ready() -> void:
 			_command_controller,
 			_placement_controller if _economy_admission_reason.is_empty() else null
 		)
+
+	_setup_community_work(world_nav)
 
 	if use_d2_2_hud:
 		if _resource_hud != null:
@@ -265,6 +277,7 @@ func request_controlled_teardown() -> Dictionary:
 		load._provenance_busy = true
 		if unit.get_current_order() != null:
 			orders.append({"order": unit.get_current_order(), "movement": unit.get_movement()})
+	_teardown_community_work()
 	get_parent().remove_child(self)
 	for load: UnitCarryLoad in loads:
 		load._coordinator_transaction_locked = false
@@ -296,6 +309,8 @@ func _on_placement_confirmed(
 
 
 func _exit_tree() -> void:
+	_teardown_community_work()
+	_community_extra_sources_root = null
 	if _placement_controller != null and is_instance_valid(_placement_controller):
 		if _placement_controller.placement_confirmed.is_connected(_on_placement_confirmed):
 			_placement_controller.placement_confirmed.disconnect(_on_placement_confirmed)
@@ -475,6 +490,98 @@ func get_construction_manager() -> ConstructionManager:
 
 func get_construction_sites_root() -> Node3D:
 	return _construction_sites_root
+
+
+func _setup_playable_community_grove(_world_nav: WorldNavigation) -> void:
+	if not include_playable_community_grove or _test_map == null:
+		return
+	var map_sources_root: Node3D = _test_map.get_resource_sources_root()
+	if map_sources_root != null and map_sources_root.get_node_or_null("WoodTree03") != null:
+		return
+	if _community_extra_sources_root != null and is_instance_valid(_community_extra_sources_root):
+		return
+
+	# Parent under TestMap (sibling of TestMap/ResourceSources) so WorldNavigation bakes
+	# all extra ResourceSource SolidBody colliders automatically on initial bake while
+	# preserving TestMap.get_resource_sources() == 6 canonical sources.
+	_community_extra_sources_root = Node3D.new()
+	_community_extra_sources_root.name = "PlayableCommunitySources"
+	_community_extra_sources_root.set_meta(&"region_id", _economy_region_id)
+	_test_map.add_child(_community_extra_sources_root)
+
+	var grove_specs: Array[Dictionary] = [
+		{"scene": TREE_SOURCE_SCENE, "name": "WoodTree03", "id": &"wood_tree_03", "pos": Vector3(13.8, 0.0, -1.5), "amount": 24, "extract": 2},
+		{"scene": TREE_SOURCE_SCENE, "name": "WoodTree04", "id": &"wood_tree_04", "pos": Vector3(14.6, 0.0, 0.8), "amount": 24, "extract": 2},
+		{"scene": TREE_SOURCE_SCENE, "name": "WoodTree05", "id": &"wood_tree_05", "pos": Vector3(16.8, 0.0, -0.2), "amount": 24, "extract": 2},
+		{"scene": TREE_SOURCE_SCENE, "name": "WoodTree06", "id": &"wood_tree_06", "pos": Vector3(20.2, 0.0, 0.8), "amount": 24, "extract": 2},
+		{"scene": ROCK_SOURCE_SCENE, "name": "StoneRock03", "id": &"stone_rock_03", "pos": Vector3(-15.0, 0.0, 3.0), "amount": 18, "extract": 1},
+		{"scene": ROCK_SOURCE_SCENE, "name": "StoneRock04", "id": &"stone_rock_04", "pos": Vector3(-17.0, 0.0, 4.8), "amount": 18, "extract": 1},
+		{"scene": BUSH_SOURCE_SCENE, "name": "FoodBush03", "id": &"food_bush_03", "pos": Vector3(5.5, 0.0, 8.5), "amount": 30, "extract": 2},
+		{"scene": BUSH_SOURCE_SCENE, "name": "FoodBush04", "id": &"food_bush_04", "pos": Vector3(1.5, 0.0, 11.5), "amount": 30, "extract": 2},
+	]
+	for spec: Dictionary in grove_specs:
+		var packed: PackedScene = spec["scene"] as PackedScene
+		var src: ResourceSource = packed.instantiate() as ResourceSource
+		src.name = String(spec["name"])
+		src.source_id = spec["id"] as StringName
+		src.initial_amount = int(spec["amount"])
+		src.max_extract_per_operation = int(spec["extract"])
+		src.position = spec["pos"] as Vector3
+		_community_extra_sources_root.add_child(src)
+
+
+func _setup_community_work(world_nav: WorldNavigation) -> void:
+	if _community_work_board == null or _community_task_dispatcher == null:
+		return
+	var region_id: StringName = _economy_region_id
+	if _construction_manager != null and is_instance_valid(_construction_manager):
+		region_id = _construction_manager.get_region_id()
+
+	_community_work_board.configure(region_id, get_world_3d())
+	_community_task_dispatcher.configure(
+		_community_work_board,
+		_command_controller,
+		world_nav,
+		_units_root,
+		_camp_storage_zone,
+		_settlement_inventory,
+		region_id,
+		use_provenance_economy,
+		_economy_admission_reason
+	)
+	if _input_controller is AutonomousGatherInput:
+		(_input_controller as AutonomousGatherInput).configure_community_work(
+			_community_work_board,
+			_community_task_dispatcher,
+			_autonomous_gather_feedback,
+			use_provenance_economy,
+			_economy_admission_reason
+		)
+
+
+func _teardown_community_work() -> void:
+	if _input_controller is AutonomousGatherInput and is_instance_valid(_input_controller):
+		(_input_controller as AutonomousGatherInput).teardown_community_work()
+	if _community_task_dispatcher != null and is_instance_valid(_community_task_dispatcher):
+		_community_task_dispatcher.teardown()
+	if _community_work_board != null and is_instance_valid(_community_work_board):
+		_community_work_board.teardown()
+
+
+func get_community_work_board() -> CommunityWorkBoard:
+	return _community_work_board
+
+
+func get_community_task_dispatcher() -> CommunityTaskDispatcher:
+	return _community_task_dispatcher
+
+
+func get_autonomous_gather_feedback() -> AutonomousGatherFeedback:
+	return _autonomous_gather_feedback
+
+
+func get_economy_admission_reason() -> String:
+	return _economy_admission_reason
 
 
 func get_last_domain_release_result() -> Dictionary:

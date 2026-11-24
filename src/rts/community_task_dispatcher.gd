@@ -17,10 +17,12 @@ var _camp_zone: CampStorageZone = null
 var _inventory: SettlementInventory = null
 var _region_id: StringName = &"default"
 var _use_provenance: bool = true
+var _economy_admission_reason: String = ""
 
 var _unit_callbacks: Dictionary = {}
 var _flush_queued: bool = false
 var _dispatching: bool = false
+var _is_tearing_down: bool = false
 
 
 func _ready() -> void:
@@ -29,7 +31,18 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	teardown()
+
+
+func teardown() -> void:
+	_is_tearing_down = true
 	_unbind_all()
+	_board = null
+	_command_controller = null
+	_world_nav = null
+	_units_root = null
+	_camp_zone = null
+	_inventory = null
 
 
 func configure(
@@ -40,9 +53,11 @@ func configure(
 	p_camp_zone: CampStorageZone,
 	p_inventory: SettlementInventory,
 	p_region_id: StringName = &"default",
-	p_use_provenance: bool = true
+	p_use_provenance: bool = true,
+	p_economy_admission_reason: String = ""
 ) -> void:
 	_unbind_all()
+	_is_tearing_down = false
 	_board = p_board
 	_command_controller = p_command_controller
 	_world_nav = p_world_nav
@@ -51,6 +66,7 @@ func configure(
 	_inventory = p_inventory
 	_region_id = p_region_id if not p_region_id.is_empty() else &"default"
 	_use_provenance = p_use_provenance
+	_economy_admission_reason = p_economy_admission_reason
 
 	if _board != null and is_instance_valid(_board):
 		_board.task_registered.connect(_on_board_task_registered)
@@ -72,7 +88,7 @@ func configure(
 
 
 func request_dispatch() -> void:
-	if not is_inside_tree():
+	if _is_tearing_down or not is_inside_tree():
 		return
 	if _flush_queued:
 		return
@@ -270,7 +286,7 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 
 
 func _flush_dispatch() -> void:
-	if _dispatching:
+	if _dispatching or _is_tearing_down:
 		return
 	_flush_queued = false
 	if not is_inside_tree() or _board == null or not is_instance_valid(_board) or _command_controller == null or not is_instance_valid(_command_controller):
@@ -453,6 +469,9 @@ func _evaluate_unassigned_task(task: WorkTask) -> void:
 	if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
 		_mark_task_waiting(task, "navigation_not_ready", "")
 		return
+	if _use_provenance and not _economy_admission_reason.is_empty():
+		_mark_task_waiting(task, _economy_admission_reason, "")
+		return
 	if _is_economy_busy(task.source):
 		_mark_task_waiting(task, "economy_busy", "")
 		return
@@ -590,9 +609,13 @@ func _check_pre_nav_eligibility(unit: Unit, task: WorkTask) -> String:
 
 
 func _is_economy_busy(source: ResourceSource) -> bool:
+	if _use_provenance and not _economy_admission_reason.is_empty():
+		return true
 	if _inventory == null or _camp_zone == null or not is_instance_valid(_camp_zone) or not _camp_zone.is_valid():
 		return true
 	if _inventory.is_transaction_busy():
+		return true
+	if _board != null and is_instance_valid(_board) and not _board.is_source_in_region_domain(source):
 		return true
 	if _use_provenance:
 		var world: World3D = source.get_world_3d()

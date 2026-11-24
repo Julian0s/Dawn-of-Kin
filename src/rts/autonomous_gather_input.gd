@@ -19,6 +19,8 @@ var _board: CommunityWorkBoard = null
 var _dispatcher: CommunityTaskDispatcher = null
 var _feedback: AutonomousGatherFeedback = null
 var _wired: bool = false
+var _use_provenance_economy: bool = true
+var _economy_admission_reason: String = ""
 var _shared_ring_mesh: ArrayMesh = null
 var _shared_ring_materials: Dictionary = {}
 var _task_highlights: Dictionary = {}
@@ -35,22 +37,62 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	_clear_drag_origin()
-	_clear_all_highlights()
-	_disconnect_signals()
+	teardown_community_work()
 	super._exit_tree()
 
 
+func configure_community_work(
+	p_board: CommunityWorkBoard,
+	p_dispatcher: CommunityTaskDispatcher,
+	p_feedback: AutonomousGatherFeedback = null,
+	p_use_provenance: bool = true,
+	p_economy_admission_reason: String = ""
+) -> void:
+	_disconnect_signals()
+	_clear_drag_origin()
+	_board = p_board
+	_dispatcher = p_dispatcher
+	_feedback = p_feedback
+	_use_provenance_economy = p_use_provenance
+	_economy_admission_reason = p_economy_admission_reason
+	if _board == null or not is_instance_valid(_board) or _dispatcher == null or not is_instance_valid(_dispatcher):
+		_wired = false
+		return
+
+	if not _board.task_registered.is_connected(_on_task_registered):
+		_board.task_registered.connect(_on_task_registered)
+	if not _board.task_closed.is_connected(_on_task_closed):
+		_board.task_closed.connect(_on_task_closed)
+	if not _dispatcher.task_feedback.is_connected(_on_dispatcher_feedback):
+		_dispatcher.task_feedback.connect(_on_dispatcher_feedback)
+	_wired = true
+
+
+func teardown_community_work() -> void:
+	_clear_drag_origin()
+	_clear_all_highlights()
+	_disconnect_signals()
+	_active_group_id = 0
+	_active_group_resource_id = &""
+	_board = null
+	_dispatcher = null
+	_feedback = null
+
+
+func _is_community_economy_blocked() -> bool:
+	return _use_provenance_economy and not _economy_admission_reason.is_empty()
+
+
 func _ensure_wired() -> void:
-	if _wired:
+	if _wired or not is_inside_tree():
 		return
 	var main := get_parent() as MainScene
 	if main == null:
 		return
-	_board = main.get_node_or_null("CommunityWorkBoard") as CommunityWorkBoard
-	_dispatcher = main.get_node_or_null("CommunityTaskDispatcher") as CommunityTaskDispatcher
-	_feedback = main.get_node_or_null("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
-	if _board == null or _dispatcher == null:
+	var board: CommunityWorkBoard = main.get_node_or_null("CommunityWorkBoard") as CommunityWorkBoard
+	var dispatcher: CommunityTaskDispatcher = main.get_node_or_null("CommunityTaskDispatcher") as CommunityTaskDispatcher
+	var feedback: AutonomousGatherFeedback = main.get_node_or_null("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
+	if board == null or dispatcher == null:
 		return
 
 	var test_map: TestMap = main.get_test_map()
@@ -59,27 +101,21 @@ func _ensure_wired() -> void:
 	var region_id: StringName = &"default"
 	if main.get_construction_manager() != null:
 		region_id = main.get_construction_manager().get_region_id()
+	var admission_reason: String = main.get_economy_admission_reason()
 
-	_board.configure(region_id)
-	_dispatcher.configure(
-		_board,
+	board.configure(region_id, main.get_world_3d())
+	dispatcher.configure(
+		board,
 		main.get_command_controller(),
 		world_nav,
 		units_root,
 		main.get_camp_storage_zone(),
 		main.get_settlement_inventory(),
 		region_id,
-		main.use_provenance_economy
+		main.use_provenance_economy,
+		admission_reason
 	)
-
-	if not _board.task_registered.is_connected(_on_task_registered):
-		_board.task_registered.connect(_on_task_registered)
-	if not _board.task_closed.is_connected(_on_task_closed):
-		_board.task_closed.connect(_on_task_closed)
-	if not _dispatcher.task_feedback.is_connected(_on_dispatcher_feedback):
-		_dispatcher.task_feedback.connect(_on_dispatcher_feedback)
-
-	_wired = true
+	configure_community_work(board, dispatcher, feedback, main.use_provenance_economy, admission_reason)
 
 
 func _disconnect_signals() -> void:
@@ -99,6 +135,8 @@ func _on_left_press_started(press_pos: Vector2) -> void:
 	if not multi_source_enabled:
 		return
 	_ensure_wired()
+	if _is_community_economy_blocked():
+		return
 	var pick: PickResult = pick_at_screen_pos(press_pos)
 	if pick.is_resource_source() and _supports_resource_id(pick.resource_source.get_resource_id()):
 		_drag_origin_source = pick.resource_source
@@ -120,6 +158,9 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 	var pick: PickResult = pick_at_screen_pos(screen_pos)
 	if pick.is_resource_source() and _supports_resource_id(pick.resource_source.get_resource_id()):
 		construction_site_picked.emit(null)
+		if _is_community_economy_blocked():
+			_show_feedback("Economia regional bloqueada: trabalho comunitário indisponível.")
+			return
 		if _board == null:
 			return
 		var source: ResourceSource = pick.resource_source
@@ -183,6 +224,9 @@ func _handle_source_box_selection(
 ) -> void:
 	_ensure_wired()
 	_resolve_dependencies()
+	if _is_community_economy_blocked():
+		_show_feedback("Economia regional bloqueada: trabalho comunitário indisponível.")
+		return
 	if _board == null or not _can_pick():
 		return
 

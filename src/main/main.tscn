@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
@@ -8,7 +8,7 @@
 [ext_resource type="Resource" path="res://data/characters/leader_a.tres" id="6_leader_a"]
 [ext_resource type="Resource" path="res://data/characters/leader_b.tres" id="7_leader_b"]
 [ext_resource type="Script" path="res://src/rts/selection_manager.gd" id="8_selection_manager"]
-[ext_resource type="Script" path="res://src/rts/rts_input_controller.gd" id="9_input_controller"]
+[ext_resource type="Script" path="res://src/rts/autonomous_gather_input.gd" id="9_input_controller"]
 [ext_resource type="PackedScene" path="res://src/ui/selection_box_overlay.tscn" id="10_selection_box_overlay"]
 [ext_resource type="Script" path="res://src/rts/command_controller.gd" id="11_command_controller"]
 [ext_resource type="PackedScene" path="res://src/rts/destination_marker.tscn" id="12_destination_marker"]
@@ -16,6 +16,9 @@
 [ext_resource type="PackedScene" path="res://src/ui/resource_hud.tscn" id="14_resource_hud"]
 [ext_resource type="Script" path="res://src/buildings/placement_controller.gd" id="15_placement_controller"]
 [ext_resource type="Script" path="res://src/buildings/placement_test_overlay.gd" id="16_placement_test_overlay"]
+[ext_resource type="Script" path="res://src/rts/community_work_board.gd" id="17_community_work_board"]
+[ext_resource type="Script" path="res://src/rts/community_task_dispatcher.gd" id="18_community_task_dispatcher"]
+[ext_resource type="Script" path="res://src/ui/autonomous_gather_feedback.gd" id="19_autonomous_gather_feedback"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -65,6 +68,14 @@ selection_manager_path = NodePath("../SelectionManager")
 camera_rig_path = NodePath("../RtsCameraRig")
 selection_box_overlay_path = NodePath("../UiLayer/SelectionBoxOverlay")
 command_controller_path = NodePath("../CommandController")
+supported_resource_ids = PackedStringArray("wood", "stone", "food")
+multi_source_enabled = true
+
+[node name="CommunityWorkBoard" type="Node" parent="."]
+script = ExtResource("17_community_work_board")
+
+[node name="CommunityTaskDispatcher" type="Node" parent="."]
+script = ExtResource("18_community_task_dispatcher")
 
 [node name="DestinationMarker" parent="." instance=ExtResource("12_destination_marker")]
 
@@ -91,5 +102,10 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("16_placement_test_overlay")
+
+[node name="AutonomousGatherFeedback" type="PanelContainer" parent="UiLayer"]
+visible = false
+mouse_filter = 2
+script = ExtResource("19_autonomous_gather_feedback")
 
 [node name="DebugOverlay" parent="UiLayer" instance=ExtResource("4_debug_overlay")]

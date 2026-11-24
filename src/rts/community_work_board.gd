@@ -10,6 +10,7 @@ signal task_closed(task: WorkTask)
 const SUPPORTED_RESOURCE_IDS: Array[StringName] = [&"wood", &"stone", &"food"]
 
 var _region_id: StringName = &"default"
+var _expected_world_ref: WeakRef = null
 var _next_task_id: int = 1
 var _next_group_id: int = 1
 var _tasks: Array[WorkTask] = []
@@ -23,6 +24,10 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	teardown()
+
+
+func teardown() -> void:
 	for source_id_key: Variant in _source_callbacks.keys():
 		var sid: int = int(source_id_key)
 		var entry: Dictionary = _source_callbacks[sid] as Dictionary
@@ -32,10 +37,34 @@ func _exit_tree() -> void:
 	_source_callbacks.clear()
 	_active_by_source_id.clear()
 	_tasks.clear()
+	_expected_world_ref = null
 
 
-func configure(p_region_id: StringName) -> void:
+func configure(p_region_id: StringName, p_world_3d: World3D = null) -> void:
 	_region_id = p_region_id if not p_region_id.is_empty() else &"default"
+	_expected_world_ref = weakref(p_world_3d) if p_world_3d != null else null
+
+
+func is_source_in_region_domain(source: ResourceSource) -> bool:
+	if source == null or not is_instance_valid(source) or not source.is_inside_tree():
+		return false
+	if _expected_world_ref != null:
+		var expected_world: World3D = _expected_world_ref.get_ref() as World3D
+		if expected_world != null and source.get_world_3d() != expected_world:
+			return false
+	var source_region: StringName = _resolve_source_region(source)
+	if not source_region.is_empty() and source_region != _region_id:
+		return false
+	return true
+
+
+static func _resolve_source_region(source: Node) -> StringName:
+	var cursor: Node = source
+	while cursor != null:
+		if cursor.has_meta(&"region_id"):
+			return StringName(cursor.get_meta(&"region_id"))
+		cursor = cursor.get_parent()
+	return &""
 
 
 func get_region_id() -> StringName:
@@ -75,6 +104,9 @@ func register_gather_group(sources: Array[ResourceSource], p_group_id: int = 0) 
 			rejected_count += 1
 			continue
 		if source.is_depleted() or not source.is_available():
+			rejected_count += 1
+			continue
+		if not is_source_in_region_domain(source):
 			rejected_count += 1
 			continue
 		if expected_resource_id.is_empty():
@@ -133,6 +165,8 @@ func register_gather_task(source: ResourceSource, p_group_id: int = 0) -> Dictio
 		return {"ok": false, "created": false, "task": null, "reason": "source_depleted"}
 	if not source.is_available():
 		return {"ok": false, "created": false, "task": null, "reason": "invalid_source"}
+	if not is_source_in_region_domain(source):
+		return {"ok": false, "created": false, "task": null, "reason": "region_mismatch"}
 
 	var sid: int = source.get_instance_id()
 	if _active_by_source_id.has(sid):
