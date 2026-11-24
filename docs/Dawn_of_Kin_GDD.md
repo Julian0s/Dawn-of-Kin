@@ -1,17 +1,17 @@
 # DAWN OF KIN
 
 **Documento Mestre de Design (GDD Único Consolidado)**  
-**Versão Interna:** **v1.3 — Candidata Documental de Reconciliação Canônica (`R-02A R1`)** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)  
-**Data:** 23 de novembro de 2026  
+**Versão Interna:** **v1.3 — Homologado na Reconciliação Canônica (`R-02A R1`, `3032f40`; status operacional sincronizado na `R-02B.5`)** (Caminho canônico estável: `docs/Dawn_of_Kin_GDD.md`)  
+**Data:** 24 de novembro de 2026  
 **Uso:** Documento mestre único consolidado de Game Design, atualizando a revisão `v1.2` (`R4.1`, `6e5764f67125da103eec68adb95e5b67ac329ed9`, aprovada em `16/11/2026`) para incorporar todas as decisões canônicas posteriores (`D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B`, `D-ERR-2 C`, Design System `D2.2` e homologação `UI-1.3 R1`), preservando integralmente as regras aprovadas não substituídas da `v1.2`.  
-**Base Técnica Auditada:** `fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e` (`+148` commits lineares à frente da `main` em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`)  
+**Base Técnica Homologada na Linha `develop`:** `3032f4079a8b3a39806b159c0771d980198ec848` (baseada em `UI-1.3 R1` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`, `+152` commits lineares à frente da `main` preservada em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`)  
 **Roadmap e Matriz de Rastreabilidade:** [ROADMAP_MESTRE.md](ROADMAP_MESTRE.md)  
 **Nome de Trabalho:** *Dawn of Kin* («Aurora da Linhagem»); disponibilidade comercial e registro de marca permanecem **`ABERTO`** antes da publicação.
 
-> **Governança e Status Normativo (`R-02A R1`):**
-> - **Status desta revisão (`v1.3`):** `CANDIDATA DOCUMENTAL R-02A R1` — submetida à auditoria independente do ChatGPT e à homologação expressa do proprietário antes de qualquer integração à `main`.
+> **Governança e Status Normativo (`R-02A R1` → `R-02B.5`):**
+> - **Status desta revisão (`v1.3`):** **`HOMOLOGADO`** na etapa `R-02A R1` (`3032f40`), publicado na branch canônica `develop`; **`main`** permanece preservada em `25e0a20` (`R02B-D3`/`R02B-D4`) até autorização expressa de integração pelo proprietário.
 > - **Autoridade de Decisões:** Uma versão anterior de documento não prevalece sobre decisão posterior expressamente aprovada pelo proprietário; da mesma forma, código presente no repositório não se torna canônico ou homologado automaticamente sem aprovação formal.
-> - **Bloqueio de Implementação:** Esta reconciliação documental **não** autoriza implementação de `R-02B`, `R-03A`, `UI-1.4`, `T3.7` ou qualquer etapa futura.
+> - **Bloqueio de Implementação:** Esta reconciliação documental e o encerramento organizacional `R-02B.5` **não** autorizam implementação de `R-03A`, `UI-1.4`, `T3.7` ou qualquer etapa funcional futura.
 >
 > **Marcadores de Status (Não Equivalentes — ver [ROADMAP_MESTRE.md](ROADMAP_MESTRE.md) §1):**
 > - **`DECIDIDO`:** regra de produto expressamente aprovada pelo proprietário.
@@ -321,7 +321,7 @@ A comunidade avança por **marcos concretos de desenvolvimento e construção**,
 |---|---|---|---|---|
 | **T1 — Fundação RTS** | `HOMOLOGADO` / `INTEGRADO` (`t1-complete`) | Obrigatória | Obrigatória | Base |
 | **T2 — Trabalho e Recursos** | `HOMOLOGADO` / `INTEGRADO` (`t2-complete`) | Obrigatória | Obrigatória | Base |
-| **Reconciliação `R-01`–`R-07` + `T3.7`–`T3.9`** | `R-01` (`UI-1.3 R1` @ `c4a6361`) `HOMOLOGADO`; `R-02A` em candidata; `R-02B`–`T3.9` `PLANEJADO` | Obrigatória (núcleo jogável D2.2 + obra `D-01`/`D-02` + depósito `T3.7` + save `T3.8`) | Obrigatória | Base |
+| **Reconciliação `R-01`–`R-07` + `T3.7`–`T3.9`** | `R-01` (`UI-1.3 R1` @ `c4a6361`) e `R-02A` (`3032f40`) `HOMOLOGADO`; `R-02B` em encerramento (`R-02B.5`); `R-03A`–`T3.9` `PLANEJADO` | Obrigatória (núcleo jogável D2.2 + obra `D-01`/`D-02` + depósito `T3.7` + save `T3.8`) | Obrigatória | Base |
 | **T4 — Mundo Contínuo, Estações e Ecologia** | `PLANEJADO` *(não autorizada)* | Ambiente inicial legível | Obrigatória (vale Ueda–Chikuma, 4 estações, névoa natural, remoção/brotação) | Mundo contínuo completo e todos os biomas |
 | **T5 — Família, Modulares e `JobSystem`** | `PLANEJADO` *(não autorizada)* | Casal inicial | Obrigatória (Casa Fundadora, escolha de moradia `D-06`, nascimentos/crescimento no Cap. 2, profissões) | Genealogia multigeracional e casamentos externos |
 | **T6 — Combate, *Alento* e Vocações** | `PLANEJADO` *(não autorizada)* | Opcional mínimo | Escopo Cap. 1–2 (*Alento*, defesa rústica, ameaças moderadas) | Completo (4 vocações plenas e guerras) |

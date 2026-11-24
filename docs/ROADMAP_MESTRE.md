@@ -1,14 +1,15 @@
 # DAWN OF KIN — ROADMAP MESTRE NORMATIVO E MATRIZ DE DECISÕES
 
-> **Status:** `CANDIDATA DOCUMENTAL R-02A R1 (AGUARDANDO AUDITORIA INDEPENDENTE E HOMOLOGAÇÃO DO PROPRIETÁRIO)`  
-> **Data da Consolidação:** 23 de novembro de 2026  
-> **Base Git da Candidata:** `fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e` (**UI-1.3 R1 homologada** pelo proprietário em 23/11/2026)  
+> **Status:** `VIGENTE — R-02A R1 HOMOLOGADA; R-02B EM ENCERRAMENTO (CANDIDATA R-02B.5)`  
+> **Data da Consolidação:** 24 de novembro de 2026  
+> **Base Git da Linha Canônica (`develop`):** `develop` @ `3032f4079a8b3a39806b159c0771d980198ec848` (ancestral linear estrito de **`UI-1.3 R1`** @ `c4a6361` e **`R-02A R1`** @ `3032f40`, ambas homologadas pelo proprietário)  
 > **Escopo:** Documento normativo único de roadmap, governança incremental e rastreabilidade de decisões canônicas de *Dawn of Kin*. **Não cria roadmaps concorrentes:** substitui os sequenciamentos parciais anteriores ([T3_closeout_contextual_plan.md](architecture/T3_closeout_contextual_plan.md) e cronogramas preliminares de [RUX_0_autonomous_work_family_PROPOSAL.md](architecture/RUX_0_autonomous_work_family_PROPOSAL.md) e [T3_architecture_PROPOSAL.md](architecture/T3_architecture_PROPOSAL.md)), preservando integralmente esses documentos como registro histórico.  
 > **Documentos Normativos Irmãos:**
-> - Game Design (autoridade máxima de produto): [docs/Dawn_of_Kin_GDD.md](Dawn_of_Kin_GDD.md) (`v1.3 — Candidata R-02A R1`)
+> - Game Design (autoridade máxima de produto): [docs/Dawn_of_Kin_GDD.md](Dawn_of_Kin_GDD.md) (`v1.3 — Homologado na R-02A R1`)
 > - Identidade Visual e Design System: [docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md](design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md) (`D2.2 — Homologado Documentalmente`)
 > - Arquitetura de Integração da HUD D2.2: [docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](architecture/UI_1_0_R1_INTEGRATION_PLAN.md) (`Reconciliado R-02A R1`)
-> - Regras Permanentes de Engenharia: [AGENTS.md](../AGENTS.md)
+> - Relatório de Consolidação do Workspace (`R-02B`): [docs/architecture/R_02B_WORKSPACE_CONSOLIDATION_REPORT.md](architecture/R_02B_WORKSPACE_CONSOLIDATION_REPORT.md)
+> - Regras Permanentes de Engenharia e Governança: [AGENTS.md](../AGENTS.md)
 
 ---
 
@@ -48,25 +49,35 @@ Em toda a documentação normativa e relatórios de *Dawn of Kin*, os onze marca
    - Regressão segmentada integral: `.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1` com **100% das suítes descobertas**, `0` omissões, `0` duplicatas, `0` falhas e **exit code `0`**.
    - Para UI: **Visual Consistency Gate (VCG — 10 passos)** em `1280×720` e `1920×1080`, preservando integralmente o Design System **D2.2**.
    - **Auditoria independente do ChatGPT** + **verificação humana real** na Godot `4.7.2` + **aprovação expressa do proprietário**.
+5. **Política Permanente de Integração Contínua e Branches (`R02B-D3` / `R02B-D4`):**
+   - Toda funcionalidade homologada e verificada em sua etapa deve ser **integrada de forma segura na linha canônica de desenvolvimento (`develop`)** antes do início do próximo incremento, evitando acúmulo paralelo de branches desconectadas.
+   - `main` permanece preservada como linha estável em `25e0a20` até decisão expressa do proprietário; merges na `main`, criação de tags, exclusões de branches históricas e force pushes continuam proibidos sem autorização específica.
+6. **Política Permanente de Organização do Workspace e Prevenção de Resíduos (`R02B-D5` / `R02B-D6`):**
+   - `C:\Projetos\Dawn of Kin` é o diretório canônico único do jogo (`develop`).
+   - Limite máximo permanente: **1 checkout principal + no máximo 1 worktree temporário ativo** durante uma etapa isolada, com remoção autorizada somente após integração/backup e sem resíduos no repositório.
+   - Arquivos de histórico, evidências de testes, relatórios locais extensos e backups forenses residem fora do repositório Git, em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\` e `C:\Projetos\Backups\`.
+   - Materiais de referência em `docs/design/` são protegidos por [docs/design/.gdignore](design/.gdignore) contra criação recorrente de `.import` e `.uid` pelo editor da Godot, mantendo leitura direta preservada para referência e suítes unitárias.
 
 ---
 
-## 3. Fotografia Real da Topologia Git e do Estado do Jogo (`23/11/2026`)
+## 3. Fotografia Real da Topologia Git e do Estado do Jogo (`24/11/2026`)
 
 | Marco / Referência | Branch / Tag | SHA Verificado | Estado Oficial | Situação na `MainScene` (`main.tscn`) |
 |---|---|---|---|---|
 | **T1 — Fundação RTS** | Tag `t1-complete` | `2808799` | `HOMOLOGADO` / `INTEGRADO` | `ATIVO NA MAINSCENE` |
-| **T2 — Trabalho e Recursos** | Tag `t2-complete` | `f7c2459` | `HOMOLOGADO` / `INTEGRADO` | `ATIVO NA MAINSCENE` (checkout principal `C:\Projetos\Dawn of Kin` ainda em `review/t2-closeout-candidate` @ `7293908` até `R-02B`) |
+| **T2 — Trabalho e Recursos** | Tag `t2-complete` | `f7c2459` | `HOMOLOGADO` / `INTEGRADO` | `ATIVO NA MAINSCENE` |
 | **T3.1–T3.3 — Canteiro e Suprimento Físico** | Tag `t3-3-complete` | `3c6fc0b` | `HOMOLOGADO` / `INTEGRADO` | `ATIVO NA MAINSCENE` *(modelo `D2` em transição até `R-04C`)* |
-| **T3.4–T3.6.1 — Montagem, Rebake, Catálogo, Inspetor e Matemática `D3`** | `main` | `25e0a20` | `HOMOLOGADO` / `INTEGRADO` | `ATIVO NA MAINSCENE` *(fluxo antigo em transição até `R-04C`; `main` parada em `25e0a20` até `R-02B`)* |
-| **T3.6.2 Bloco A — Economia com Proveniência** | `feat/t3-6-2-provenance-transactions` | `ec17f42` | `HOMOLOGADO` *(não integrado à `main`)* | `ATIVO NA MAINSCENE` na linha `UI-1.3 R1` (`use_provenance_economy = true`) |
-| **T3.6.3 / T3.6.4-R1 — Custódia e Recuperação Física** | `feat/t3-6-3-cancellation-custody` | `8deeef1` | `IMPLEMENTADO` / **CANDIDATA** *(não homologada; `D3-04`/`D3-07` pendentes; `SUBSTITUÍDO` em transição `P-REC-1`)* | Presente na linha `c4a6361` até aposentadoria controlada em `R-04C` |
-| **UX-1 / RUX-1 / RUX-2A / RUX-2B — Protótipos de Coleta** | `feat/ux-1-contextual-tree` → `feat/rux-2b-multi-source-selection` | `0e78f9a` → `cddd582` | `IMPLEMENTADO` / **CANDIDATAS EM SANDBOX** *(não homologadas — `D-09a`)* | **NÃO ATIVAS** na `MainScene` (isoladas em `tests/visual/ux_1_tree.tscn` e `rux_*.tscn`) |
-| **Design System D2.2** | `design/ui-0-r2-3-2-closeout` | `cdd9f2f` | `HOMOLOGADO` *(documentalmente)* | Norma visual vigente |
-| **UI-1.1A R2, UI-1.1B R1, UI-1.2** | `feat/ui-1-1a-*` → `feat/ui-1-2-founder-steles-lineage` | `a02aa97` → `9f84d33` | `HOMOLOGADO` *(não integradas à `main`)* | Inativas por padrão (`use_d2_2_hud = false`); acessíveis via `tests/visual/ui_1_d2_2_sandbox.tscn` |
-| **UI-1.3 R1 — Lajes, Maquetes, Faixa e Correção UID** | `fix/ui-1-3-r1-validation-uid` | `c4a6361` | **`HOMOLOGADO` em 23/11/2026** *(8/8 humano, 592/592 testes, `validate.ps1` 0/0; não integrada à `main`)* | Inativa por padrão (`use_d2_2_hud = false`); acessível via `tests/visual/ui_1_d2_2_sandbox.tscn` |
+| **T3.4–T3.6.1 — Montagem, Rebake, Catálogo, Inspetor e Matemática `D3`** | `main` | `25e0a20` | `HOMOLOGADO` / `INTEGRADO` *(linha estável `main`)* | `ATIVO NA MAINSCENE` *(fluxo antigo em transição até `R-04C`; `main` preservada em `25e0a20`)* |
+| **T3.6.2 Bloco A — Economia com Proveniência** | Ancestral da `develop` (`feat/t3-6-2-provenance-transactions`) | `ec17f42` | `HOMOLOGADO` / `INTEGRADO` na `develop` | `ATIVO NA MAINSCENE` na linha `develop` (`use_provenance_economy = true`) |
+| **T3.6.3 / T3.6.4-R1 — Custódia e Recuperação Física** | Ancestral da `develop` (`feat/t3-6-3-cancellation-custody`) | `8deeef1` | `IMPLEMENTADO` / **CANDIDATA** *(não homologada; `D3-04`/`D3-07` pendentes; `SUBSTITUÍDO` em transição `P-REC-1`)* | Presente na linha `develop` até aposentadoria controlada em `R-04C` |
+| **UX-1 / RUX-1 / RUX-2A / RUX-2B — Protótipos de Coleta** | Branches preservadas (`feat/ux-1-contextual-tree` → `feat/rux-2b-multi-source-selection`) | `0e78f9a` → `cddd582` | `IMPLEMENTADO` / **CANDIDATAS EM SANDBOX** *(não homologadas — `D-09a`)* | **NÃO ATIVAS** na `MainScene` (isoladas em `tests/visual/ux_1_tree.tscn` e `rux_*.tscn`) |
+| **Design System D2.2** | Ancestral da `develop` (`design/ui-0-r2-3-2-closeout`) | `cdd9f2f` | `HOMOLOGADO` *(documentalmente)* / `INTEGRADO` na `develop` | Norma visual vigente |
+| **UI-1.1A R2, UI-1.1B R1, UI-1.2** | Ancestral da `develop` (`feat/ui-1-1a-*` → `feat/ui-1-2-founder-steles-lineage`) | `a02aa97` → `9f84d33` | `HOMOLOGADO` / `INTEGRADO` na `develop` | Inativas por padrão (`use_d2_2_hud = false`); acessíveis via `tests/visual/ui_1_d2_2_sandbox.tscn` |
+| **UI-1.3 R1 — Lajes, Maquetes, Faixa e Correção UID** | Ancestral da `develop` (`fix/ui-1-3-r1-validation-uid`) | `c4a6361` | **`HOMOLOGADO` em 23/11/2026** / `INTEGRADO` na `develop` *(não integrada à `main`)* | Inativa por padrão (`use_d2_2_hud = false`); acessível via `tests/visual/ui_1_d2_2_sandbox.tscn` |
+| **R-02A R1 — Reconciliação Documental Única** | Base da `develop` (`docs/r-02a-canonical-reconciliation`) | `3032f40` | **`HOMOLOGADO` em 23/11/2026** / `INTEGRADO` na `develop` | Documentação canônica vigente; código preservado identicamente ao de `c4a6361` |
+| **R-02B — Organização do Workspace e Governança** | `develop` *(HEAD candidata `R-02B.5`)* | `3032f40` → `HEAD` | **`IMPLEMENTADO / CANDIDATA R-02B.5`** *(R-02B.0..R-02B.4 homologadas; R-02B.5 aguardando auditoria ChatGPT + aceite)* | Checkout principal `C:\Projetos\Dawn of Kin` em `develop`; `use_d2_2_hud = false` mantido; 0 worktrees redundantes |
 
-> **Cadeia Linear Verificada:** `main` (`25e0a20`) é ancestral estrito de `c4a6361` (`0` commits atrás / `+148` commits à frente, sem divergência em código). Conforme **`P-REC-4`**, a evolução prossegue exclusivamente sobre essa cadeia linear, sem reiniciar da `main` antiga.
+> **Cadeia Linear Verificada:** `main` (`25e0a20`) é ancestral estrito de `3032f40` (`0` commits atrás / `+152` commits à frente, sem divergência em código) e `develop` evolui linearmente a partir de `3032f40`. Conforme **`P-REC-4`**, a evolução prossegue exclusivamente sobre essa cadeia linear na `develop`, sem reiniciar da `main` antiga.
 
 ---
 
@@ -77,9 +88,9 @@ Sequência única aprovada pelo proprietário (`P-REC-1`–`P-REC-4`, `D-ERR-1 B
 | # | Etapa | Status Atual | Escopo Objetivo | Dependências Técnicas Reais | Critério Objetivo de Aceite e Situação na `MainScene` |
 |---:|---|---|---|---|---|
 | **1** | **R-01** (`UI-1.3 R1`) | **`HOMOLOGADO`** (`c4a6361`) | Auditoria técnica, 8/8 testes humanos (`720p`/`1080p`) e correção dos 3 avisos `Missing .uid` (`.gdignore` em `docs/design/ui-0-r2*/godot_showcase/`). | Nenhuma. | **Encerrada em 23/11/2026.** `validate.ps1` 0/0 (`208` scripts), `592/592` testes (`85/85` suítes, `28.989` asserções), `8/8` manual. `use_d2_2_hud = false` mantido. |
-| **2** | **R-02A** | **`EM EXECUÇÃO NESTA CANDIDATA`** | Reconciliação Documental Única: GDD v1.3, `ROADMAP_MESTRE.md`, Matriz de Decisões, `AGENTS.md` (+ PR #1 `bcd0554`), `README.md`, `UI_1_0_R1_INTEGRATION_PLAN.md` (`7dbfeb1`), `DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md` e adendos em `T3`/`UX-0`/`RUX-0`. | `R-01` homologada. | Diff 100% documental (`0` alterações em `src/`, `data/`, `levels/`, `assets/`, `tests/`, `tools/`, `project.godot`, `.gdignore`); links conferidos; `validate.ps1` + regressão integral; auditoria ChatGPT + aceite. |
-| **3** | **R-02B** | `PLANEJADO` *(não autorizado)* | Preservação local verificada por SHA-256 (`C:\Projetos\Dawn of Kin\project.godot`, 3 logs `docs/historico/`, `Dawn of Kin.zip`, `git bundle`), conferência `ls-remote`, liberação segura de `main` (`wt_t2_closeout`), remoção autorizada por lote de worktrees redundantes e atualização segura de `C:\Projetos\Dawn of Kin` para a base homologada. | `R-02A` homologada. | Backups verificados; `.git/` compartilhado intacto; `C:\Projetos\Dawn of Kin` sai da T2 e acompanha a base homologada (`use_d2_2_hud = false` ainda preservado); máximo de 1 diretório principal + 1 worktree temporário ativo por etapa. |
-| **4** | **R-03A** | `PLANEJADO` *(não autorizado)* | Seleção múltipla de fontes (árvores, pedras, arbustos) e trabalho automático na `MainScene` (unificando `RUX-2B` em `RtsInputController` + `CommunityWorkBoard` + `CommunityTaskDispatcher`). | `R-02A` (`R-02B` recomendada). | Seleção RTS no chão intacta; 5 de 6 fontes preservando a 6ª; conservação física/proveniência; regressão 100%; **teste jogável humano na `MainScene`** (`D-09a`); **integrado à `MainScene`**. |
+| **2** | **R-02A** (`R-02A R1`) | **`HOMOLOGADO`** (`3032f40`) | Reconciliação Documental Única: GDD v1.3, `ROADMAP_MESTRE.md`, Matriz de Decisões, `AGENTS.md` (+ PR #1 `bcd0554`), `README.md`, `UI_1_0_R1_INTEGRATION_PLAN.md` (`7dbfeb1`), `DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md` e adendos em `T3`/`UX-0`/`RUX-0`. | `R-01` homologada. | **Encerrada em 23/11/2026.** Diff 100% documental; GDD `v1.3` e `ROADMAP_MESTRE.md` homologados pelo proprietário e adotados como base `3032f40` de `develop`. |
+| **3** | **R-02B** (`R-02B.0`–`R-02B.5`) | **`CANDIDATA R-02B.5`** *(`R-02B.0`–`R-02B.4` homologadas; `R-02B.5` aguardando auditoria e aceite)* | Backups forenses (`R-02B.1`/`1-C`/`1-D`), `develop` em `3032f40` (`R-02B.2`), migração e validação do checkout principal (`R-02B.3`), encerramento dos 22 worktrees e remoção do clone de restauração (`R-02B.4`), normalização final, `docs/design/.gdignore` e governança permanente (`R-02B.5`). | `R-02A` homologada. | Backups verificados por SHA-256; 1 checkout único limpo em `C:\Projetos\Dawn of Kin` (`develop`); 0 arquivos `.import` gerados em `docs/design/`; `validate.ps1` 0/0 + `85/85` suítes (`592/592` testes) + verificação visual `MainScene` (`use_d2_2_hud = false`) e Sandbox D2.2; auditoria ChatGPT + aceite. |
+| **4** | **R-03A** | **`PLANEJADA — AGUARDANDO AUTORIZAÇÃO`** *(próxima etapa prevista; bloqueada sem autorização)* | Seleção múltipla de fontes (árvores, pedras, arbustos) e trabalho automático na `MainScene` (unificando `RUX-2B` em `RtsInputController` + `CommunityWorkBoard` + `CommunityTaskDispatcher`). | `R-02A` e `R-02B` encerradas. | Seleção RTS no chão intacta; 5 de 6 fontes preservando a 6ª; conservação física/proveniência; regressão 100%; **teste jogável humano na `MainScene`** (`D-09a`); **integrado à `MainScene`** e à `develop`. |
 | **5** | **R-03B** | `PLANEJADO` *(não autorizado)* | Metadados mínimos da **Casa Fundadora** (incl. cônjuges externos `D-04`), máquina `ControlMode`, prioridade pessoal absoluta e retorno automático após intervalo configurável pós-`MoveOrder` (`D-05`, sem fixar `5 s`). | `R-03A` homologada. | Interrupção preserva mochila e libera vaga; retorno após intervalo configurável; diferenciação Casa Fundadora vs morador comum; regressão 100% + teste humano; **integrado à `MainScene`**. |
 | **6** | **R-03C** | `PLANEJADO` *(não autorizado)* | Atribuição manual opcional da **Casa Fundadora** (`UX-1` reconciliada, `D-03`/`D-10`), via gesto deliberado sem conflitar com marcação automática nem duplicar tarefas no `CommunityWorkBoard`. | `R-03B` homologada. | Equipe manual restrita à Casa Fundadora apta (idade/ocupação); demais moradores automáticos; regressão 100% + teste jogável humano; **integrado à `MainScene`**. |
 | **7** | **R-03D** | `PLANEJADO` *(não autorizado)* | **Lista flutuante de tarefas (`D-11`)** em estilo D2.2 sobre `CommunityWorkBoard`, cancelamento fácil preservando 100% da mochila, acessível na `MainScene` durante a transição via adaptador temporário na HUD legada (sem duplicar lógica). | `R-03C` homologada. | Zero sobreposição em `720p`/`1080p` (sem minimapa); mochila preservada ao cancelar; VCG 10 passos + regressão 100% + teste humano; **integrado à `MainScene`**. |
@@ -172,11 +183,31 @@ Sequência única aprovada pelo proprietário (`P-REC-1`–`P-REC-4`, `D-ERR-1 B
 
 ---
 
+### 5.1 Decisões de Reorganização e Governança (`R-02B` — `R02B-D1` a `R02B-D11`)
+
+> **Convenção de Nomenclatura:** Os identificadores `R02B-D1` a `R02B-D11` identificam exclusivamente deliberações operacionais da reorganização `R-02B` e **não colidem** com decisões de produto/gameplay (`D1`–`D4` históricas ou `D-01`–`D-13` do GDD).
+
+| ID Contextual | Decisão Aprovada pelo Proprietário | Origem / Etapa | Estado |
+|---|---|---|---|
+| **`R02B-D1`** | Homologação local do backup forense `R-02B.1` (bundle Git completo + arquivo ZIP + manifestos SHA-256) com as ressalvas documentadas na `R-02B.1-C`. | `R-02B.1-D` | **`HOMOLOGADO`** |
+| **`R02B-D2`** | Dispensa da segunda cópia em nuvem (Google Drive). | `R-02B.1-D` / `R-02B.2` | **`DECIDIDO`** |
+| **`R02B-D3`** | Estratégia Git D ajustada: manter `main` preservada como linha estável (`25e0a20`) e separá-la da linha canônica contínua de desenvolvimento. | `R-02B.1-D` / `R-02B.2` | **`DECIDIDO`** |
+| **`R02B-D4`** | Adotar **`develop`** como branch canônica única de desenvolvimento. | `R-02B.1-D` / `R-02B.2` | **`INTEGRADO`** (`develop`) |
+| **`R02B-D5`** | Arquivar logs históricos, evidências de testes/organização e patches/snapshots locais separadamente do checkout principal (`C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\`). | `R-02B.1-D`–`R-02B.5` | **`DECIDIDO`** / Permanente |
+| **`R02B-D6`** | Concluir integralmente a organização do workspace antes de retomar qualquer desenvolvimento funcional (`R-03A` bloqueada até aceite de `R-02B.5`). | `R-02B.1-D`–`R-02B.5` | **`DECIDIDO`** / Permanente |
+| **`R02B-D7`** | Exigir mídia física independente antes de exclusões definitivas *(regra substituída especificamente para esta reorganização por `R02B-D11`)*. | `R-02B.2` | **`SUBSTITUÍDO`** *(por `R02B-D11` em `R-02B.4`)* |
+| **`R02B-D8`** | Criação local e publicação de `origin/develop` exatamente em `3032f4079a8b3a39806b159c0771d980198ec848`. | `R-02B.2` | **`HOMOLOGADO`** / **`INTEGRADO`** |
+| **`R02B-D9`** | Remoção condicional do clone de restauração após validação completa do checkout migrado e confirmação da integridade dos backups. | `R-02B.2` / `R-02B.4` | **`HOMOLOGADO`** / Executada em `R-02B.4` |
+| **`R02B-D10`** | Homologação definitiva da `R-02B.3` após `validate.ps1` `0/0`, `85/85` suítes (`592/592` testes) e testes manuais `M1`–`M3` aprovados. | `R-02B.4` | **`HOMOLOGADO`** |
+| **`R02B-D11`** | Dispensa da segunda mídia física independente, aceitação expressa pelo proprietário do risco físico associado ao armazenamento dos backups no mesmo disco e autorização da `R-02B.4` mediante verificação dos backups locais existentes. | `R-02B.4` | **`DECIDIDO`** |
+
+---
+
 ## 6. Pendências Genuinamente Abertas (`ABERTO`)
 
 | Pendência | Etapa em que será deliberada / calibrada |
 |---|---|
-| Destino do diff local de 1 linha em `C:\Projetos\Dawn of Kin\project.godot` e arquivamento dos 3 logs `docs/historico/conversa_dawn_of_kin_sessao_01..03.md` | **`R-02B`** |
+| *Resolvido em `R-02B.3`–`R-02B.5`:* diff local histórico de `project.godot`, `159` arquivos locais originais e logs `docs/historico/conversa_dawn_of_kin_sessao_01..03.md` arquivados reversivelmente fora do repo em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\` | **Encerrado em `R-02B`** *(aguardando aceite final da `R-02B.5`)* |
 | Gesto exato de atribuição manual opcional (`D-03`/`D-10`) sem conflito com clique/`Shift`/caixa da marcação automática | **`R-03C`** |
 | Posição exata de canto da lista flutuante de tarefas `D-11` após comparação em `1280×720` e `1920×1080` | **`R-03D`** / **`R-05B`** |
 | Duração calibrada do intervalo pós-`MoveOrder` pessoal (`D-05`, sem fixar `5 s`) | **`R-03B`** |

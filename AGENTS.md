@@ -3,35 +3,50 @@
 ## 1. Fonte de verdade, escopo e estado real do repositório
 
 - **Documentos canônicos obrigatórios (ler antes de propor qualquer alteração):**
-  1. [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) — **GDD consolidado único** (candidata `v1.3` na reconciliação documental `R-02A R1`, incorporando as decisões canônicas `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B` e `D-ERR-2 C`).
+  1. [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md) — **GDD consolidado único (`v1.3` homologada em `R-02A R1`)**, incorporando as decisões canônicas `D-01`–`D-13`, `P-REC-1`–`P-REC-4`, `D-ERR-1 B` e `D-ERR-2 C`.
   2. [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) — **Roadmap Mestre único e Matriz de Decisões e Rastreabilidade** (`R-01` a `T3.9` + horizonte `T4`–`T8`).
   3. [docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md](docs/design/DAWN_OF_KIN_VISUAL_DESIGN_SYSTEM.md) — **Design System Mestre D2.2 ("Marcos de Pedra e Eclipse")** (Cláusula Pétrea visual na Seção 10).
   4. [docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md](docs/architecture/UI_1_0_R1_INTEGRATION_PLAN.md) — **Plano técnico da série `UI-1`** (com Adendo de Reconciliação `R-02A R1`).
+  5. [docs/architecture/R_02B_WORKSPACE_CONSOLIDATION_REPORT.md](docs/architecture/R_02B_WORKSPACE_CONSOLIDATION_REPORT.md) — **Registro versionado da reorganização `R-02B`**.
 - **Projeto:** jogo single-player em **Godot 4.7.2 / GDScript tipado**, RTS isométrico 3D (`gl_compatibility`, `Jolt Physics`, referência de desempenho Intel UHD Graphics 620 em `1920×1080`, meta $p95 \le 16,7\text{ ms}$ em tomada CA).
-- **Estado real verificado do projeto (em 23/11/2026):**
+- **Estado real verificado do projeto (em 24/11/2026):**
   - **`T1 — Fundação RTS`:** `HOMOLOGADO` e `INTEGRADO` na `main` (tag `t1-complete`, commit `2808799`).
   - **`T2 — Trabalho e Recursos`:** `HOMOLOGADO` em 14/11/2026 e `INTEGRADO` na `main` (tag `t2-complete`, commit `f7c2459`, 182/182 testes em 27 suítes, 21/21 manuais; benchmark CA `p95 = 9,757 ms` atendido; bateria DC `p95 = 33,038 ms` aceita como limitação conhecida não bloqueante).
-  - **`T3.1`–`T3.6.1` na `main` (`25e0a20f1d6a2f10a9e059afe69759fbe263db4a`):** `HOMOLOGADO` e `INTEGRADO` na `main` — inclui `T3.1`–`T3.3` (`t3-3-complete` @ `3c6fc0b`), `T3.4` (`2a6cce6`), `T3.5.1` (`56d8e97`), `T3.5.2` (`fb31887`) e `T3.6.1` (`25e0a20`, módulo matemático puro `D3`). O fluxo antigo de construção (`D2`/`D3`/`DEC-11B`) permanece ativo em transição segura (`P-REC-1`) até `R-04C`.
-  - **Cadeia linear homologada (ainda NÃO integrada à `main`):** `T3.6.2 Bloco A` (`ec17f42`, `use_provenance_economy = true` ativo em `main.tscn`), Design System `D2.2` (`cdd9f2f`, homologado documentalmente), plano `UI-1.0 R1` (`7dbfeb1`) e série **`UI-1` (`UI-1.1A R2` @ `a02aa97`, `UI-1.1B R1` @ `a6542ca`, `UI-1.2` @ `9f84d33` e `UI-1.3 R1` / etapa `R-01` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`, `+148` commits à frente da `main`)**, homologada em 23/11/2026 (`validate.ps1` com `0` erros / `0` avisos em `208` scripts, `85/85` suítes / `592/592` testes / `28.989` asserções na regressão histórica da R1, e `8/8` itens manuais aprovados em `1280×720` e `1920×1080`). Em `main.tscn`, `use_d2_2_hud = false` permanece preservado até a etapa autorizada **`R-05B`** (`D-ERR-1 B`).
-  - **Candidata documental ativa (`R-02A R1`):** branch isolada `docs/r-02a-canonical-reconciliation` (base `c4a6361`), submetida a auditoria independente e aceite expresso do proprietário. **Aprovações documentais nunca autorizam implementação de código, merges, criação de tags ou exclusão de worktrees.**
+  - **`T3.1`–`T3.6.1` na `main` (`25e0a20f1d6a2f10a9e059afe69759fbe263db4a`):** `HOMOLOGADO` e `INTEGRADO` na `main` — inclui `T3.1`–`T3.3` (`t3-3-complete` @ `3c6fc0b`), `T3.4` (`2a6cce6`), `T3.5.1` (`56d8e97`), `T3.5.2` (`fb31887`) e `T3.6.1` (`25e0a20`, módulo matemático puro `D3`). O fluxo antigo de construção (`D2`/`D3`/`DEC-11B`) permanece ativo em transição segura (`P-REC-1`) até `R-04C`. A `main` permanece preservada em `25e0a20` até autorização específica de promoção.
+  - **Cadeia linear homologada na base canônica `develop` (ainda NÃO promovida à `main`):** `T3.6.2 Bloco A` (`ec17f42`, `use_provenance_economy = true` ativo em `main.tscn`), Design System `D2.2` (`cdd9f2f`, homologado documentalmente), plano `UI-1.0 R1` (`7dbfeb1`), série **`UI-1` (`UI-1.1A R2` @ `a02aa97`, `UI-1.1B R1` @ `a6542ca`, `UI-1.2` @ `9f84d33` e `UI-1.3 R1` / `R-01` @ `c4a6361`)** e reconciliação documental **`R-02A R1`** (`docs/r-02a-canonical-reconciliation` @ `3032f40`, `GDD v1.3` homologada). Em `main.tscn`, `use_d2_2_hud = false` permanece preservado até **`R-05B`** (`D-ERR-1 B`).
+  - **Reorganização do workspace (`R-02B`):**
+    - `R-02B.0`–`R-02B.1-D`: inventário forense e preservação local concluídos e homologados (backup forense `Dawn_of_Kin_R02B_20261123_213528_3032f40`, com dispensa de nuvem `R02B-D2` / `R02B-D11`).
+    - `R-02B.2`: branch canônica `develop` criada e publicada em `3032f40` (`origin/develop`), arquivo histórico local organizado em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local`.
+    - `R-02B.3`: checkout principal `C:\Projetos\Dawn of Kin` migrado para `develop` e homologado (`208/208` scripts `0/0`, `85/85` suítes, `592/592` testes, `28.983` asserções e testes humanos `M1`–`M3` aprovados).
+    - `R-02B.4`: remoção controlada dos `22` worktrees auxiliares, consolidação de duplicatas, remoção do ZIP redundante na raiz e remoção do clone temporário (`R02B-D9`), restando apenas `1` checkout principal permanente e `59` branches locais / `60` remotas efetivas preservadas.
+    - **`R-02B.5` (candidata atual em auditoria):** normalização dos artefatos do editor, prevenção localizada `docs/design/.gdignore` (resolvendo `FIN-18`/`FIN-19`), atualização normativa e publicação na `develop` — **submetida à auditoria independente do ChatGPT e homologação expressa do proprietário (não auto-homologada)**.
   - **Itens explicitamente `NÃO HOMOLOGADO` (nunca declarar como homologados):**
-    - `T3.6.4-R1` (`8deeef1`, retestes manuais `D3-04`/`D3-07` pendentes; infraestrutura preservada pela regra de transição `P-REC-1` até homologação de `R-04B`/`R-04C`).
+    - `T3.6.4-R1` (`8deeef1`, retestes manuais `D3-04`/`D3-07` pendentes; mantida em transição `P-REC-1` até `R-04C`).
     - Protótipos/sandboxes `UX-1` (`0e78f9a`) e `RUX-1`/`RUX-2A`/`RUX-2B` (`cddd582`) — validados apenas em sandbox/testes headless; pendentes de integração jogável e aceite humano na `MainScene` em `R-03A`–`R-03D`.
-    - Checkout principal local `C:\Projetos\Dawn of Kin` permanece em `7293908` (com `project.godot` modificado localmente e `docs/historico/` não rastreados) até a etapa dedicada **`R-02B`**.
-  - **Etapas futuras (`R-02B` a `T3.9` e `T4`–`T8`):** estritamente **`BLOQUEADO`** sem autorização específica prévia do proprietário.
+  - **Próxima etapa planejada (ainda NÃO autorizada / `BLOQUEADO`):** **`R-03A` — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene`** (seguindo `R-03A` → `T3.9` e horizonte `T4`–`T8`, um incremento por vez).
 
 ## 2. Taxonomia obrigatória de status (nunca simular conclusão)
 
-Diferenciar rigorosamente em todo documento, relatório e resposta os **11 marcadores normativos** definidos em [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §1 e [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md):
+Diferenciar rigorosamente em todo documento, relatório e resposta os marcadores normativos vigentes em [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §1 e [docs/Dawn_of_Kin_GDD.md](docs/Dawn_of_Kin_GDD.md):
 
-- **`DECIDIDO`** · **`PLANEJADO`** · **`IMPLEMENTADO`** · **`VALIDADO`** · **`HOMOLOGADO`** · **`INTEGRADO`** · **`ATIVO NA MAINSCENE`** · **`PROPOSTA`** · **`ABERTO`** · **`SUBSTITUÍDO`** · **`DESCARTADO`**.
+- **Taxonomia base de produto/documentação:** **`DECIDIDO`** · **`PLANEJADO`** · **`IMPLEMENTADO`** · **`VALIDADO`** · **`HOMOLOGADO`** · **`INTEGRADO`** · **`ATIVO NA MAINSCENE`** · **`PROPOSTA`** · **`ABERTO`** · **`SUBSTITUÍDO`** · **`DESCARTADO`**.
+- **Taxonomia obrigatória do ciclo de integração de incrementos (determinação permanente do proprietário):**
+  - **`PLANEJADO`** (escopo definido, não implementado)
+  - **`IMPLEMENTADO`** (código existente)
+  - **`VALIDADO TECNICAMENTE`** (testes técnicos executados e aprovados)
+  - **`AUDITADO`** (revisão independente concluída)
+  - **`HOMOLOGADO`** (aceite expresso do proprietário)
+  - **`INTEGRADO À DEVELOP`** (commits incorporados à base canônica `develop`)
+  - **`VALIDADO PÓS-INTEGRAÇÃO`** (funcionamento confirmado na base consolidada)
+  - **`PUBLICADO`** (alterações autorizadas disponíveis no GitHub)
+  - **`ENCERRADO`** (integração, documentação e organização integralmente concluídas)
 
-Em relatórios técnicos e auditorias, distinguir sempre a evidência de validação (**testado automaticamente** vs **testado manualmente**), sinalizar explicitamente itens **`NÃO VERIFICADO`**, **`NÃO HOMOLOGADO`** ou **`BLOQUEADO`**, e nunca promover automaticamente uma etapa entre estados nem misturar resultados históricos (com SHA de origem) com resultados da execução atual.
+Nunca confundir: código existente com funcionalidade homologada; homologação com integração; integração Git com disponibilidade jogável na `MainScene`; publicação no GitHub com encerramento completo; ou aprovação em sandbox com homologação da experiência na `MainScene`. Em relatórios técnicos e auditorias, distinguir sempre **testado automaticamente** vs **testado manualmente**, sinalizar itens **`NÃO VERIFICADO`**, **`NÃO HOMOLOGADO`**, **`PENDENTE`** ou **`BLOQUEADO`**, e nunca misturar resultados históricos (com SHA de origem) com resultados da execução atual.
 
 ## 3. Regra permanente de acessibilidade pela `MainScene` e sequência incremental
 
 - **Acessibilidade obrigatória na `MainScene`:** toda funcionalidade homologada para o jogador deve possuir **caminho de acesso verificável a partir da `MainScene`** (`res://src/main/main.tscn`, executável por `F5` / `.\tools\run_game.ps1`), e não existir apenas em cenas de sandbox isoladas. Exceções temporárias (como `use_d2_2_hud = false` na `UI-1.1A`–`UI-1.4` até `R-05B`) devem ser explicitamente autorizadas e documentadas.
-- **Um incremento por vez:** executar rigorosamente **um único prompt/incremento autorizado por vez** (análise + plano revisável antes de alterar código; parada obrigatória ao concluir cada incremento para auditoria independente via GitHub e decisão do proprietário).
+- **Um incremento por vez:** executar rigorosamente **um único prompt/incremento autorizado por vez** (análise + plano revisável antes de alterar código; parada obrigatória ao concluir cada incremento para auditoria independente e decisão do proprietário).
 - **Respeito à ordem canônica (`D-ERR-1 B` e `D-ERR-2 C`):** não antecipar ativação de `use_d2_2_hud = true` antes de `R-05B`, não implementar `UI-1.5` antes de `T3.8`, não remover o mecanismo antigo de construção antes da homologação completa de `R-04A`–`R-04C` (`P-REC-1`), e não implementar `T4`–`T8` antes da conclusão formal da `T3`.
 
 ## 4. Qualidade antes da velocidade
@@ -45,19 +60,74 @@ Em relatórios técnicos e auditorias, distinguir sempre a evidência de valida�
 - Não mascarar funcionalidades ausentes com placeholders anunciados como prontos. Assets e parâmetros temporários (`D4`, `DT-03`) são aceitáveis apenas se declarados explicitamente.
 - Nunca substituir silenciosamente um comportamento aprovado ou a identidade visual D2.2 (Cláusula Pétrea). Se houver trade-off de qualidade, expor opções e solicitar decisão.
 
-## 5. Git e alterações seguras
+## 5. Política Git permanente e alterações seguras
 
-- Antes de cada etapa, verificar `git status`, branch, ancestralidade e listar arquivos a modificar. Nunca apagar nem sobrescrever trabalho existente sem identificar e justificar.
-- Trabalhar em branches e worktrees isolados quando indicado; preservar worktrees históricos e alterações locais até autorização expressa (etapa `R-02B`).
-- Criar commits pequenos e rastreáveis após etapas aprovadas, preservando histórico e **nunca** usar comandos destrutivos (`git reset --hard`, `git clean -fd`, `git push --force`) sem autorização explícita do proprietário.
-- Manter documentação coerente e sem duplicação de roadmaps: decisões canônicas vivem no GDD e no Roadmap Mestre; documentos históricos recebem adendos de reconciliação sem apagamento do histórico.
+- **Estratégia de branches:**
+  - **`main`:** linha estável formalmente homologada para promoção. Permanece no SHA autorizado (`25e0a20`) até que a cadeia de desenvolvimento atinja estabilidade apropriada e receba autorização específica de promoção; integração em `develop` **nunca** promove automaticamente para `main`.
+  - **`develop`:** linha canônica contínua de desenvolvimento (criada em `3032f40` e avançada linearmente). O checkout principal `C:\Projetos\Dawn of Kin` acompanha `develop`, e todo novo incremento deve partir da ponta homologada atual de `develop` (`P-REC-4`), nunca de branches históricas antigas.
+  - **Branches temporárias (quando necessário):** `feat/*`, `fix/*`, `docs/*`, `audit/*`, `planning/*`. Não criar branches ou worktrees sem finalidade concreta. Branches históricas existentes permanecem preservadas; exclusões futuras exigem análise e autorização compatível.
+- **Regras de integração:**
+  - Uma funcionalidade homologada **não** deve permanecer isolada indefinidamente: implementação e integração à `develop` fazem parte do mesmo ciclo obrigatório.
+  - Preferir **fast-forward** quando a ancestralidade permitir. Antes da integração: confirmar ancestralidade, ausência de divergências, homologação, conjunto exato de commits, dependências e estados transitórios. Após a integração: confirmar SHA final, validar pós-integração, publicar conforme autorização, atualizar documentação e encerrar worktree temporário.
+  - **Proibido:** merges redundantes, cherry-picks indiscriminados, rebase/reescrita de histórico homologado, force push, integração automática de candidatas não homologadas ou comandos destrutivos (`git reset --hard`, `git clean -fd`, `git restore .`) sem identificação, preservação e autorização explícita.
+- **Coerência documental:** decisões canônicas vivem no GDD e no Roadmap Mestre; documentos históricos recebem adendos de reconciliação sem apagamento do histórico.
 
-## 6. Validação, auditoria independente e aceitação
+## 6. Ciclo obrigatório de desenvolvimento e checklist de encerramento
 
-- Executar `.\tools\validate.ps1` (importação, checagem estática `--check-only` e startup com `0` erros e `0` avisos) e `.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1` quando o incremento exigir regressão completa; testes headless **não substituem** testes visuais e de interação real na Godot 4.7.2 (`1280×720` e `1920×1080`).
-- Medir desempenho no hardware disponível quando aplicável; nunca afirmar FPS ou compatibilidade sem medição real (distinguindo tomada CA × bateria DC).
-- Submeter toda candidata publicada em branch remota à **auditoria independente via GitHub** (verificando SHA local == SHA remoto e escopo exato dos arquivos alterados) antes de qualquer integração na `main`.
-- Ao encerrar cada incremento: indicar arquivos alterados, decisões técnicas e justificativa, comandos/testes executados e resultados reais, limites/pendências conhecidas e o próximo pequeno incremento previsto. **Interromper para revisão antes de expandir escopo.**
+### 6.1 Ciclo obrigatório de desenvolvimento (20 etapas)
+1. Consultar GDD, arquitetura, Roadmap Mestre e regras vigentes.
+2. Identificar a base canônica e confirmar o SHA em `develop`.
+3. Definir o escopo exato do incremento.
+4. Definir critérios de aceite e criticidade.
+5. Obter autorização.
+6. Implementar.
+7. Executar validação técnica.
+8. Publicar a candidata em referência de revisão quando autorizado (sem confundir com promoção à `develop`/`main`).
+9. Realizar auditoria independente.
+10. Executar testes humanos exigidos pela criticidade.
+11. Obter homologação expressa.
+12. Integrar à `develop` mediante autorização.
+13. Executar validação pós-integração.
+14. Publicar a base integrada (`develop`).
+15. Atualizar a documentação correspondente.
+16. Arquivar evidências fora do checkout principal.
+17. Encerrar worktrees temporários dispensáveis.
+18. Verificar a organização final (prevenindo resíduos recorrentes).
+19. Registrar o incremento como `ENCERRADO`.
+20. Preparar somente a próxima etapa autorizável (um incremento por vez).
+
+### 6.2 Política permanente de organização do workspace e prevenção de resíduos
+- **Checkout principal único:** manter permanentemente `C:\Projetos\Dawn of Kin` na branch `develop`.
+- **Limite de worktrees:** manter no máximo **1 checkout principal permanente** e **1 worktree temporário ativo** por incremento quando tecnicamente necessário (exceções exigem justificativa técnica e autorização). Todo worktree temporário deve registrar nome, branch, SHA de base, incremento, finalidade, responsável, condição de encerramento e destino das evidências; nunca acumular worktrees de incrementos encerrados.
+- **Organização de arquivos e prevenção de resíduos:**
+  - Backups e arquivos históricos residem fora do checkout principal (`C:\Projetos\Backups\`); manifestos históricos são imutáveis.
+  - Evidências em diretórios padronizados; scripts auxiliares, capturas e artefatos temporários classificados com finalidade e condição de encerramento (nunca soltos na raiz).
+  - Caches operacionais ignorados (`.godot/`) não são desorganização, mas dados locais insubstituíveis jamais devem ser descartados como lixo; exclusões potencialmente destrutivas exigem identificação, classificação, verificação de integridade, recuperação prevista e autorização compatível (a dispensa de segunda mídia `R02B-D11` foi exceção restrita à `R-02B.4`, não precedente para futuras exclusões).
+  - Sempre investigar e prevenir na raiz a geração recorrente de resíduos (ex.: `docs/design/.gdignore` para impedir importação de pranchas documentais, sem usar `*.import`/`*.uid` globais). Nunca limpar o ambiente para ocultar alterações ou falhas.
+
+### 6.3 Checklist obrigatório de encerramento de cada incremento
+Antes de encerrar qualquer etapa (aplicando `N/A` com justificativa quando não aplicável, sem atribuir `PASS` sem verificação):
+1. Incremento corretamente identificado.
+2. Escopo autorizado respeitado.
+3. Código e documentos nos locais corretos.
+4. Testes aplicáveis concluídos (`validate.ps1`, regressão quando exigida, testes visuais/manuais na Godot `4.7.2` em `1280×720` e `1920×1080`, medições CA/DC quando aplicável).
+5. Auditoria independente concluída via GitHub (SHA local == remoto e escopo exato).
+6. Homologação registrada pelo proprietário.
+7. Integração à `develop` confirmada.
+8. Validação pós-integração concluída.
+9. Alterações publicadas conforme autorização.
+10. Documentação sincronizada.
+11. Evidências organizadas.
+12. Arquivos temporários classificados.
+13. Backups necessários preservados.
+14. Worktrees dispensáveis encerrados.
+15. Estado Git conhecido (`git status`, branches, tags).
+16. Ausência de resíduos abandonados.
+17. SHA final registrado.
+18. Próximo incremento identificado sem antecipar sua execução.
+
+### 6.4 Continuidade entre agentes e handoffs
+Todo handoff deverá informar explicitamente: projeto, repositório, checkout principal, branch canônica, SHA atual, último SHA homologado, último incremento encerrado, estado da `main` e `develop`, candidatas em revisão, worktrees ativos, pendências técnicas/organizacionais, evidências disponíveis, decisões normativas vigentes, próxima etapa autorizada/autorizável e restrições de escopo. Agentes devem verificar o repositório real e documentos vigentes (sem confiar apenas em resumos), indicar modelo e nível de raciocínio antes de cada novo prompt de execução sem cristalizar versões obsoletas, e nunca delegar automaticamente ao Work ou a outro agente sem autorização.
 
 ## 7. Colaboração criativa proativa — ChatGPT responsável pelo acompanhamento do projeto
 

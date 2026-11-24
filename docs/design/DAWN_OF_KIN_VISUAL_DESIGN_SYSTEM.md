@@ -7,7 +7,7 @@
 > - **Manual & Prancha R2.3.2:** `HOMOLOGADO DOCUMENTALMENTE` (referência normativa de padronização visual e VCG).  
 > - **Implementação de Produção (`UI-1`):** `UI-1.1A`, `UI-1.1B`, `UI-1.2` e **`UI-1.3 R1`** estão **`HOMOLOGADO`** (`fix/ui-1-3-r1-validation-uid` @ `c4a6361919564fca59ddbad3362468a0c1b1708e`, aceite formal em 23/11/2026), com `use_d2_2_hud = false` preservado em `main.tscn` até a transição autorizada **`R-05B`** (`D-ERR-1 B`). As etapas **`UI-1.4` a `UI-1.7`** permanecem **`PLANEJADO` / `BLOQUEADO`** (ver [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md) e [UI_1_0_R1_INTEGRATION_PLAN.md](../architecture/UI_1_0_R1_INTEGRATION_PLAN.md)).  
 > **Hierarquia Normativa:**  
-> 1. [GDD Consolidado](../Dawn_of_Kin_GDD.md) (`v1.3` candidata `R-02A`) e [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md): autoridade máxima sobre regras de gameplay, simulação, sequência de entregas e narrativa.  
+> 1. [GDD Consolidado](../Dawn_of_Kin_GDD.md) (`v1.3` homologada na `R-02A R1`) e [ROADMAP_MESTRE.md](../ROADMAP_MESTRE.md): autoridade máxima sobre regras de gameplay, simulação, sequência de entregas e narrativa.  
 > 2. Direção Artística D2 Original (`design/ui-0-r2-identity` @ `f138177`): fonte primária de composição, silhueta e atmosfera estética.  
 > 3. Reprodução D2.2 na Godot (`design/ui-0-r2-2-d2-visual-fidelity` @ `1ab8ffb`): **identidade visual aprovada** e referência técnica de renderização.  
 > 4. Este Design System (`R2.3.2 — Homologado Documentalmente`, com notas de reconciliação `R-02A`): padronização, catálogo de tokens e regras de preservação, sem poder de alterar a D2.2 nem o GDD.
