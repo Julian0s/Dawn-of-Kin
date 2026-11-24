@@ -20,7 +20,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
-- **Etapa atualmente autorizada (`AUTORIZADA — EM IMPLEMENTAÇÃO`):** **`R-03A`** — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene` (branch candidata `feat/r-03a-community-work-main-scene`; ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4).
+- **Candidata atual em auditoria (`IMPLEMENTADO` / `VALIDADO TECNICAMENTE` / `PUBLICADO` em branch candidata — `NÃO HOMOLOGADO`, `NÃO INTEGRADO À DEVELOP`):** **`R-03A`** — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene` (branch candidata `feat/r-03a-community-work-main-scene`; relatório em [docs/testing/R_03A_community_work_main_scene_candidate_report.md](docs/testing/R_03A_community_work_main_scene_candidate_report.md); ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4). `R-03B`–`T3.9` permanecem `BLOQUEADO`.
 
 ---
 
@@ -53,7 +53,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 - **`MainScene` (`res://src/main/main.tscn` — executada por `F5` ou `.\tools\run_game.ps1`):**
   - É a cena principal do jogo.
   - Por decisão deliberada e preservada na `UI-1.3 R1`, `main.tscn` mantém **`use_d2_2_hud = false`** (HUD legada ativa) até a etapa autorizada **`R-05B`** (`D-ERR-1 B`), após a homologação da `UI-1.4`.
-  - Os controles de trabalho comunitário autônomo (`RUX-*`) e a nova construção com débito imediato (`D-01`/`D-02`) **ainda não foram integrados à `MainScene`** — entrarão de forma jogável e verificável respectivamente em `R-03A`–`R-03D` e `R-04A`–`R-04C`.
+  - Os controles de trabalho comunitário autônomo (`R-03A`) encontram-se **implementados e validados tecnicamente na branch candidata `feat/r-03a-community-work-main-scene`** (aguardando auditoria independente, testes humanos `M1`–`M8`, homologação e integração à `develop`); os controles de `R-03B`–`R-03D` e a nova construção com débito imediato (`D-01`/`D-02`, `R-04A`–`R-04C`) **ainda não foram implementados nem integrados à `MainScene`**.
 - **Sandbox visual da `UI-1.3 R1` (`res://tests/visual/ui_1_d2_2_sandbox.tscn`):**
   - Instancia a `MainScene` com **`use_d2_2_hud = true`**, exibindo a HUD D2.2 homologada até `UI-1.3 R1`: pedras de recursos escalonadas, placa superior com pausa real (`||`/`1×`), estelas dos fundadores, lajes de ação, mesa retrátil de maquetes (`[B]`, `[1]`, `[2]`) e faixa `D2PlacementStatusBar` no centro superior.
 - **Sandboxes históricos não homologados (`tests/visual/ux_1_*.tscn`, `rux_*.tscn`):**
