@@ -24,6 +24,25 @@ func _left_click(viewport: SubViewport, point: Vector2) -> void:
 	await _click_button(viewport, point, MOUSE_BUTTON_LEFT)
 
 
+func _click_hud_authorize(viewport: SubViewport, resource_id: StringName) -> void:
+	# R-03A D1 reconciliation: source selection is decoupled from task creation;
+	# explicit authorization happens via the contextual HUD category button.
+	var main := viewport.get_child(0) as MainScene
+	var hud := main.get_community_selection_actions_hud()
+	if hud != null:
+		var btn: Button = hud.get_category_button(resource_id)
+		if btn != null and btn.visible:
+			var rect: Rect2 = btn.get_global_rect()
+			await _left_click(viewport, rect.position + rect.size * 0.5)
+			await wait_process_frames(2)
+
+
+func _select_and_authorize_wood(viewport: SubViewport, point: Vector2) -> void:
+	await _left_click(viewport, point)
+	await wait_process_frames(1)
+	await _click_hud_authorize(viewport, &"wood")
+
+
 func _fixture() -> SubViewport:
 	var view := SubViewport.new()
 	view.own_world_3d = true
@@ -91,7 +110,7 @@ func test_r1_left_click_tree_auto_dispatches_nearest_eligible_leader() -> void:
 			break
 
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -135,7 +154,7 @@ func test_r2_physical_extraction_carry_deposit_and_provenance_conservation() -> 
 	var stock_before: int = inventory.get_physical_amount(&"wood")
 
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 
 	var task: WorkTask = board.get_active_task_for_source(tree_1)
@@ -188,12 +207,12 @@ func test_r3_repeated_clicks_are_idempotent() -> void:
 	var stock_before: int = inventory.get_physical_amount(&"wood")
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
 
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
 	var task: WorkTask = board.get_active_task_for_source(tree_1)
-	assert_not_null(task, "Initial click must register task")
+	assert_not_null(task, "Initial click + HUD authorization must register task")
 	if task == null or task.assigned_unit == null:
 		await _teardown_fixture(view)
 		return
@@ -207,8 +226,9 @@ func test_r3_repeated_clicks_are_idempotent() -> void:
 			other_worker = u
 			break
 
+	# R-03A D1: repeated explicit HUD authorization clicks on already-authorized selection are strictly idempotent.
 	for _click_idx: int in range(4):
-		await _left_click(view, tree_point)
+		await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 
 	assert_eq(board.get_active_tasks().size(), 1, "Repeated clicks must not create duplicate active tasks")
@@ -250,7 +270,7 @@ func test_r4_waits_when_both_leaders_busy_and_auto_dispatches_on_free() -> void:
 	assert_true(long_move.is_active(), "LeaderA manual move must be active")
 
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 
 	var task: WorkTask = board.get_active_task_for_source(tree_1)
@@ -302,7 +322,7 @@ func test_r5_manual_order_protection_and_cargo_conservation() -> void:
 	await wait_physics_frames(1)
 
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -438,7 +458,7 @@ func test_r6_invalid_depleted_removed_and_unreachable_sources_safe() -> void:
 	leader_b.cancel_current_order()
 	await wait_process_frames(1)
 	var valid_point: Vector2 = camera.unproject_position(tree_2.global_position + Vector3.UP)
-	await _left_click(view, valid_point)
+	await _select_and_authorize_wood(view, valid_point)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -474,7 +494,7 @@ func test_r7_preserves_existing_selection_and_skips_reserved_cargo_worker() -> v
 	assert_true(applied, "Precondition: SITE_RESERVED lot applied on LeaderB")
 
 	var tree_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
-	await _left_click(view, tree_point)
+	await _select_and_authorize_wood(view, tree_point)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 

@@ -27,6 +27,24 @@ func _left_click(viewport: SubViewport, point: Vector2) -> void:
 	await _click_button(viewport, point, MOUSE_BUTTON_LEFT)
 
 
+func _click_hud_authorize(viewport: SubViewport, resource_id: StringName) -> void:
+	# R-03A D1 reconciliation: explicit authorization via contextual HUD category button.
+	var main := viewport.get_child(0) as MainScene
+	var hud := main.get_community_selection_actions_hud()
+	if hud != null:
+		var btn: Button = hud.get_category_button(resource_id)
+		if btn != null and btn.visible:
+			var rect: Rect2 = btn.get_global_rect()
+			await _left_click(viewport, rect.position + rect.size * 0.5)
+			await wait_process_frames(2)
+
+
+func _select_and_authorize(viewport: SubViewport, point: Vector2, resource_id: StringName) -> void:
+	await _left_click(viewport, point)
+	await wait_process_frames(1)
+	await _click_hud_authorize(viewport, resource_id)
+
+
 func _right_click(viewport: SubViewport, point: Vector2) -> void:
 	await _click_button(viewport, point, MOUSE_BUTTON_RIGHT)
 
@@ -112,7 +130,7 @@ func _verify_full_resource_cycle(
 	var expected_worker: Unit = _nearest_unit_to(main, source.global_position)
 
 	var click_pt: Vector2 = _screen_point_for_source(view, main, source)
-	await _left_click(view, click_pt)
+	await _select_and_authorize(view, click_pt, expected_resource_id)
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -206,12 +224,12 @@ func test_a4_identity_idempotency_and_independent_tasks_across_sources() -> void
 	var bush_1 := main.get_node("TestMap/ResourceSources/FoodBush01") as ResourceSource
 
 	var rock_pt: Vector2 = _screen_point_for_source(view, main, rock_1)
-	await _left_click(view, rock_pt)
+	await _select_and_authorize(view, rock_pt, &"stone")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
 	var rock_task: WorkTask = board.get_active_task_for_source(rock_1)
-	assert_not_null(rock_task, "Stone rock click must register task")
+	assert_not_null(rock_task, "Stone rock click + HUD authorize must register task")
 	if rock_task == null or rock_task.assigned_unit == null:
 		await _teardown_fixture(view)
 		return
@@ -221,17 +239,17 @@ func test_a4_identity_idempotency_and_independent_tasks_across_sources() -> void
 	var first_rev: int = first_worker.get_order_revision()
 
 	for _i: int in range(3):
-		await _left_click(view, rock_pt)
+		await _click_hud_authorize(view, &"stone")
 	await wait_process_frames(2)
 
-	assert_eq(board.get_active_tasks().size(), 1, "Repeated clicks on rock must not duplicate task")
-	assert_eq(board.get_all_tasks().size(), 1, "Repeated clicks on rock must not duplicate task history")
-	assert_eq(first_worker.get_current_order(), first_order, "Repeated clicks must not replace active order")
-	assert_eq(first_worker.get_order_revision(), first_rev, "Repeated clicks must not bump order revision")
+	assert_eq(board.get_active_tasks().size(), 1, "Repeated authorizations on rock must not duplicate task")
+	assert_eq(board.get_all_tasks().size(), 1, "Repeated authorizations on rock must not duplicate task history")
+	assert_eq(first_worker.get_current_order(), first_order, "Repeated authorizations must not replace active order")
+	assert_eq(first_worker.get_order_revision(), first_rev, "Repeated authorizations must not bump order revision")
 
-	# Clicking a distinct resource source registers a second independent task for the second leader.
+	# Selecting & authorizing a distinct resource source registers a second independent task for the second leader.
 	var tree_pt: Vector2 = _screen_point_for_source(view, main, tree_1)
-	await _left_click(view, tree_pt)
+	await _select_and_authorize(view, tree_pt, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -245,7 +263,7 @@ func test_a4_identity_idempotency_and_independent_tasks_across_sources() -> void
 
 	# Third distinct source (food bush) waits cleanly because both leaders are now active on rock and tree.
 	var bush_pt: Vector2 = _screen_point_for_source(view, main, bush_1)
-	await _left_click(view, bush_pt)
+	await _select_and_authorize(view, bush_pt, &"food")
 	await wait_process_frames(2)
 
 	var bush_task: WorkTask = board.get_active_task_for_source(bush_1)
@@ -272,7 +290,7 @@ func test_a5_waits_when_both_leaders_busy_and_starts_stone_task_on_free() -> voi
 	await wait_physics_frames(1)
 
 	var rock_pt: Vector2 = _screen_point_for_source(view, main, rock_1)
-	await _left_click(view, rock_pt)
+	await _select_and_authorize(view, rock_pt, &"stone")
 	await wait_process_frames(2)
 
 	var task: WorkTask = board.get_active_task_for_source(rock_1)
@@ -325,7 +343,7 @@ func _exercise_manual_interruption_for_resource(
 	await wait_physics_frames(1)
 
 	var click_pt: Vector2 = _screen_point_for_source(view, main, source)
-	await _left_click(view, click_pt)
+	await _select_and_authorize(view, click_pt, resource_id)
 	await wait_process_frames(2)
 
 	var task: WorkTask = board.get_active_task_for_source(source)
@@ -472,7 +490,7 @@ func test_a7_depleted_removed_and_unreachable_across_rock_and_bush() -> void:
 	leader_a.cancel_current_order()
 	leader_b.cancel_current_order()
 	await wait_process_frames(1)
-	await _left_click(view, _screen_point_for_source(view, main, bush_2))
+	await _select_and_authorize(view, _screen_point_for_source(view, main, bush_2), &"food")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -495,7 +513,7 @@ func test_a8_manual_exclusion_block_detectable_without_silent_reassignment() -> 
 	var leader_b := _find_unit_by_id(main, &"leader_b")
 
 	var rock_pt: Vector2 = _screen_point_for_source(view, main, rock_1)
-	await _left_click(view, rock_pt)
+	await _select_and_authorize(view, rock_pt, &"stone")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 

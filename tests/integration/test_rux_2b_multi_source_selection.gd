@@ -28,6 +28,18 @@ func _left_click(viewport: SubViewport, point: Vector2, shift_pressed: bool = fa
 	await _click_button(viewport, point, MOUSE_BUTTON_LEFT, shift_pressed)
 
 
+func _click_hud_authorize(viewport: SubViewport, resource_id: StringName) -> void:
+	# R-03A D1 reconciliation: explicit authorization via contextual HUD category button.
+	var main := viewport.get_child(0) as MainScene
+	var hud := main.get_community_selection_actions_hud()
+	if hud != null:
+		var btn: Button = hud.get_category_button(resource_id)
+		if btn != null and btn.visible:
+			var rect: Rect2 = btn.get_global_rect()
+			await _left_click(viewport, rect.position + rect.size * 0.5, false)
+			await wait_process_frames(2)
+
+
 func _right_click(viewport: SubViewport, point: Vector2) -> void:
 	await _click_button(viewport, point, MOUSE_BUTTON_RIGHT, false)
 
@@ -179,11 +191,12 @@ func test_b1_single_source_click_preserved() -> void:
 	_focus_camera(main, Vector2(10.0, 1.0))
 	await wait_process_frames(1)
 	await _left_click(view, _source_screen_point(view, tree_1))
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
 	var task: WorkTask = board.get_active_task_for_source(tree_1)
-	assert_not_null(task, "Simple left-click must still register single source task")
+	assert_not_null(task, "Left-click + HUD authorization must register single source task")
 	assert_eq(board.get_active_tasks().size(), 1, "Only clicked source registered")
 	if task != null:
 		assert_eq(task.state, WorkTask.State.IN_PROGRESS, "Single source auto-dispatches immediately")
@@ -199,6 +212,7 @@ func test_b2_shift_click_adds_homogeneous_sources_without_duplicates_or_mixing()
 	var main := view.get_child(0) as MainScene
 	var board := main.get_node("CommunityWorkBoard") as CommunityWorkBoard
 	var feedback := main.get_node("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
+	var model := main.get_source_selection_model()
 	var tree_1 := main.get_node("TestMap/ResourceSources/WoodTree01") as ResourceSource
 	var tree_2 := main.get_node("TestMap/ResourceSources/WoodTree02") as ResourceSource
 	var tree_5 := main.get_node("TestMap/ResourceSources/WoodTree05") as ResourceSource
@@ -207,42 +221,41 @@ func test_b2_shift_click_adds_homogeneous_sources_without_duplicates_or_mixing()
 	_focus_camera(main, Vector2(9.0, 2.0))
 	await wait_process_frames(1)
 
+	# R-03A D1 reconciliation: select 3 trees + 1 heterogeneous rock via Shift+click, then authorize ONLY wood via HUD.
 	await _left_click(view, _source_screen_point(view, tree_1), false)
-	await wait_process_frames(2)
-	var t1: WorkTask = board.get_active_task_for_source(tree_1)
-	assert_not_null(t1, "Initial tree registered")
-	if t1 == null:
-		await _teardown_fixture(view)
-		return
-
 	await _left_click(view, _source_screen_point(view, tree_2), true)
 	await _left_click(view, _source_screen_point(view, tree_5), true)
-	await wait_process_frames(2)
-
-	var t2: WorkTask = board.get_active_task_for_source(tree_2)
-	var t5: WorkTask = board.get_active_task_for_source(tree_5)
-	assert_not_null(t2, "Shift+click adds second tree")
-	assert_not_null(t5, "Shift+click adds third tree")
-	assert_eq(board.get_active_tasks().size(), 3, "Three distinct trees active")
-	if t2 != null and t5 != null:
-		assert_eq(t2.group_id, t1.group_id, "Shift+click joins same logical group")
-		assert_eq(t5.group_id, t1.group_id, "Third Shift+click joins same logical group")
-		assert_eq(board.get_tasks_in_group(t1.group_id).size(), 3, "Group contains exactly 3 tasks")
-
-	# Repeated Shift+click on already-marked tree must NOT remove it (P-RUX-6 open) and must not duplicate.
-	await _left_click(view, _source_screen_point(view, tree_2), true)
-	await wait_process_frames(2)
-	assert_eq(board.get_active_tasks().size(), 3, "Repeated Shift+click must preserve task without destructive removal")
-	assert_eq(board.get_active_task_for_source(tree_2), t2, "Existing tree task instance preserved")
-	assert_false(feedback.last_message.is_empty(), "Repeated Shift+click gives feedback")
-
-	# Shift+click on a rock while active Shift group is wood must NOT accidentally mix resource types.
 	_focus_camera(main, Vector2(-6.0, 0.0))
 	await wait_process_frames(1)
 	await _left_click(view, _source_screen_point(view, rock_1), true)
 	await wait_process_frames(2)
-	assert_null(board.get_active_task_for_source(rock_1), "Shift+click must not mix rock into active wood selection")
-	assert_eq(board.get_active_tasks().size(), 3, "Wood group count remains 3 after rejected mixed Shift+click")
+
+	assert_eq(model.get_count_for_resource(&"wood"), 3, "Three distinct trees visually selected")
+	assert_eq(model.get_count_for_resource(&"stone"), 1, "Heterogeneous rock visually selected alongside trees")
+	assert_eq(board.get_active_tasks().size(), 0, "No task registered before explicit HUD authorization")
+
+	await _click_hud_authorize(view, &"wood")
+	await wait_process_frames(2)
+
+	var t1: WorkTask = board.get_active_task_for_source(tree_1)
+	var t2: WorkTask = board.get_active_task_for_source(tree_2)
+	var t5: WorkTask = board.get_active_task_for_source(tree_5)
+	assert_not_null(t1, "First tree authorized in wood group")
+	assert_not_null(t2, "Second tree authorized in wood group")
+	assert_not_null(t5, "Third tree authorized in wood group")
+	assert_eq(board.get_active_tasks().size(), 3, "Three distinct trees active")
+	if t1 != null and t2 != null and t5 != null:
+		assert_eq(t2.group_id, t1.group_id, "Wood authorization joins same logical group")
+		assert_eq(t5.group_id, t1.group_id, "Third tree joins same logical group")
+		assert_eq(board.get_tasks_in_group(t1.group_id).size(), 3, "Group contains exactly 3 tasks")
+	assert_null(board.get_active_task_for_source(rock_1), "Authorizing wood must NOT authorize selected rock")
+
+	# Repeated HUD wood authorization click is strictly idempotent and provides feedback.
+	await _click_hud_authorize(view, &"wood")
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 3, "Repeated authorization must preserve tasks without duplication")
+	assert_eq(board.get_active_task_for_source(tree_2), t2, "Existing tree task instance preserved")
+	assert_false(feedback.last_message.is_empty(), "Repeated authorization gives feedback")
 
 	await _teardown_fixture(view)
 
@@ -270,13 +283,11 @@ func test_b3_box_selects_five_of_six_trees_leaving_sixth_intact() -> void:
 	_focus_camera(main, Vector2(10.5, 2.0))
 	await wait_process_frames(2)
 
-	var p_t1: Vector2 = _source_screen_point(view, tree_1)
-	var p_t2: Vector2 = _source_screen_point(view, tree_2)
+	var bounds: Rect2 = _compute_screen_bounds(view, selected_five, 10.0)
 	var p_t6: Vector2 = _source_screen_point(view, tree_6)
-	var drag_end := Vector2(p_t2.x - 16.0, p_t2.y + 16.0)
-	var single_box: Rect2 = SelectionBoxMath.normalize_rect(p_t1, drag_end)
-	assert_false(single_box.has_point(p_t6), "Precondition: 6th tree sits strictly outside the single 5-tree drag box")
-	await _left_drag(view, p_t1, drag_end, false)
+	assert_false(bounds.has_point(p_t6), "Precondition: 6th tree sits strictly outside the single 5-tree drag box")
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -322,10 +333,10 @@ func test_b4_multi_rock_box_selection_and_physical_stone_delivery() -> void:
 	_focus_camera(main, Vector2(-8.0, 0.0))
 	await wait_process_frames(2)
 
-	# Drag from StoneRock01 covering StoneRock01, StoneRock03, StoneRock04 (excluding distant StoneRock02 and nearby FoodBush01).
+	# Shift+drag covering StoneRock01, StoneRock03, StoneRock04 then authorize ONLY stone via HUD (no bushes authorized).
 	var bounds: Rect2 = _compute_screen_bounds(view, target_rocks, 10.0)
-	await _left_drag(view, _source_screen_point(view, rock_1), bounds.end, false)
-	await _left_drag(view, _source_screen_point(view, rock_3), bounds.position, true)
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"stone")
 	await wait_process_frames(2)
 
 	assert_eq(board.get_active_tasks().size(), 3, "Three target rocks must be registered without mixing bushes")
@@ -367,8 +378,8 @@ func test_b5_multi_bush_box_selection_and_physical_food_delivery() -> void:
 	await wait_process_frames(2)
 
 	var bounds: Rect2 = _compute_screen_bounds(view, target_bushes, 10.0)
-	await _left_drag(view, _source_screen_point(view, bush_2), bounds.end, false)
-	await _left_drag(view, _source_screen_point(view, bush_4), bounds.position, true)
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"food")
 	await wait_process_frames(2)
 
 	assert_eq(board.get_active_tasks().size(), 3, "Three target bushes registered")
@@ -618,8 +629,9 @@ func test_b10_idempotency_across_click_shift_and_box_selection() -> void:
 	_focus_camera(main, Vector2(10.0, 2.0))
 	await wait_process_frames(2)
 
-	# 1. Click tree_1
+	# 1. Click tree_1 + authorize wood via HUD
 	await _left_click(view, _source_screen_point(view, tree_1), false)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 	var t1: WorkTask = board.get_active_task_for_source(tree_1)
@@ -631,9 +643,9 @@ func test_b10_idempotency_across_click_shift_and_box_selection() -> void:
 	var original_order: UnitOrder = original_worker.get_current_order()
 	var original_rev: int = original_worker.get_order_revision()
 
-	# 2. Shift+click tree_1 again and tree_5
-	await _left_click(view, _source_screen_point(view, tree_1), true)
+	# 2. Shift+click tree_5 and authorize wood again (idempotent on tree_1, adds tree_5)
 	await _left_click(view, _source_screen_point(view, tree_5), true)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 
 	# 3. Group registration / box covering [tree_1, tree_5, tree_2]
@@ -675,10 +687,11 @@ func test_b11_ground_drag_preserves_rts_unit_selection_camera_right_click_and_pl
 	leader_a.cancel_current_order()
 	leader_b.cancel_current_order()
 
-	# 3. Cancelling a source drag with Esc does NOT create a new task and does NOT cancel confirmed tasks.
+	# 3. Cancelling a Shift+drag with Esc does NOT create a new task and does NOT cancel confirmed tasks.
 	_focus_camera(main, Vector2(10.0, 2.0))
 	await wait_process_frames(1)
 	await _left_click(view, _source_screen_point(view, tree_1), false)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	assert_eq(board.get_active_tasks().size(), 1, "Confirmed task active before cancelled drag")
 

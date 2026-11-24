@@ -186,8 +186,14 @@ func test_04_shift_box_adds_units_without_duplicates() -> void:
 	var ctx: Dictionary = await _spawn_main_scene()
 	var cam: Camera3D = ctx["camera"] as Camera3D
 	var manager: SelectionManager = ctx["selection_manager"] as SelectionManager
+	var controller: RtsInputController = ctx["controller"] as RtsInputController
 	var leader_a: Unit = ctx["leader_a"] as Unit
 	var leader_b: Unit = ctx["leader_b"] as Unit
+	# R-03A D1 reconciliation: on MainScene with multi_source_enabled=true, Shift+drag is canonically
+	# reassigned to additive natural resource source box selection (verified in test_r_03a_d1_selection_and_authorization.gd).
+	# Disable multi_source_enabled here to keep regression coverage of base RtsInputController Shift+box unit addition.
+	if controller is AutonomousGatherInput:
+		(controller as AutonomousGatherInput).multi_source_enabled = false
 
 	await _simulate_left_click(_project_unit_anchor(cam, leader_a))
 	assert_eq(manager.get_selection_count(), 1)

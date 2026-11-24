@@ -37,6 +37,18 @@ func _left_click(viewport: SubViewport, point: Vector2, shift_pressed: bool = fa
 	await _click_button(viewport, point, MOUSE_BUTTON_LEFT, shift_pressed)
 
 
+func _click_hud_authorize(viewport: SubViewport, resource_id: StringName) -> void:
+	# R-03A D1 reconciliation: explicit authorization happens via contextual HUD category button.
+	var main := viewport.get_child(0) as MainScene
+	var hud := main.get_community_selection_actions_hud()
+	if hud != null:
+		var btn: Button = hud.get_category_button(resource_id)
+		if btn != null and btn.visible:
+			var rect: Rect2 = btn.get_global_rect()
+			await _left_click(viewport, rect.position + rect.size * 0.5, false)
+			await wait_process_frames(2)
+
+
 func _right_click(viewport: SubViewport, point: Vector2) -> void:
 	await _click_button(viewport, point, MOUSE_BUTTON_RIGHT, false)
 
@@ -240,16 +252,17 @@ func test_a02_single_click_registers_dispatches_and_is_idempotent() -> void:
 	await wait_process_frames(1)
 	var pt := _source_screen_point(view, tree_1)
 	await _left_click(view, pt, false)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
 	var task := board.get_active_task_for_source(tree_1)
-	assert_not_null(task, "A02: Single left-click without unit selection registers community task")
+	assert_not_null(task, "A02: Single left-click + HUD authorize without unit selection registers community task")
 	assert_true(main.get_selection_manager().is_empty(), "A02: Does not overwrite empty RTS selection")
 	if task == null:
 		await _teardown_fixture(view)
 		return
-	assert_not_null(task.assigned_unit, "A02: Single click must dispatch an idle worker immediately")
+	assert_not_null(task.assigned_unit, "A02: Authorized task must dispatch an idle worker immediately")
 	if task.assigned_unit == null:
 		await _teardown_fixture(view)
 		return
@@ -260,13 +273,13 @@ func test_a02_single_click_registers_dispatches_and_is_idempotent() -> void:
 	var initial_rev := worker.get_order_revision()
 
 	for _i: int in range(3):
-		await _left_click(view, pt, false)
+		await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 
-	assert_eq(board.get_active_tasks().size(), 1, "A02: Repeated click does not duplicate active task")
-	assert_eq(board.get_all_tasks().size(), 1, "A02: Repeated click does not duplicate task history")
-	assert_eq(worker.get_current_order(), initial_order, "A02: Repeated click does not restart active order")
-	assert_eq(worker.get_order_revision(), initial_rev, "A02: Repeated click does not bump order revision")
+	assert_eq(board.get_active_tasks().size(), 1, "A02: Repeated authorization does not duplicate active task")
+	assert_eq(board.get_all_tasks().size(), 1, "A02: Repeated authorization does not duplicate task history")
+	assert_eq(worker.get_current_order(), initial_order, "A02: Repeated authorization does not restart active order")
+	assert_eq(worker.get_order_revision(), initial_rev, "A02: Repeated authorization does not bump order revision")
 
 	await _teardown_fixture(view)
 
@@ -276,6 +289,7 @@ func test_a03_shift_click_homogeneous_idempotent_and_rejects_mixed_types() -> vo
 	var main := view.get_child(0) as MainScene
 	var board := main.get_node_or_null("CommunityWorkBoard") as CommunityWorkBoard
 	var feedback := main.get_node_or_null("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
+	var model := main.get_source_selection_model()
 	var tree_1 := _find_source_by_id(main, &"wood_tree_01")
 	var tree_2 := _find_source_by_id(main, &"wood_tree_02")
 	var tree_5 := _find_source_by_id(main, &"wood_tree_05")
@@ -283,52 +297,53 @@ func test_a03_shift_click_homogeneous_idempotent_and_rejects_mixed_types() -> vo
 
 	assert_not_null(board, "A03: Board present")
 	assert_not_null(feedback, "A03: Feedback banner present")
+	assert_not_null(model, "A03: SourceSelectionModel present")
 	assert_not_null(tree_1, "A03: WoodTree01 present")
 	assert_not_null(tree_2, "A03: WoodTree02 present")
 	assert_not_null(tree_5, "A03: WoodTree05 present")
 	assert_not_null(rock_1, "A03: StoneRock01 present")
-	if board == null or feedback == null or tree_1 == null or tree_2 == null or tree_5 == null or rock_1 == null:
+	if board == null or feedback == null or model == null or tree_1 == null or tree_2 == null or tree_5 == null or rock_1 == null:
 		await _teardown_fixture(view)
 		return
 
+	# R-03A D1 reconciliation: heterogeneous Shift+click selection is allowed visually,
+	# while explicit HUD wood authorization creates ONLY a homogeneous wood group (stone stays unauthorized).
 	_focus_camera(main, Vector2(9.0, 2.0))
 	await wait_process_frames(1)
 
 	await _left_click(view, _source_screen_point(view, tree_1), false)
-	await wait_process_frames(2)
-	var t1 := board.get_active_task_for_source(tree_1)
-	assert_not_null(t1, "A03: First tree registered")
-	if t1 == null:
-		await _teardown_fixture(view)
-		return
-
 	await _left_click(view, _source_screen_point(view, tree_2), true)
 	await _left_click(view, _source_screen_point(view, tree_5), true)
-	await wait_process_frames(2)
-
-	var t2 := board.get_active_task_for_source(tree_2)
-	var t5 := board.get_active_task_for_source(tree_5)
-	assert_not_null(t2, "A03: Shift adds second tree")
-	assert_not_null(t5, "A03: Shift adds third tree")
-	assert_eq(board.get_active_tasks().size(), 3, "A03: Exactly 3 trees active")
-	if t2 != null and t5 != null:
-		assert_eq(t2.group_id, t1.group_id, "A03: Same homogeneous group_id")
-		assert_eq(t5.group_id, t1.group_id, "A03: Third tree joins same group_id")
-
-	# Non-destructive repeated Shift+click
-	await _left_click(view, _source_screen_point(view, tree_2), true)
-	await wait_process_frames(2)
-	assert_eq(board.get_active_tasks().size(), 3, "A03: Repeated Shift+click is non-destructive")
-	if feedback != null:
-		assert_false(feedback.last_message.is_empty(), "A03: Feedback informs already selected")
-
-	# Mixed type rejected under Shift
 	_focus_camera(main, Vector2(-6.0, 0.0))
 	await wait_process_frames(1)
 	await _left_click(view, _source_screen_point(view, rock_1), true)
 	await wait_process_frames(2)
-	assert_null(board.get_active_task_for_source(rock_1), "A03: Mixed Shift+click on stone rejected")
-	assert_eq(board.get_active_tasks().size(), 3, "A03: Previous wood group preserved")
+
+	assert_eq(model.get_count_for_resource(&"wood"), 3, "A03: 3 trees visually selected")
+	assert_eq(model.get_count_for_resource(&"stone"), 1, "A03: Heterogeneous rock visually selected alongside trees")
+	assert_eq(board.get_active_tasks().size(), 0, "A03: Zero tasks before explicit HUD authorization")
+
+	await _click_hud_authorize(view, &"wood")
+	await wait_process_frames(2)
+
+	var t1 := board.get_active_task_for_source(tree_1)
+	var t2 := board.get_active_task_for_source(tree_2)
+	var t5 := board.get_active_task_for_source(tree_5)
+	assert_not_null(t1, "A03: First tree registered")
+	assert_not_null(t2, "A03: Second tree registered")
+	assert_not_null(t5, "A03: Third tree registered")
+	assert_eq(board.get_active_tasks().size(), 3, "A03: Exactly 3 trees active")
+	if t1 != null and t2 != null and t5 != null:
+		assert_eq(t2.group_id, t1.group_id, "A03: Same homogeneous group_id")
+		assert_eq(t5.group_id, t1.group_id, "A03: Third tree joins same group_id")
+	assert_null(board.get_active_task_for_source(rock_1), "A03: Wood authorization does not mix stone task")
+
+	# Non-destructive idempotent repeated authorization
+	await _click_hud_authorize(view, &"wood")
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 3, "A03: Repeated authorization is non-destructive and idempotent")
+	if feedback != null:
+		assert_false(feedback.last_message.is_empty(), "A03: Feedback informs already authorized")
 
 	await _teardown_fixture(view)
 
@@ -365,14 +380,12 @@ func test_a04_box_select_five_of_six_trees_preserves_sixth_through_completion() 
 	_focus_camera(main, Vector2(12.5, 1.0))
 	await wait_process_frames(2)
 
-	var p_t1 := _source_screen_point(view, t1)
-	var p_t2 := _source_screen_point(view, t2)
-	var p_t5 := _source_screen_point(view, t5)
+	var bounds := _compute_screen_bounds(view, selected_five, 12.0)
 	var p_t6 := _source_screen_point(view, t6)
-	var drag_end := Vector2(p_t2.x - 24.0, p_t1.y - 24.0)
-	assert_false(SelectionBoxMath.normalize_rect(p_t5, drag_end).has_point(p_t6), "A04: 6th tree strictly outside box")
+	assert_false(bounds.has_point(p_t6), "A04: 6th tree strictly outside box")
 
-	await _left_drag(view, p_t5, drag_end, false)
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
 
@@ -428,9 +441,8 @@ func test_a05_multi_stone_extraction_weight_and_delivery() -> void:
 	_focus_camera(main, Vector2(-13.8, 2.1))
 	await wait_process_frames(2)
 	var bounds := _compute_screen_bounds(view, targets, 18.0)
-	var p_r1 := _source_screen_point(view, r1)
-	var drag_end := bounds.position
-	await _left_drag(view, p_r1, drag_end, false)
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"stone")
 	await wait_process_frames(2)
 
 	assert_eq(board.get_active_tasks().size(), 3, "A05: Three target rocks marked")
@@ -485,8 +497,8 @@ func test_a06_multi_food_bushes_extraction_and_delivery() -> void:
 	_focus_camera(main, Vector2(4.0, 9.5))
 	await wait_process_frames(2)
 	var bounds := _compute_screen_bounds(view, targets, 10.0)
-	await _left_drag(view, _source_screen_point(view, b2), bounds.end, false)
-	await _left_drag(view, _source_screen_point(view, b4), bounds.position, true)
+	await _left_drag(view, bounds.position, bounds.end, true)
+	await _click_hud_authorize(view, &"food")
 	await wait_process_frames(2)
 
 	assert_eq(board.get_active_tasks().size(), 3, "A06: Three target bushes marked")
@@ -986,8 +998,9 @@ func test_a16_placement_priority_ui_consumption_and_esc_drag_cancel() -> void:
 	assert_null(board.get_active_task_for_source(t1), "A16: Click during placement does not register gather task")
 	main.get_placement_controller().cancel_placement()
 
-	# 2. Register confirmed task on t1, then cancel an unconfirmed drag starting on t2 with Esc.
+	# 2. Authorize confirmed task on t1, then cancel an unconfirmed Shift+drag starting on t2 with Esc.
 	await _left_click(view, _source_screen_point(view, t1), false)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	assert_eq(board.get_active_tasks().size(), 1, "A16: Confirmed task on t1 registered")
 
@@ -995,17 +1008,20 @@ func test_a16_placement_priority_ui_consumption_and_esc_drag_cancel() -> void:
 	var m0 := InputEventMouseMotion.new()
 	m0.position = start_drag
 	m0.global_position = start_drag
+	m0.shift_pressed = true
 	view.push_input(m0, false)
 	var down := InputEventMouseButton.new()
 	down.position = start_drag
 	down.global_position = start_drag
 	down.button_index = MOUSE_BUTTON_LEFT
 	down.pressed = true
+	down.shift_pressed = true
 	view.push_input(down, false)
 	await wait_process_frames(1)
 	var mm := InputEventMouseMotion.new()
 	mm.position = start_drag + Vector2(60.0, 36.0)
 	mm.global_position = start_drag + Vector2(60.0, 36.0)
+	mm.shift_pressed = true
 	view.push_input(mm, false)
 	await wait_process_frames(1)
 	await _press_esc(view)
@@ -1014,6 +1030,7 @@ func test_a16_placement_priority_ui_consumption_and_esc_drag_cancel() -> void:
 	up.global_position = start_drag + Vector2(60.0, 36.0)
 	up.button_index = MOUSE_BUTTON_LEFT
 	up.pressed = false
+	up.shift_pressed = true
 	view.push_input(up, false)
 	await wait_process_frames(2)
 
@@ -1197,8 +1214,16 @@ func test_a19_invalid_economic_admission_blocks_community_dispatch() -> void:
 	await wait_process_frames(1)
 	await _left_click(view, _source_screen_point(view, tree_1), false)
 	await wait_process_frames(2)
+	var hud := main.get_community_selection_actions_hud()
+	if hud != null:
+		assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_ECONOMY_BLOCKED, "A19: HUD marks category blocked under failed admission")
+	var agi := main.get_input_controller() as AutonomousGatherInput
+	if agi != null:
+		var auth_res := agi.authorize_selected_category(&"wood")
+		assert_false(bool(auth_res.get("ok", true)), "A19: Explicit authorization refused under failed admission")
+	await wait_process_frames(2)
 
-	assert_eq(board.get_active_tasks().size(), 0, "A19: Click while economy admission failed must not register tasks")
+	assert_eq(board.get_active_tasks().size(), 0, "A19: Authorization while economy admission failed must not register tasks")
 	for u: Unit in main.get_units():
 		assert_null(u.get_current_order(), "A19: No worker dispatched under failed economic admission")
 	assert_eq(inventory.get_physical_amount(&"wood"), stock_before, "A19: Zero resources created")
@@ -1467,27 +1492,34 @@ func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation
 	_focus_camera(main, Vector2(14.8, -0.8))
 	await wait_process_frames(2)
 
-	# Case 1: Origin source depleted between mouse_down and mouse_up, another valid tree + LeaderB inside box.
+	# Case 1: Origin source depleted between mouse_down and mouse_up during Shift+drag, another valid tree + LeaderB inside box.
+	var model := main.get_source_selection_model()
 	var p_t3 := _source_screen_point(view, t3)
 	var p_t4 := _source_screen_point(view, t4)
-	await _start_left_drag_hold(view, p_t3, false)
+	await _start_left_drag_hold(view, p_t3, true)
 	while not t3.is_depleted():
 		t3.extract(t3.get_remaining_amount())
 	assert_true(t3.is_depleted(), "F02-C1: Origin tree depleted mid-drag")
-	await _finish_left_drag_hold(view, p_t3, Vector2(p_t4.x + 28.0, p_t4.y + 28.0), false)
+	var d34 := p_t4 - p_t3
+	var end_c1 := p_t4 + Vector2(28.0 if d34.x >= 0.0 else -28.0, 28.0 if d34.y >= 0.0 else -28.0)
+	await _finish_left_drag_hold(view, p_t3, end_c1, true)
 
-	assert_eq(selection.get_selected_units(), [leader_a], "F02-C1: Depleted origin drag must NOT convert to RTS unit selection")
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C1: Depleted origin Shift+drag must NOT convert to RTS unit selection")
+	assert_false(model.is_selected(t3), "F02-C1: Depleted origin tree not selected")
+	assert_true(model.is_selected(t4), "F02-C1: Peer valid tree inside box still selected")
+	await _click_hud_authorize(view, &"wood")
 	assert_null(board.get_active_task_for_source(t3), "F02-C1: Depleted origin tree not registered")
 	assert_not_null(board.get_active_task_for_source(t4), "F02-C1: Peer valid tree inside box still registered")
 
-	# Clean board for Case 2
+	# Clean board & selection for Case 2
+	model.clear()
 	for u: Unit in main.get_units():
 		u.cancel_current_order()
 	for tk: WorkTask in board.get_active_tasks():
 		board.close_task(tk, WorkTask.State.CANCELLED, "f02_reset")
 	await wait_process_frames(2)
 
-	# Case 2: Origin source FREED (effectively destroyed!) between mouse_down and mouse_up, with peer t5 + LeaderB inside box.
+	# Case 2: Origin source FREED (effectively destroyed!) between mouse_down and mouse_up during Shift+drag, with peer t5 + LeaderB inside box.
 	var ephemeral_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
 	ephemeral_tree.name = "F02EphemeralTree"
 	ephemeral_tree.source_id = &"f02_ephemeral_tree"
@@ -1498,15 +1530,18 @@ func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation
 	selection.select_single(leader_a)
 	var p_eph := _source_screen_point(view, ephemeral_tree)
 	var p_t5 := _source_screen_point(view, t5)
-	await _start_left_drag_hold(view, p_eph, false)
+	await _start_left_drag_hold(view, p_eph, true)
 	ephemeral_tree.free() # Immediate effective destruction before mouse_up!
 	await wait_process_frames(1)
-	await _finish_left_drag_hold(view, p_eph, Vector2(p_t5.x + 28.0, p_t5.y + 28.0), false)
+	await _finish_left_drag_hold(view, p_eph, Vector2(p_t5.x + 28.0, p_t5.y + 28.0), true)
 
-	assert_eq(selection.get_selected_units(), [leader_a], "F02-C2: Freed origin drag must NEVER convert into RTS unit selection")
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C2: Freed origin Shift+drag must NEVER convert into RTS unit selection")
+	assert_true(model.is_selected(t5), "F02-C2: Valid peer tree t5 inside box still selected")
+	await _click_hud_authorize(view, &"wood")
 	assert_not_null(board.get_active_task_for_source(t5), "F02-C2: Valid peer tree t5 inside box still registered")
 
-	# Clean board for Case 3
+	# Clean board & selection for Case 3
+	model.clear()
 	for u: Unit in main.get_units():
 		u.cancel_current_order()
 	for tk: WorkTask in board.get_active_tasks():
@@ -1526,14 +1561,14 @@ func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation
 	selection.select_single(leader_a)
 	var p_solo := _source_screen_point(view, solo_tree)
 	var p_lb := view.get_camera_3d().unproject_position(leader_b.global_position + Vector3(0.0, 0.9, 0.0))
-	await _start_left_drag_hold(view, p_solo, false)
+	await _start_left_drag_hold(view, p_solo, true)
 	solo_tree.queue_free()
 	await wait_process_frames(2)
-	await _finish_left_drag_hold(view, p_solo, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), false)
+	await _finish_left_drag_hold(view, p_solo, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), true)
 
 	assert_eq(selection.get_selected_units(), [leader_a], "F02-C3: Destroyed solo origin must preserve previous unit selection")
+	assert_true(model.is_empty(), "F02-C3: Zero sources selected when no valid source remains in Shift+drag")
 	assert_eq(board.get_active_tasks().size(), 0, "F02-C3: Zero tasks registered when no valid source in box")
-	assert_false(feedback.last_message.is_empty(), "F02-C3: Safe feedback shown when no valid source remains")
 
 	# Case 4: Origin source moved out of allowed domain (other_region) between mouse_down and mouse_up.
 	var domain_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
@@ -1545,19 +1580,21 @@ func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation
 
 	selection.select_single(leader_a)
 	var p_dom := _source_screen_point(view, domain_tree)
-	await _start_left_drag_hold(view, p_dom, false)
+	await _start_left_drag_hold(view, p_dom, true)
 	domain_tree.set_meta(&"region_id", &"other_region")
-	await _finish_left_drag_hold(view, p_dom, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), false)
+	await _finish_left_drag_hold(view, p_dom, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), true)
 
 	assert_eq(selection.get_selected_units(), [leader_a], "F02-C4: Out-of-domain origin must NOT convert into RTS unit selection")
+	assert_false(model.is_selected(domain_tree), "F02-C4: Out-of-domain source rejected from selection")
 	assert_null(board.get_active_task_for_source(domain_tree), "F02-C4: Out-of-domain source rejected")
 
-	# Case 5: Esc cancels source-origin drag even if origin was destroyed mid-drag.
-	await _start_left_drag_hold(view, p_dom, false)
+	# Case 5: Esc cancels Shift+drag even if origin was destroyed mid-drag.
+	await _start_left_drag_hold(view, p_dom, true)
 	domain_tree.free()
 	var mm := InputEventMouseMotion.new()
 	mm.position = p_dom + Vector2(40.0, 30.0)
 	mm.global_position = mm.position
+	mm.shift_pressed = true
 	view.push_input(mm, false)
 	await wait_process_frames(1)
 	await _press_esc(view)
@@ -1767,6 +1804,7 @@ func test_r1_t03_lifecycle_signals_ensure_wired_and_reinstantiation() -> void:
 		_focus_camera(main2, Vector2(9.5, -1.5))
 		await wait_process_frames(1)
 		await _left_click(view, _source_screen_point(view, t1_2), false)
+		await _click_hud_authorize(view, &"wood")
 		await wait_process_frames(2)
 		await wait_physics_frames(1)
 		var task2 := board2.get_active_task_for_source(t1_2)
@@ -1836,29 +1874,42 @@ func test_r1_t04_invalid_economic_admission_all_entry_vectors() -> void:
 	_focus_camera(main, Vector2(9.5, 2.0))
 	await wait_process_frames(2)
 
-	# 1. Single left-click on source
+	# 1. Single left-click selects visually; HUD shows ECONOMY_BLOCKED & explicit authorization refuses honestly
+	var hud := main.get_community_selection_actions_hud()
+	var agi := main.get_input_controller() as AutonomousGatherInput
 	feedback.last_message = ""
 	await _left_click(view, _source_screen_point(view, t1), false)
 	await wait_process_frames(2)
 	assert_eq(board.get_active_tasks().size(), 0, "T04-1: Single click registers 0 tasks")
-	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-1: Honest blocked feedback on click")
+	if hud != null:
+		assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_ECONOMY_BLOCKED, "T04-1: HUD marks wood blocked")
+	if agi != null:
+		var r1_auth := agi.authorize_selected_category(&"wood")
+		assert_false(bool(r1_auth.get("ok", true)), "T04-1: Authorization refused")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-1: Honest blocked feedback on authorization")
 
-	# 2. Shift + left-click on source
+	# 2. Shift + left-click on source + authorization attempt -> still 0 tasks & honest feedback
 	feedback.last_message = ""
 	await _left_click(view, _source_screen_point(view, t2), true)
 	await wait_process_frames(2)
 	assert_eq(board.get_active_tasks().size(), 0, "T04-2: Shift+click registers 0 tasks")
-	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-2: Honest blocked feedback on Shift+click")
+	if agi != null:
+		var r2_auth := agi.authorize_selected_category(&"wood")
+		assert_false(bool(r2_auth.get("ok", true)), "T04-2: Authorization refused after Shift+click")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-2: Honest blocked feedback on Shift+click authorization")
 
-	# 3. Box drag starting on source across another tree AND LeaderA -> must NOT select LeaderA, must report blocked!
+	# 3. Shift+drag across trees AND LeaderA -> must NOT select LeaderA, and authorization reports blocked!
 	feedback.last_message = ""
 	var p_t1 := _source_screen_point(view, t1)
 	var p_t2 := _source_screen_point(view, t2)
-	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), false)
+	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), true)
 	await wait_process_frames(2)
-	assert_eq(board.get_active_tasks().size(), 0, "T04-3: Source-origin drag registers 0 tasks under blocked admission")
-	assert_eq(selection.get_selected_units(), [leader_b], "T04-3: Blocked source drag must preserve previous RTS selection")
-	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-3: Honest blocked feedback on source drag")
+	assert_eq(board.get_active_tasks().size(), 0, "T04-3: Source Shift+drag registers 0 tasks under blocked admission")
+	assert_eq(selection.get_selected_units(), [leader_b], "T04-3: Blocked source Shift+drag must preserve previous RTS selection")
+	if agi != null:
+		var r3_auth := agi.authorize_selected_category(&"wood")
+		assert_false(bool(r3_auth.get("ok", true)), "T04-3: Authorization refused after source Shift+drag")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-3: Honest blocked feedback on source Shift+drag authorization")
 
 	# 4. Direct board group registration + explicit dispatch request -> zero dispatch
 	board.register_gather_group([t1, t2])
@@ -2370,21 +2421,24 @@ func test_r1_1_r01_external_untagged_source_same_world3d() -> void:
 	_cancel_all_board_tasks_r1_1(board)
 	await wait_process_frames(1)
 
-	# Vector 4: Player left-click on external untagged source via MainScene input pipeline
+	# Vector 4: Player left-click + HUD authorize on external untagged source via MainScene input pipeline
 	_focus_camera(main, Vector2(ext_tree.global_position.x, ext_tree.global_position.z))
 	await wait_process_frames(2)
 	await _left_click(view, _source_screen_point(view, ext_tree), false)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
-	assert_not_null(board.get_active_task_for_source(ext_tree), "R1.1-R01-V4: Left click registers external untagged source")
+	assert_not_null(board.get_active_task_for_source(ext_tree), "R1.1-R01-V4: Left click + HUD authorize registers external untagged source")
 	_cancel_all_board_tasks_r1_1(board)
+	main.get_source_selection_model().clear()
 	await wait_process_frames(1)
 
-	# Vector 5: Source-origin box drag over external untagged source
+	# Vector 5: Shift+drag + HUD authorize over external untagged source
 	var p_ext := _source_screen_point(view, ext_tree)
-	await _left_drag(view, p_ext, p_ext + Vector2(36.0, 24.0), false)
+	await _left_drag(view, p_ext - Vector2(24.0, 24.0), p_ext + Vector2(24.0, 24.0), true)
+	await _click_hud_authorize(view, &"wood")
 	await wait_process_frames(2)
 	var task_ext := board.get_active_task_for_source(ext_tree)
-	assert_not_null(task_ext, "R1.1-R01-V5: Box drag starting on external untagged source registers task")
+	assert_not_null(task_ext, "R1.1-R01-V5: Shift+drag + HUD authorize over external untagged source registers task")
 
 	# Vectors 6, 7, 8, 9: Dispatch -> Extraction -> Physical Camp Delivery -> FREE_GATHERED Provenance
 	var wood0: int = inventory.get_physical_amount(&"wood")
@@ -2528,10 +2582,10 @@ func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admissio
 	await wait_process_frames(2)
 	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-ShiftClick")
 
-	# Vector 3: Source-origin box drag
+	# Vector 3: Source Shift+drag box
 	var p_t1 := _source_screen_point(view, t1)
 	var p_t2 := _source_screen_point(view, t2)
-	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), false)
+	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), true)
 	await wait_process_frames(2)
 	assert_eq(selection.get_selected_units(), [leader_b], "R1.1-T04-BoxDrag: Selection preserved")
 	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-SourceBoxDrag")
