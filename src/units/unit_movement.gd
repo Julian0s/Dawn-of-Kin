@@ -269,7 +269,7 @@ func stop_movement() -> void:
 	if _agent != null:
 		_agent.avoidance_priority = AVOIDANCE_PRIORITY_IDLE
 		_agent.set_velocity(Vector3.ZERO)
-		if _body != null:
+		if _body != null and _body.is_inside_tree():
 			_agent.target_position = _body.global_position
 
 

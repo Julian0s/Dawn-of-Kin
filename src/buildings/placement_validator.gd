@@ -130,16 +130,21 @@ class ValidationContext extends RefCounted:
 		var seen_sources: Dictionary = {}
 		if not p_sources.is_empty():
 			for s: ResourceSource in p_sources:
-				_append_scoped_source(ctx.resource_sources, seen_sources, s, ctx.world_3d)
+				_append_scoped_source(ctx.resource_sources, seen_sources, s, ctx.world_3d, ctx.region_id)
 		elif ctx.has_region_scope:
-			if p_region_root.has_method("get_resource_sources"):
+			if p_region_root.has_method("get_all_region_resource_sources"):
+				var all_sources_var: Variant = p_region_root.call("get_all_region_resource_sources")
+				if all_sources_var is Array:
+					for item: Variant in all_sources_var as Array:
+						if item is ResourceSource:
+							_append_scoped_source(ctx.resource_sources, seen_sources, item as ResourceSource, ctx.world_3d, ctx.region_id)
+			elif p_region_root.has_method("get_resource_sources"):
 				var region_sources_var: Variant = p_region_root.call("get_resource_sources")
 				if region_sources_var is Array:
 					for item: Variant in region_sources_var as Array:
 						if item is ResourceSource:
-							_append_scoped_source(ctx.resource_sources, seen_sources, item as ResourceSource, ctx.world_3d)
-			else:
-				_collect_scoped_sources_recursive(p_region_root, ctx.resource_sources, seen_sources, ctx.world_3d)
+							_append_scoped_source(ctx.resource_sources, seen_sources, item as ResourceSource, ctx.world_3d, ctx.region_id)
+			_collect_scoped_sources_recursive(p_region_root, ctx.resource_sources, seen_sources, ctx.world_3d, ctx.region_id)
 
 		var seen_piles: Dictionary = {}
 		if p_piles_root != null and is_instance_valid(p_piles_root):
@@ -228,21 +233,35 @@ class ValidationContext extends RefCounted:
 		for child: Node in root_node.get_children():
 			_collect_scoped_units_recursive(child, out, seen, expected_world)
 
-	static func _append_scoped_source(out: Array[ResourceSource], seen: Dictionary, source_node: ResourceSource, expected_world: World3D) -> void:
+	static func _matches_region_meta(node: Node, expected_region_id: StringName) -> bool:
+		if expected_region_id.is_empty():
+			return true
+		var cursor: Node = node
+		while cursor != null:
+			if cursor.has_meta(&"region_id"):
+				return StringName(cursor.get_meta(&"region_id")) == expected_region_id
+			cursor = cursor.get_parent()
+		return true
+
+	static func _append_scoped_source(out: Array[ResourceSource], seen: Dictionary, source_node: ResourceSource, expected_world: World3D, expected_region_id: StringName = &"") -> void:
 		if not _matches_world(source_node, expected_world):
+			return
+		if source_node.is_queued_for_deletion():
+			return
+		if not _matches_region_meta(source_node, expected_region_id):
 			return
 		var sid: int = source_node.get_instance_id()
 		if not seen.has(sid):
 			seen[sid] = true
 			out.append(source_node)
 
-	static func _collect_scoped_sources_recursive(root_node: Node, out: Array[ResourceSource], seen: Dictionary, expected_world: World3D) -> void:
-		if root_node == null or not is_instance_valid(root_node):
+	static func _collect_scoped_sources_recursive(root_node: Node, out: Array[ResourceSource], seen: Dictionary, expected_world: World3D, expected_region_id: StringName = &"") -> void:
+		if root_node == null or not is_instance_valid(root_node) or root_node.is_queued_for_deletion():
 			return
 		if root_node is ResourceSource:
-			_append_scoped_source(out, seen, root_node as ResourceSource, expected_world)
+			_append_scoped_source(out, seen, root_node as ResourceSource, expected_world, expected_region_id)
 		for child: Node in root_node.get_children():
-			_collect_scoped_sources_recursive(child, out, seen, expected_world)
+			_collect_scoped_sources_recursive(child, out, seen, expected_world, expected_region_id)
 
 	static func _append_scoped_pile(out: Array[GroundResourcePile], seen: Dictionary, pile_node: GroundResourcePile, expected_world: World3D) -> void:
 		if not _matches_world(pile_node, expected_world):

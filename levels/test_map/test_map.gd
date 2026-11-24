@@ -42,8 +42,29 @@ func get_resource_sources() -> Array[ResourceSource]:
 	return sources
 
 
+func get_all_region_resource_sources() -> Array[ResourceSource]:
+	var sources: Array[ResourceSource] = []
+	var seen: Dictionary = {}
+	_collect_resource_sources_recursive(self, sources, seen)
+	return sources
+
+
+func _collect_resource_sources_recursive(node: Node, out: Array[ResourceSource], seen: Dictionary) -> void:
+	if node == null or not is_instance_valid(node) or node.is_queued_for_deletion():
+		return
+	if node is ResourceSource:
+		var src: ResourceSource = node as ResourceSource
+		var sid: int = src.get_instance_id()
+		if not seen.has(sid):
+			seen[sid] = true
+			out.append(src)
+		return
+	for child: Node in node.get_children():
+		_collect_resource_sources_recursive(child, out, seen)
+
+
 func set_resource_discoverability_badges_visible(enabled: bool) -> void:
-	for src: ResourceSource in get_resource_sources():
+	for src: ResourceSource in get_all_region_resource_sources():
 		src.set_discoverability_badge_visible(enabled)
 	if _camp_storage_zone != null:
 		_camp_storage_zone.set_camp_badge_visible(enabled)

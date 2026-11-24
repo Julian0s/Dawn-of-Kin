@@ -19,12 +19,14 @@ var _board: CommunityWorkBoard = null
 var _dispatcher: CommunityTaskDispatcher = null
 var _feedback: AutonomousGatherFeedback = null
 var _wired: bool = false
+var _torn_down: bool = false
 var _use_provenance_economy: bool = true
 var _economy_admission_reason: String = ""
 var _shared_ring_mesh: ArrayMesh = null
 var _shared_ring_materials: Dictionary = {}
 var _task_highlights: Dictionary = {}
 
+var _drag_started_on_source: bool = false
 var _drag_origin_source: ResourceSource = null
 var _drag_origin_resource_id: StringName = &""
 var _active_group_id: int = 0
@@ -50,6 +52,7 @@ func configure_community_work(
 ) -> void:
 	_disconnect_signals()
 	_clear_drag_origin()
+	_torn_down = false
 	_board = p_board
 	_dispatcher = p_dispatcher
 	_feedback = p_feedback
@@ -69,6 +72,7 @@ func configure_community_work(
 
 
 func teardown_community_work() -> void:
+	_torn_down = true
 	_clear_drag_origin()
 	_clear_all_highlights()
 	_disconnect_signals()
@@ -84,7 +88,7 @@ func _is_community_economy_blocked() -> bool:
 
 
 func _ensure_wired() -> void:
-	if _wired or not is_inside_tree():
+	if _wired or _torn_down or not is_inside_tree():
 		return
 	var main := get_parent() as MainScene
 	if main == null:
@@ -135,10 +139,9 @@ func _on_left_press_started(press_pos: Vector2) -> void:
 	if not multi_source_enabled:
 		return
 	_ensure_wired()
-	if _is_community_economy_blocked():
-		return
 	var pick: PickResult = pick_at_screen_pos(press_pos)
 	if pick.is_resource_source() and _supports_resource_id(pick.resource_source.get_resource_id()):
+		_drag_started_on_source = true
 		_drag_origin_source = pick.resource_source
 		_drag_origin_resource_id = pick.resource_source.get_resource_id()
 
@@ -148,6 +151,7 @@ func _on_drag_cancelled() -> void:
 
 
 func _clear_drag_origin() -> void:
+	_drag_started_on_source = false
 	_drag_origin_source = null
 	_drag_origin_resource_id = &""
 
@@ -204,8 +208,8 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 
 
 func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: bool) -> void:
-	if multi_source_enabled and _drag_origin_source != null and is_instance_valid(_drag_origin_source):
-		var origin_source: ResourceSource = _drag_origin_source
+	if multi_source_enabled and _drag_started_on_source:
+		var origin_source: ResourceSource = _drag_origin_source if (_drag_origin_source != null and is_instance_valid(_drag_origin_source)) else null
 		var origin_res_id: StringName = _drag_origin_resource_id
 		_clear_drag_origin()
 		_handle_source_box_selection(origin_source, origin_res_id, start_pos, end_pos, shift_held)
@@ -236,7 +240,7 @@ func _handle_source_box_selection(
 	var tree: SceneTree = get_tree()
 	var candidates: Array = tree.get_nodes_in_group(ResourceSource.GROUP_RESOURCE_SOURCES) if tree != null else []
 	var box_rect: Rect2 = SelectionBoxMath.normalize_rect(start_pos, end_pos)
-	var boxed_sources: Array[ResourceSource] = SelectionBoxMath.collect_sources_in_box(
+	var raw_boxed: Array[ResourceSource] = SelectionBoxMath.collect_sources_in_box(
 		camera,
 		candidates,
 		box_rect,
@@ -244,18 +248,28 @@ func _handle_source_box_selection(
 		origin_res_id,
 		true
 	)
+	var boxed_sources: Array[ResourceSource] = []
+	for candidate_src: ResourceSource in raw_boxed:
+		if _board.is_source_in_region_domain(candidate_src):
+			boxed_sources.append(candidate_src)
 
 	if (
-		is_instance_valid(origin_source)
+		origin_source != null
+		and is_instance_valid(origin_source)
 		and origin_source.is_inside_tree()
+		and not origin_source.is_queued_for_deletion()
 		and not origin_source.is_depleted()
 		and origin_source.is_available()
+		and _board.is_source_in_region_domain(origin_source)
 		and not boxed_sources.has(origin_source)
 	):
 		boxed_sources.insert(0, origin_source)
 
 	if boxed_sources.is_empty():
-		_show_feedback(_depleted_feedback(origin_res_id))
+		if origin_source != null and is_instance_valid(origin_source) and origin_source.is_depleted():
+			_show_feedback(_depleted_feedback(origin_res_id))
+		else:
+			_show_feedback("Nenhuma fonte disponível na seleção.")
 		return
 
 	var target_group_id: int = 0
