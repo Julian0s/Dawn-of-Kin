@@ -32,6 +32,7 @@ const BUSH_SOURCE_SCENE: PackedScene = preload("res://src/economy/sources/bush_s
 @onready var _selection_box_overlay: SelectionBoxOverlay = $UiLayer/SelectionBoxOverlay
 @onready var _resource_hud: ResourceHud = get_node_or_null("UiLayer/ResourceHud") as ResourceHud
 @onready var _placement_test_overlay: PlacementTestOverlay = get_node_or_null("UiLayer/PlacementTestOverlay") as PlacementTestOverlay
+@onready var _community_selection_actions_hud: CommunitySelectionActionsHud = get_node_or_null("UiLayer/CommunitySelectionActionsHud") as CommunitySelectionActionsHud
 @onready var _autonomous_gather_feedback: AutonomousGatherFeedback = get_node_or_null("UiLayer/AutonomousGatherFeedback") as AutonomousGatherFeedback
 
 var _time_provider: SimulatedWorldTimeProvider = null
@@ -550,16 +551,27 @@ func _setup_community_work(world_nav: WorldNavigation) -> void:
 		_economy_admission_reason
 	)
 	if _input_controller is AutonomousGatherInput:
-		(_input_controller as AutonomousGatherInput).configure_community_work(
+		var gather_input: AutonomousGatherInput = _input_controller as AutonomousGatherInput
+		gather_input.configure_community_work(
 			_community_work_board,
 			_community_task_dispatcher,
 			_autonomous_gather_feedback,
 			use_provenance_economy,
-			_economy_admission_reason
+			_economy_admission_reason,
+			_community_selection_actions_hud
 		)
+		if _community_selection_actions_hud != null and is_instance_valid(_community_selection_actions_hud):
+			_community_selection_actions_hud.configure(
+				gather_input.get_source_selection_model(),
+				_community_work_board,
+				use_provenance_economy,
+				_economy_admission_reason
+			)
 
 
 func _teardown_community_work() -> void:
+	if _community_selection_actions_hud != null and is_instance_valid(_community_selection_actions_hud):
+		_community_selection_actions_hud.unbind()
 	if _input_controller is AutonomousGatherInput and is_instance_valid(_input_controller):
 		(_input_controller as AutonomousGatherInput).teardown_community_work()
 	if _community_task_dispatcher != null and is_instance_valid(_community_task_dispatcher):
@@ -574,6 +586,16 @@ func get_community_work_board() -> CommunityWorkBoard:
 
 func get_community_task_dispatcher() -> CommunityTaskDispatcher:
 	return _community_task_dispatcher
+
+
+func get_source_selection_model() -> SourceSelectionModel:
+	if _input_controller is AutonomousGatherInput:
+		return (_input_controller as AutonomousGatherInput).get_source_selection_model()
+	return null
+
+
+func get_community_selection_actions_hud() -> CommunitySelectionActionsHud:
+	return _community_selection_actions_hud
 
 
 func get_autonomous_gather_feedback() -> AutonomousGatherFeedback:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://levels/test_map/test_map.tscn" id="2_test_map"]
@@ -19,6 +19,7 @@
 [ext_resource type="Script" path="res://src/rts/community_work_board.gd" id="17_community_work_board"]
 [ext_resource type="Script" path="res://src/rts/community_task_dispatcher.gd" id="18_community_task_dispatcher"]
 [ext_resource type="Script" path="res://src/ui/autonomous_gather_feedback.gd" id="19_autonomous_gather_feedback"]
+[ext_resource type="Script" path="res://src/ui/community_selection_actions_hud.gd" id="20_community_selection_actions_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.32, 0.56, 0.84, 1)
@@ -102,6 +103,16 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("16_placement_test_overlay")
+
+[node name="CommunitySelectionActionsHud" type="Control" parent="UiLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("20_community_selection_actions_hud")
 
 [node name="AutonomousGatherFeedback" type="PanelContainer" parent="UiLayer"]
 visible = false

@@ -81,6 +81,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				viewport.set_input_as_handled()
 			return
 		_resolve_dependencies()
+		_on_clear_selection_requested()
 		if _selection_manager != null:
 			_selection_manager.clear_selection()
 		if viewport != null:
@@ -98,12 +99,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event.is_action_pressed(InputActions.SELECT):
 		var press_pos: Vector2 = _extract_event_position(event, viewport)
+		var press_shift: bool = _is_shift_held(event)
 		_left_pressed = true
 		_left_press_pos = press_pos
 		_is_drag_gesture = false
 		_last_pointer_pos = press_pos
 		_has_pointer_pos = true
-		_on_left_press_started(press_pos)
+		_on_left_press_started_with_shift(press_pos, press_shift)
 		if viewport != null:
 			viewport.set_input_as_handled()
 		return
@@ -119,6 +121,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var exceeded_threshold: bool = release_pos.distance_to(_left_press_pos) > get_drag_threshold_px()
 		var shift_held: bool = _is_shift_held(event)
 		if _is_drag_gesture or exceeded_threshold:
+			if not _is_drag_gesture:
+				_on_drag_threshold_crossed(_left_press_pos, release_pos, shift_held)
 			_is_drag_gesture = false
 			_clear_box_overlay()
 			_handle_box_selection(_left_press_pos, release_pos, shift_held)
@@ -143,6 +147,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if not _is_drag_gesture and motion.position.distance_to(_left_press_pos) > get_drag_threshold_px():
 				_is_drag_gesture = true
 				_set_hovered_unit(null)
+				_on_drag_threshold_crossed(_left_press_pos, motion.position, _is_shift_held(motion))
 			if _is_drag_gesture:
 				_update_box_overlay(_left_press_pos, motion.position)
 
@@ -277,7 +282,19 @@ func _on_left_press_started(_press_pos: Vector2) -> void:
 	pass
 
 
+func _on_left_press_started_with_shift(press_pos: Vector2, _shift_held: bool) -> void:
+	_on_left_press_started(press_pos)
+
+
+func _on_drag_threshold_crossed(_start_pos: Vector2, _current_pos: Vector2, _shift_held: bool) -> void:
+	pass
+
+
 func _on_drag_cancelled() -> void:
+	pass
+
+
+func _on_clear_selection_requested() -> void:
 	pass
 
 

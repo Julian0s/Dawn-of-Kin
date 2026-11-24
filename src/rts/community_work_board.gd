@@ -278,6 +278,28 @@ func notify_task_updated(task: WorkTask) -> void:
 	task_updated.emit(task)
 
 
+func reauthorize_gather_task(task: WorkTask) -> Dictionary:
+	## Explicit player reauthorization (R-03A D1-C / D0-A01) for a task in BLOCKED_REAUTHORIZATION.
+	## Preserves task identity/group, clears only this task's manual worker exclusions,
+	## and notifies CommunityTaskDispatcher through normal event-driven eligibility & guards.
+	if task == null or not _tasks.has(task) or not task.is_active():
+		return {"ok": false, "reauthorized": false, "task": null, "reason": "task_not_active"}
+	if not task.is_blocked_reauthorization():
+		return {"ok": false, "reauthorized": false, "task": task, "reason": "task_not_blocked"}
+	if not task.is_source_usable():
+		var unusable_reason: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
+		close_task(task, WorkTask.State.FAILED, unusable_reason)
+		return {"ok": false, "reauthorized": false, "task": null, "reason": unusable_reason}
+	if not is_source_in_region_domain(task.source):
+		return {"ok": false, "reauthorized": false, "task": task, "reason": "region_mismatch"}
+
+	task.excluded_unit_ids.clear()
+	task.state = WorkTask.State.PENDING_WORKERS
+	task.last_reason = ""
+	notify_task_updated(task)
+	return {"ok": true, "reauthorized": true, "task": task, "reason": ""}
+
+
 func close_task(task: WorkTask, final_state: WorkTask.State, reason: String = "") -> void:
 	if task == null or not task.is_active():
 		return
