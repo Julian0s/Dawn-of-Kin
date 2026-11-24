@@ -19,11 +19,11 @@
     - `R-02B.2`: branch canônica `develop` criada e publicada em `3032f40` (`origin/develop`), arquivo histórico local organizado em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local`.
     - `R-02B.3`: checkout principal `C:\Projetos\Dawn of Kin` migrado para `develop` e homologado (`208/208` scripts `0/0`, `85/85` suítes, `592/592` testes, `28.983` asserções e testes humanos `M1`–`M3` aprovados).
     - `R-02B.4`: remoção controlada dos `22` worktrees auxiliares, consolidação de duplicatas, remoção do ZIP redundante na raiz e remoção do clone temporário (`R02B-D9`), restando apenas `1` checkout principal permanente e `59` branches locais / `60` remotas efetivas preservadas.
-    - **`R-02B.5` (candidata atual em auditoria):** normalização dos artefatos do editor, prevenção localizada `docs/design/.gdignore` (resolvendo `FIN-18`/`FIN-19`), atualização normativa e publicação na `develop` — **submetida à auditoria independente do ChatGPT e homologação expressa do proprietário (não auto-homologada)**.
+    - **`R-02B.5` (`HOMOLOGADO` / `INTEGRADO À DEVELOP` / `ENCERRADO` @ `21c34ee645725a74f1fefac9db0309ec711ab5f2`):** normalização dos artefatos do editor, prevenção localizada `docs/design/.gdignore` (resolvendo `FIN-18`/`FIN-19`), atualização normativa e publicação na `develop` — **definitivamente homologada pelo proprietário em 24/11/2026 após auditoria independente do ChatGPT; reorganização `R-02B` integralmente encerrada**.
   - **Itens explicitamente `NÃO HOMOLOGADO` (nunca declarar como homologados):**
     - `T3.6.4-R1` (`8deeef1`, retestes manuais `D3-04`/`D3-07` pendentes; mantida em transição `P-REC-1` até `R-04C`).
     - Protótipos/sandboxes `UX-1` (`0e78f9a`) e `RUX-1`/`RUX-2A`/`RUX-2B` (`cddd582`) — validados apenas em sandbox/testes headless; pendentes de integração jogável e aceite humano na `MainScene` em `R-03A`–`R-03D`.
-  - **Próxima etapa planejada (ainda NÃO autorizada / `BLOQUEADO`):** **`R-03A` — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene`** (seguindo `R-03A` → `T3.9` e horizonte `T4`–`T8`, um incremento por vez).
+  - **Etapa atualmente autorizada (`AUTORIZADA — EM IMPLEMENTAÇÃO`):** **`R-03A` — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene`** (branch candidata isolada `feat/r-03a-community-work-main-scene` a partir de `develop` @ `21c34ee`; ainda **NÃO homologada**; `R-03B`–`T3.9` e `T4`–`T8` permanecem **`BLOQUEADO`**).
 
 ## 2. Taxonomia obrigatória de status (nunca simular conclusão)
 

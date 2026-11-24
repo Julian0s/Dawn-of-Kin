@@ -3,8 +3,8 @@
 > **Projeto:** *Dawn of Kin*  
 > **Etapa:** `R-02B` (`R-02B.0` a `R-02B.5`) — Consolidação Física do Workspace e Encerramento da Reorganização  
 > **Data:** 24 de novembro de 2026  
-> **Branch Canônica de Desenvolvimento:** `develop` (ancestral linear a partir de `3032f4079a8b3a39806b159c0771d980198ec848`, preservando `main` em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`)  
-> **Status:** `CANDIDATA R-02B.5` — aguarda auditoria independente e aprovação expressa do proprietário (`R-03A` permanece bloqueada até aceite formal).
+> **Branch Canônica de Desenvolvimento:** `develop` @ `21c34ee645725a74f1fefac9db0309ec711ab5f2` (ancestral linear a partir de `3032f4079a8b3a39806b159c0771d980198ec848`, preservando `main` em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`)  
+> **Status:** **`HOMOLOGADO` / `INTEGRADO À DEVELOP` / `ENCERRADO`** *(homologação definitiva da `R-02B.5` em `21c34ee645725a74f1fefac9db0309ec711ab5f2` deliberada pelo proprietário em 24/11/2026; etapa `R-03A` autorizada em implementação isolada).*
 
 ---
 
@@ -47,7 +47,7 @@ Das `22` branches ligadas aos worktrees históricos encerrados em `R-02B.4`, **`
 1. **Integração de incrementos homologados (`AGENTS.md` §5):** toda entrega homologada em sua etapa deve ser integrada com segurança em `develop` antes do início da etapa seguinte; `main` só recebe integrações mediante autorização expressa do proprietário.
 2. **Organização contínua do workspace (`AGENTS.md` §5):** limite permanente de `1` checkout principal (`C:\Projetos\Dawn of Kin`) + no máximo `1` worktree temporário ativo quando uma etapa isolada exigir isolamento, com arquivamento de evidências e logs sempre fora do repositório Git (`C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\`).
 3. **Estado preservado na `MainScene` (`main.tscn`):** permanecem inalterados `use_provenance_economy = true`, `automatic_cancellation_recovery = true` e `use_d2_2_hud = false` (ativação da HUD D2.2 prevista apenas em `R-05B`, após conclusão de `R-03A`–`R-03D` e `R-04A`–`R-04C`).
-4. **Próxima etapa planejada (ainda bloqueada):** `R-03A` (seleção múltipla e coleta autônoma na `MainScene`), sujeita à aprovação desta `R-02B.5` e autorização expressa do proprietário.
+4. **Próxima etapa autorizada:** `R-03A` (seleção múltipla e coleta autônoma na `MainScene`), autorizada pelo proprietário em `24/11/2026` após homologação definitiva da `R-02B.5` em `21c34ee645725a74f1fefac9db0309ec711ab5f2`.
 
 ---
 

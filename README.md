@@ -14,13 +14,13 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 | **T3.6.2 Bloco A e Design System D2.2** | **`HOMOLOGADO` / `INTEGRADO À DEVELOP`** | `T3.6.2 Bloco A` (`ec17f42`, `use_provenance_economy = true` na linha `develop`) e Design System `D2.2` (`cdd9f2f`, homologado documentalmente) + plano `UI-1.0 R1` (`7dbfeb1`) |
 | **UI-1.1A R2, UI-1.1B R1, UI-1.2 e UI-1.3 R1 (`R-01`)** | **`HOMOLOGADO` / `INTEGRADO À DEVELOP`** (23/11/2026) | `fix/ui-1-3-r1-validation-uid` (`c4a6361`, na cadeia linear de `develop`, `+148` commits à frente da `main` antiga): `validate.ps1` `0/0`, `85/85` suítes (`592/592` testes, `28.989` asserções na regressão histórica da R1) e `8/8` itens manuais aprovados em `720p`/`1080p`. `use_d2_2_hud = false` preservado na `MainScene` até `R-05B` |
 | **Reconciliação Documental Única (`R-02A R1`)** | **`HOMOLOGADO` / `INTEGRADO À DEVELOP`** (23/11/2026) | `docs/r-02a-canonical-reconciliation` @ `3032f40` (base inicial da `develop`): consolidou GDD `v1.3`, `ROADMAP_MESTRE.md` e reconciliação técnica |
-| **Reorganização do Workspace (`R-02B.0`–`R-02B.5`)** | **`R-02B.0`–`R-02B.4` concluídas (`develop` migrada e validada)** · **`R-02B.5` em auditoria** | Checkout principal único `C:\Projetos\Dawn of Kin` em `develop` (`origin/develop`), 22 worktrees redundantes removidos, backups preservados em `C:\Projetos\Backups\`, prevenção `docs/design/.gdignore` e governança na candidata `R-02B.5` |
+| **Reorganização do Workspace (`R-02B.0`–`R-02B.5`)** | **`HOMOLOGADO` / `INTEGRADO À DEVELOP` / `ENCERRADO`** (24/11/2026) | `develop` @ `21c34ee645725a74f1fefac9db0309ec711ab5f2`: checkout principal único `C:\Projetos\Dawn of Kin`, 22 worktrees redundantes encerrados, backups preservados em `C:\Projetos\Backups\`, prevenção `docs/design/.gdignore` e governança permanente homologadas |
 | **T3.6.4-R1, UX-1, RUX-1, RUX-2A e RUX-2B** | **`NÃO HOMOLOGADO`** | Retestes `D3-04`/`D3-07` pendentes (`T3.6.4-R1` @ `8deeef1`, mantido pela regra de transição `P-REC-1` até `R-04C`); sandboxes `UX-1` (`0e78f9a`) e `RUX-*` (`cddd582`) aguardam integração jogável na `MainScene` em `R-03A`–`R-03D` |
 | **Branch `main` (linha estável)** | **`25e0a20`** *(não promovida automaticamente)* | Preservada como linha estável até autorização específica de promoção pelo proprietário |
 
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
-- **Próxima etapa planejada (ainda não autorizada):** **`R-03A`** — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene` (ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4).
+- **Etapa atualmente autorizada (`AUTORIZADA — EM IMPLEMENTAÇÃO`):** **`R-03A`** — Seleção múltipla de fontes e trabalho comunitário automático na `MainScene` (branch candidata `feat/r-03a-community-work-main-scene`; ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4).
 
 ---
 
