@@ -20,7 +20,7 @@ Jogo single-player em 3D isométrico de sobrevivência familiar, construção de
 
 - **Renderizador configurado:** `gl_compatibility`
 - **Motor de física 3D:** `Jolt Physics`
-- **Candidata atual em auditoria (`R-03A R1` — `IMPLEMENTADO` / `VALIDADO TECNICAMENTE` / `PUBLICADO` em branch candidata — `AUDITORIA INDEPENDENTE DA R1 PENDENTE`, `NÃO HOMOLOGADO`, `NÃO INTEGRADO À DEVELOP`):** **`R-03A R1`** — Revisão corretiva da seleção múltipla de fontes e trabalho comunitário automático na `MainScene` (branch candidata `feat/r-03a-community-work-main-scene`; relatório R1 em [docs/testing/R_03A_R1_community_work_main_scene_candidate_report.md](docs/testing/R_03A_R1_community_work_main_scene_candidate_report.md); ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4). `R-03B`–`T3.9` permanecem `BLOQUEADO`.
+- **Candidata atual em auditoria (`R-03A R1` + `R1.1` — `IMPLEMENTADO` / `VALIDADO TECNICAMENTE` / `PUBLICADO` em branch candidata — `AUDITORIA INDEPENDENTE DA R1.1 PENDENTE`, `NÃO HOMOLOGADO`, `NÃO INTEGRADO À DEVELOP`):** **`R-03A R1`** — Revisão corretiva da seleção múltipla de fontes e trabalho comunitário automático na `MainScene` com complementação focal **`R-03A R1.1`** (`T02`, `R01`, `T04`) (branch candidata `feat/r-03a-community-work-main-scene`; relatório `R1.1` em [docs/testing/R_03A_R1_1_focal_evidence_candidate_report.md](docs/testing/R_03A_R1_1_focal_evidence_candidate_report.md), relatório `R1` em [docs/testing/R_03A_R1_community_work_main_scene_candidate_report.md](docs/testing/R_03A_R1_community_work_main_scene_candidate_report.md); ver [docs/ROADMAP_MESTRE.md](docs/ROADMAP_MESTRE.md) §4). `R-03B`–`T3.9` permanecem `BLOQUEADO`.
 
 ---
 
