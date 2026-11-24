@@ -1997,3 +1997,565 @@ func test_r1_r01_regional_isolation_adversarial_investigation() -> void:
 	alpha_root.queue_free()
 	foreign_root.queue_free()
 	await _teardown_fixture(view)
+
+
+func _snapshot_economic_invariants_r1_1(
+	main: MainScene,
+	leader_a: Unit,
+	leader_b: Unit,
+	sources: Array[ResourceSource]
+) -> Dictionary:
+	var inventory := main.get_settlement_inventory()
+	var gpm := inventory.get_storage_source() as GroundPileManager
+	var piles_snap: Array[Dictionary] = []
+	if gpm != null:
+		for pile: GroundResourcePile in gpm.get_piles():
+			piles_snap.append({
+				"pile_id": pile.pile_id,
+				"resource_id": String(pile.resource_id),
+				"amount": pile.amount,
+				"pos": pile.global_position,
+				"reservations": gpm.get_pile_reservations(pile.pile_id),
+			})
+	var src_snap: Dictionary = {}
+	for src: ResourceSource in sources:
+		if is_instance_valid(src):
+			src_snap[String(src.source_id)] = src.get_remaining_amount()
+	var load_a := leader_a.get_carry_load()
+	var load_b := leader_b.get_carry_load()
+	return {
+		"a_provenance_enabled": load_a.is_provenance_enabled(),
+		"a_provenance_valid": load_a.validate_provenance(),
+		"a_provenance_unit_id": String(load_a.get_provenance_unit_id()),
+		"a_provenance": load_a.provenance_snapshot(),
+		"a_amounts": load_a.get_all_amounts(),
+		"a_weight": load_a.get_current_weight(),
+		"b_provenance_enabled": load_b.is_provenance_enabled(),
+		"b_provenance_valid": load_b.validate_provenance(),
+		"b_provenance_unit_id": String(load_b.get_provenance_unit_id()),
+		"b_provenance": load_b.provenance_snapshot(),
+		"b_amounts": load_b.get_all_amounts(),
+		"b_weight": load_b.get_current_weight(),
+		"inv_physical": inventory.get_all_physical_amounts(),
+		"inv_available": inventory.get_all_available_amounts(),
+		"inv_reserved": inventory.get_all_reserved_amounts(),
+		"inv_reservation_ids": inventory.get_all_reservation_ids(),
+		"gpm_ledger": gpm._ledger.snapshot_state() if gpm != null else {},
+		"gpm_piles": piles_snap,
+		"sources_remaining": src_snap,
+	}
+
+
+func _assert_snapshots_invariant_r1_1(before: Dictionary, after: Dictionary, context: String) -> void:
+	for key: Variant in before.keys():
+		assert_eq(after.get(key), before.get(key), "%s: Invariant field '%s' must not change" % [context, String(key)])
+
+
+func _cancel_all_board_tasks_r1_1(board: CommunityWorkBoard) -> void:
+	for t: WorkTask in board.get_active_tasks():
+		board.close_task(t, WorkTask.State.CANCELLED, "test_reset")
+
+
+func test_r1_1_t02_legitimate_regional_transaction_block_and_event_resumption() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var inventory := main.get_settlement_inventory()
+	var cm := main.get_construction_manager()
+	var cmd := main.get_command_controller()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+
+	assert_not_null(board, "R1.1-T02: Board present")
+	assert_not_null(dispatcher, "R1.1-T02: Dispatcher present")
+	assert_not_null(inventory, "R1.1-T02: SettlementInventory present")
+	assert_not_null(cm, "R1.1-T02: ConstructionManager present")
+	assert_not_null(cmd, "R1.1-T02: CommandController present")
+	assert_not_null(leader_a, "R1.1-T02: LeaderA present")
+	assert_not_null(leader_b, "R1.1-T02: LeaderB present")
+	assert_not_null(t1, "R1.1-T02: WoodTree01 present")
+	assert_not_null(t2, "R1.1-T02: WoodTree02 present")
+	if board == null or dispatcher == null or inventory == null or cm == null or cmd == null or leader_a == null or leader_b == null or t1 == null or t2 == null:
+		await _teardown_fixture(view)
+		return
+
+	var world := main.get_world_3d()
+	var region_id: StringName = cm.get_region_id()
+
+	# Deposit real physical stock on camp storage so site reservation & withdrawal operate on authentic piles.
+	assert_true(inventory.deposit(&"wood", 12), "R1.1-T02: Physical camp wood deposited")
+	assert_true(inventory.deposit(&"stone", 6), "R1.1-T02: Physical camp stone deposited")
+
+	# Phase 1: Observe legitimate SiteCreationScope active inside ConstructionManager.try_create_site_from_placement().
+	# Move workers idle/parked, keep t1 pending on board before SiteCreationScope so we can verify real SiteCreationScope
+	# regional blocking if _flush_dispatch executes mid-transaction, then let task_registered deferred queue resolve naturally.
+	leader_a.global_position = Vector3(-2.5, 0.0, 2.5)
+	leader_b.global_position = Vector3(-4.0, 0.0, 2.5)
+	await wait_physics_frames(1)
+
+	var site_scope_obs: Dictionary = {
+		"fired": false,
+		"region_active": false,
+		"dispatcher_busy": false,
+		"task1": null,
+		"blocked_reason": "",
+		"assigned_during_tx": null,
+		"order_during_tx": null,
+	}
+	var assigned_events_p1: Array[Dictionary] = []
+	var on_assigned_p1 := func(task: WorkTask, unit: Unit, order: GatherResourceOrder) -> void:
+		assigned_events_p1.append({"task": task, "unit": unit, "order": order})
+	dispatcher.task_assigned.connect(on_assigned_p1)
+
+	t1.configure(t1.source_id, t1.get_definition(), 2, 2, 2)
+	var on_site_res_changed := func() -> void:
+		if bool(site_scope_obs["fired"]):
+			return
+		site_scope_obs["fired"] = true
+		site_scope_obs["region_active"] = ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id)
+		site_scope_obs["dispatcher_busy"] = bool(dispatcher.call("_is_economy_busy", t1))
+		var reg_p1 := board.register_gather_task(t1)
+		var task_p1 := reg_p1.get("task") as WorkTask
+		site_scope_obs["task1"] = task_p1
+		# Execute the queued flush reentrantly while SiteCreationScope is still active.
+		dispatcher.call("_flush_dispatch")
+		if task_p1 != null:
+			site_scope_obs["blocked_reason"] = task_p1.last_reason
+			site_scope_obs["assigned_during_tx"] = task_p1.assigned_unit
+		site_scope_obs["order_during_tx"] = leader_a.get_current_order()
+		# Queue a natural task_registered/request_dispatch flush before SiteCreationScope exits.
+		# (SiteCreationScope only reserves without physical storage delta, so inventory_changed does not emit here;
+		#  Phase 2 below tests pure inventory_changed auto-resumption with zero request_dispatch.)
+		board.emit_signal("task_registered", task_p1)
+	inventory.reservations_changed.connect(on_site_res_changed)
+	var site_res := cm.try_create_site_from_placement(SHELTER_DEF, Vector3(-6.0, 0.0, -5.0))
+	if inventory.reservations_changed.is_connected(on_site_res_changed):
+		inventory.reservations_changed.disconnect(on_site_res_changed)
+
+	assert_true(bool(site_res.get("ok", false)), "R1.1-T02-P1: Site created legitimately")
+	var site := site_res.get("site") as ConstructionSite
+	assert_not_null(site, "R1.1-T02-P1: ConstructionSite valid")
+	assert_true(bool(site_scope_obs["fired"]), "R1.1-T02-P1: reservations_changed fired inside SiteCreationScope")
+	assert_true(bool(site_scope_obs["region_active"]), "R1.1-T02-P1: RegionalAuthority / SiteCreationScope active readonly == true")
+	assert_true(bool(site_scope_obs["dispatcher_busy"]), "R1.1-T02-P1: Dispatcher observes real economy busy during SiteCreationScope")
+	assert_eq(String(site_scope_obs["blocked_reason"]), "economy_busy", "R1.1-T02-P1: Reentrant flush blocked with economy_busy")
+	assert_null(site_scope_obs["assigned_during_tx"], "R1.1-T02-P1: Zero unit assigned during SiteCreationScope")
+	assert_null(site_scope_obs["order_during_tx"], "R1.1-T02-P1: LeaderA receives zero order during SiteCreationScope")
+	assert_false(ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id), "R1.1-T02-P1: Regional lock released cleanly after SiteCreationScope")
+
+	await wait_process_frames(2)
+	assert_eq(assigned_events_p1.size(), 1, "R1.1-T02-P1: Task1 dispatched once after SiteCreationScope released")
+	dispatcher.task_assigned.disconnect(on_assigned_p1)
+
+	# Complete Task1 so both workers return to steady baseline before Phase 2.
+	Engine.time_scale = 3.0
+	for _i: int in range(1800):
+		if board.get_active_tasks().is_empty():
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	await wait_process_frames(2)
+	assert_true(board.get_active_tasks().is_empty(), "R1.1-T02-P1: Baseline Task1 completed cleanly (a_order=%s)" % [str(leader_a.get_current_order())])
+	if site == null:
+		await _teardown_fixture(view)
+		return
+
+	# Phase 2: Legitimate ReservedWithdrawalCoordinator transaction during real ConstructOrder (LeaderB)
+	# + automatic event-driven resumption from inventory_changed WITHOUT any manual request_dispatch().
+	t2.configure(t2.source_id, t2.get_definition(), 2, 2, 2)
+	leader_a.global_position = Vector3(-2.5, 0.0, 2.5)
+	leader_b.global_position = Vector3(2.5, 0.0, 2.5)
+	await wait_physics_frames(1)
+	var wood_before_p2: int = inventory.get_physical_amount(&"wood")
+	var stone_before_p2: int = inventory.get_physical_amount(&"stone")
+	var t2_before_p2: int = t2.get_remaining_amount()
+
+	var tx_obs: Dictionary = {
+		"fired": false,
+		"region_active": false,
+		"authority_active_op": false,
+		"inventory_busy": false,
+		"dispatcher_busy": false,
+		"task2": null,
+		"blocked_reason": "",
+		"assigned_during_tx": null,
+		"leader_a_order_during_tx": null,
+		"flush_queued_after_block": true,
+		"assigned_count_at_block": -1,
+		"inventory_changed_after_block": false,
+	}
+	var assigned_events_p2: Array[Dictionary] = []
+	var on_assigned_p2 := func(task: WorkTask, unit: Unit, order: GatherResourceOrder) -> void:
+		assigned_events_p2.append({"task": task, "unit": unit, "order": order})
+	dispatcher.task_assigned.connect(on_assigned_p2)
+
+	var on_inv_changed_p2 := func() -> void:
+		if bool(tx_obs["fired"]):
+			tx_obs["inventory_changed_after_block"] = true
+	inventory.inventory_changed.connect(on_inv_changed_p2)
+
+	var on_withdrawal_res_changed := func() -> void:
+		if bool(tx_obs["fired"]):
+			return
+		tx_obs["fired"] = true
+		tx_obs["region_active"] = ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id)
+		var domains_raw: Variant = world.get_meta(ReservedWithdrawalCoordinator.DOMAIN_META, {})
+		if domains_raw is Dictionary:
+			var auth: ReservedWithdrawalCoordinator.RegionalAuthority = (domains_raw as Dictionary).get(region_id) as ReservedWithdrawalCoordinator.RegionalAuthority
+			if auth != null:
+				tx_obs["authority_active_op"] = auth.has_active_operation()
+		tx_obs["inventory_busy"] = inventory.is_transaction_busy()
+		tx_obs["dispatcher_busy"] = bool(dispatcher.call("_is_economy_busy", t2))
+
+		var reg2 := board.register_gather_task(t2)
+		var task2 := reg2.get("task") as WorkTask
+		tx_obs["task2"] = task2
+		# Synchronously run _flush_dispatch inside active RegionalAuthority transaction (before inventory_changed emits).
+		# Wait carefully: _flush_dispatch consumes _flush_queued (sets false) and records economy_busy.
+		dispatcher.call("_flush_dispatch")
+		tx_obs["flush_queued_after_block"] = dispatcher._flush_queued
+		tx_obs["assigned_count_at_block"] = assigned_events_p2.size()
+		if task2 != null:
+			tx_obs["blocked_reason"] = task2.last_reason
+			tx_obs["assigned_during_tx"] = task2.assigned_unit
+		tx_obs["leader_a_order_during_tx"] = leader_a.get_current_order()
+	inventory.reservations_changed.connect(on_withdrawal_res_changed)
+
+	assert_true(cmd.command_units_to_site(site, [leader_b]), "R1.1-T02-P2: Real ConstructOrder accepted for LeaderB")
+
+	# Wait ONLY for the real ConstructOrder to reach ReservedWithdrawalCoordinator.withdraw_reserved_from_pile_to_carry_load(),
+	# WITHOUT calling dispatcher.request_dispatch() manually!
+	Engine.time_scale = 3.0
+	for _i: int in range(1200):
+		if bool(tx_obs["fired"]):
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+
+	if inventory.reservations_changed.is_connected(on_withdrawal_res_changed):
+		inventory.reservations_changed.disconnect(on_withdrawal_res_changed)
+
+	assert_true(bool(tx_obs["fired"]), "R1.1-T02-P2: Legitimate ReservedWithdrawalCoordinator withdrawal fired reservations_changed (b_order=%s b_pos=%s b_w=%d res=%s)" % [str(leader_b.get_current_order()), str(leader_b.global_position), leader_b.get_carry_load().get_current_weight(), str(inventory.get_reserved_pile_entries(site.reservation_id).size())])
+	assert_true(bool(tx_obs["region_active"]), "R1.1-T02-P2: is_region_transaction_active_readonly == true during withdrawal")
+	assert_true(bool(tx_obs["authority_active_op"]), "R1.1-T02-P2: RegionalAuthority.has_active_operation() == true during withdrawal")
+	assert_true(bool(tx_obs["inventory_busy"]), "R1.1-T02-P2: SettlementInventory.is_transaction_busy() == true during withdrawal")
+	assert_true(bool(tx_obs["dispatcher_busy"]), "R1.1-T02-P2: Dispatcher._is_economy_busy() == true during real RegionalAuthority transaction")
+	assert_eq(String(tx_obs["blocked_reason"]), "economy_busy", "R1.1-T02-P2: Task2 blocked with economy_busy during real RegionalAuthority transaction")
+	assert_null(tx_obs["assigned_during_tx"], "R1.1-T02-P2: Zero unit assigned while transaction active")
+	assert_null(tx_obs["leader_a_order_during_tx"], "R1.1-T02-P2: LeaderA has zero order while transaction active")
+	assert_false(bool(tx_obs["flush_queued_after_block"]), "R1.1-T02-P2: Reentrant flush cleared _flush_queued before inventory_changed")
+	assert_eq(int(tx_obs["assigned_count_at_block"]), 0, "R1.1-T02-P2: Zero task_assigned emitted during blocked window")
+	assert_true(bool(tx_obs["inventory_changed_after_block"]), "R1.1-T02-P2: Same withdrawal naturally emitted inventory_changed after reservations_changed")
+
+	# CRITICAL: Do NOT call dispatcher.request_dispatch()! Only yield process frames so
+	# CommunityTaskDispatcher._on_inventory_changed()'s deferred wakeup executes naturally.
+	await wait_process_frames(3)
+	await wait_physics_frames(1)
+
+	if inventory.inventory_changed.is_connected(on_inv_changed_p2):
+		inventory.inventory_changed.disconnect(on_inv_changed_p2)
+
+	var task2_obj := tx_obs["task2"] as WorkTask
+	assert_not_null(task2_obj, "R1.1-T02-P2: Task2 reference valid")
+	assert_eq(assigned_events_p2.size(), 1, "R1.1-T02-P2: Natural event-driven resumption dispatched Task2 EXACTLY once (zero duplicate orders)")
+	if task2_obj != null:
+		assert_eq(task2_obj.assigned_unit, leader_a, "R1.1-T02-P2: LeaderA resumed Task2 purely from inventory_changed without manual request_dispatch")
+	assert_true(leader_a.get_current_order() is GatherResourceOrder, "R1.1-T02-P2: LeaderA holds GatherResourceOrder")
+
+	# Let both LeaderA (community wood harvest + delivery) and LeaderB (reserved construction) complete cleanly.
+	var site_req_wood: int = site.get_required_amount(&"wood")
+	var site_req_stone: int = site.get_required_amount(&"stone")
+	var site_completed: bool = false
+	site.site_completed.connect(func(_s: ConstructionSite, _b: BuildingInstance) -> void: site_completed = true)
+	Engine.time_scale = 3.0
+	for _i: int in range(2400):
+		var has_site_progress: bool = site_completed or (is_instance_valid(site) and (site.get_total_received_amount(&"wood") > 0 or site.get_total_received_amount(&"stone") > 0))
+		if board.get_active_tasks().is_empty() and has_site_progress:
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	await wait_process_frames(2)
+
+	dispatcher.task_assigned.disconnect(on_assigned_p2)
+	assert_eq(assigned_events_p2.size(), 1, "R1.1-T02-P2: Still exact count 1 task_assigned across entire lifecycle")
+	assert_true(board.get_active_tasks().is_empty(), "R1.1-T02-P2: Task2 completed naturally to camp delivery (a_order=%s)" % [str(leader_a.get_current_order())])
+	assert_true(leader_a.get_carry_load().validate_provenance(), "R1.1-T02-P2: LeaderA carry provenance remains valid")
+	assert_true(leader_b.get_carry_load().validate_provenance(), "R1.1-T02-P2: LeaderB carry provenance remains valid")
+	assert_eq(t2.get_remaining_amount(), 0, "R1.1-T02-P2: Task2 source depleted cleanly (-2 wood)")
+	var delivered_wood: int = site_req_wood if site_completed else (site.get_total_received_amount(&"wood") if is_instance_valid(site) else 0)
+	var delivered_stone: int = site_req_stone if site_completed else (site.get_total_received_amount(&"stone") if is_instance_valid(site) else 0)
+	var wood_carried_b: int = leader_b.get_carry_load().get_amount(&"wood")
+	var stone_carried_b: int = leader_b.get_carry_load().get_amount(&"stone")
+	assert_eq(
+		inventory.get_physical_amount(&"wood") + wood_carried_b + delivered_wood,
+		wood_before_p2 + t2_before_p2,
+		"R1.1-T02-P2: Exact wood conservation across concurrent community gather (+2) and construction withdrawal/delivery"
+	)
+	assert_eq(
+		inventory.get_physical_amount(&"stone") + stone_carried_b + delivered_stone,
+		stone_before_p2,
+		"R1.1-T02-P2: Exact stone conservation across concurrent construction"
+	)
+
+	await _teardown_fixture(view)
+
+
+func test_r1_1_r01_external_untagged_source_same_world3d() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var inventory := main.get_settlement_inventory()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var canonical_tree := _find_source_by_id(main, &"wood_tree_01")
+
+	assert_not_null(board, "R1.1-R01: Board present")
+	assert_not_null(dispatcher, "R1.1-R01: Dispatcher present")
+	assert_not_null(inventory, "R1.1-R01: Inventory present")
+	assert_not_null(leader_a, "R1.1-R01: LeaderA present")
+	assert_not_null(canonical_tree, "R1.1-R01: Canonical wood_tree_01 present")
+	if board == null or dispatcher == null or inventory == null or leader_a == null or canonical_tree == null:
+		await _teardown_fixture(view)
+		return
+
+	# External valid navigable ResourceSource in the SAME World3D as MainScene,
+	# added as a sibling of MainScene (child of SubViewport), OUTSIDE TestMap and PlayableCommunitySources,
+	# with ZERO meta("region_id") on itself or any ancestor node.
+	var ext_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	ext_tree.name = "R1_1_ExternalUntaggedTree"
+	ext_tree.source_id = &"r1_1_external_untagged_tree"
+	ext_tree.position = Vector3(5.0, 0.0, -10.0)
+	view.add_child(ext_tree)
+	await wait_physics_frames(2)
+	ext_tree.configure(&"r1_1_external_untagged_tree", canonical_tree.get_definition(), 2, 2, 2)
+	canonical_tree.configure(canonical_tree.source_id, canonical_tree.get_definition(), 2, 2, 2)
+
+	# Confirm structural conditions explicitly:
+	assert_eq(ext_tree.get_world_3d(), main.get_world_3d(), "R1.1-R01: External source shares exact World3D with MainScene")
+	assert_false(main.get_test_map().is_ancestor_of(ext_tree), "R1.1-R01: External source is outside TestMap")
+	assert_false(main.is_ancestor_of(ext_tree), "R1.1-R01: External source is outside MainScene subtree")
+	var ancestor: Node = ext_tree
+	var any_region_meta: bool = false
+	while ancestor != null:
+		if ancestor.has_meta(&"region_id"):
+			any_region_meta = true
+			break
+		ancestor = ancestor.get_parent()
+	assert_false(any_region_meta, "R1.1-R01: Zero meta('region_id') on external source or any ancestor")
+
+	# Vector 1: Domain check vs canonical tree (current T2/T3 contract relies on World3D + absence of foreign region_id).
+	var in_domain_ext: bool = board.is_source_in_region_domain(ext_tree)
+	var in_domain_canon: bool = board.is_source_in_region_domain(canonical_tree)
+	assert_true(in_domain_canon, "R1.1-R01-V1: Canonical tree accepted by board domain check")
+	assert_true(in_domain_ext, "R1.1-R01-V1: Same-World3D untagged external source accepted under current non-foreign World3D contract")
+
+	# Move workers away so we can test registration/click/box without immediate harvest interference first.
+	for u: Unit in main.get_units():
+		u.issue_order(MoveOrder.new(Vector3(-18.0, 0.0, -18.0), Vector3(-18.0, 0.0, -18.0), false))
+	await wait_physics_frames(1)
+
+	# Vector 2: Direct register_gather_task(ext_tree)
+	var reg_direct := board.register_gather_task(ext_tree)
+	assert_true(bool(reg_direct.get("ok", false)), "R1.1-R01-V2: Direct register_gather_task accepts same-World3D untagged external source")
+	_cancel_all_board_tasks_r1_1(board)
+	await wait_process_frames(1)
+
+	# Vector 3: Group registration [ext_tree, canonical_tree]
+	var reg_grp := board.register_gather_group([ext_tree, canonical_tree])
+	assert_true(bool(reg_grp.get("ok", false)), "R1.1-R01-V3: register_gather_group accepts mixed [untagged external + canonical] in same World3D")
+	assert_eq(int((reg_grp.get("created_tasks", []) as Array).size()), 2, "R1.1-R01-V3: Both sources created tasks in group")
+	_cancel_all_board_tasks_r1_1(board)
+	await wait_process_frames(1)
+
+	# Vector 4: Player left-click on external untagged source via MainScene input pipeline
+	_focus_camera(main, Vector2(ext_tree.global_position.x, ext_tree.global_position.z))
+	await wait_process_frames(2)
+	await _left_click(view, _source_screen_point(view, ext_tree), false)
+	await wait_process_frames(2)
+	assert_not_null(board.get_active_task_for_source(ext_tree), "R1.1-R01-V4: Left click registers external untagged source")
+	_cancel_all_board_tasks_r1_1(board)
+	await wait_process_frames(1)
+
+	# Vector 5: Source-origin box drag over external untagged source
+	var p_ext := _source_screen_point(view, ext_tree)
+	await _left_drag(view, p_ext, p_ext + Vector2(36.0, 24.0), false)
+	await wait_process_frames(2)
+	var task_ext := board.get_active_task_for_source(ext_tree)
+	assert_not_null(task_ext, "R1.1-R01-V5: Box drag starting on external untagged source registers task")
+
+	# Vectors 6, 7, 8, 9: Dispatch -> Extraction -> Physical Camp Delivery -> FREE_GATHERED Provenance
+	var wood0: int = inventory.get_physical_amount(&"wood")
+	for u: Unit in main.get_units():
+		u.cancel_current_order()
+	leader_a.global_position = Vector3(3.0, 0.0, -9.0)
+	await wait_physics_frames(1)
+
+	var seen_free_gathered_provenance: bool = false
+	dispatcher.request_dispatch()
+	await wait_process_frames(3)
+	await wait_physics_frames(1)
+	if task_ext != null:
+		assert_not_null(task_ext.assigned_unit, "R1.1-R01-V6: Dispatcher assigns free worker to external untagged source")
+
+	Engine.time_scale = 3.0
+	for _i: int in range(6000):
+		var carrier_unit: Unit = task_ext.assigned_unit if (task_ext != null and task_ext.assigned_unit != null) else leader_a
+		var cload := carrier_unit.get_carry_load()
+		if cload.get_current_weight() > 0:
+			assert_true(cload.is_provenance_enabled(), "R1.1-R01-V9: Provenance enabled on external gather")
+			assert_true(cload.validate_provenance(), "R1.1-R01-V9: Carry provenance valid during external gather")
+			var snap := cload.provenance_snapshot()
+			var ledger_snap := snap.get("ledger", {}) as Dictionary
+			var lots_dict := ledger_snap.get("lots", {}) as Dictionary
+			for lot_val: Variant in lots_dict.values():
+				var lot := lot_val as Dictionary
+				if lot.get("origin") == CarryProvenanceLedger.FREE_GATHERED:
+					seen_free_gathered_provenance = true
+		if board.get_active_tasks().is_empty():
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	await wait_process_frames(2)
+
+	assert_eq(ext_tree.get_remaining_amount(), 0, "R1.1-R01-V7: External untagged source extracted to depletion")
+	assert_eq(inventory.get_physical_amount(&"wood") - wood0, 2, "R1.1-R01-V8: External untagged gather delivered exact +2 wood to MainScene SettlementInventory")
+	assert_true(seen_free_gathered_provenance, "R1.1-R01-V9: Provenance recorded FREE_GATHERED lot accurately")
+
+	# Vector 10: Two CommunityWorkBoard instances in the same World3D observing an untagged external source
+	# (documents current contract boundary: without meta('region_id'), NEITHER board rejects it as foreign;
+	#  future T4 multi-region continuous World3D will need explicit region_id tagging or spatial partition).
+	var ext_tree_2 := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	ext_tree_2.name = "R1_1_ExternalUntaggedTree2"
+	ext_tree_2.source_id = &"r1_1_external_untagged_tree_2"
+	ext_tree_2.position = Vector3(6.5, 0.0, -10.0)
+	view.add_child(ext_tree_2)
+	var aux_node := Node3D.new()
+	main.add_child(aux_node)
+	var board_aux := CommunityWorkBoard.new()
+	aux_node.add_child(board_aux)
+	board_aux.configure(&"region_beta", main.get_world_3d())
+	await wait_physics_frames(1)
+
+	assert_true(board.is_source_in_region_domain(ext_tree_2), "R1.1-R01-V10: Primary board accepts untagged same-World3D source")
+	assert_true(board_aux.is_source_in_region_domain(ext_tree_2), "R1.1-R01-V10: Secondary board in same World3D also sees untagged source (documented T4 multi-region boundary)")
+
+	board_aux.teardown()
+	aux_node.queue_free()
+	ext_tree_2.queue_free()
+	ext_tree.queue_free()
+	await _teardown_fixture(view)
+
+
+func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admission() -> void:
+	var view := SubViewport.new()
+	view.own_world_3d = true
+	view.size = Vector2i(1280, 720)
+	add_test_child(view)
+
+	var main := MAIN_SCENE.instantiate() as MainScene
+	var leader_a := main.get_node("Units/LeaderA") as Unit
+	var wood_def: ResourceDefinition = load("res://data/resources/wood.tres") as ResourceDefinition
+	# Inject legacy un-admitted cargo BEFORE MainScene._ready() runs economic admission.
+	leader_a.get_carry_load().add_units(wood_def, 1)
+	view.add_child(main)
+	for _i: int in range(120):
+		if main.get_test_map().get_navigation().is_navigation_ready():
+			break
+		await wait_physics_frames(1)
+	assert_true(main.get_test_map().get_navigation().is_navigation_ready(), "R1.1-T04: Navigation ready")
+	await wait_process_frames(3)
+	var rig := main.get_node_or_null("RtsCameraRig") as RtsCameraRig
+	if rig != null:
+		rig.edge_pan_enabled = false
+
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var feedback := main.get_autonomous_gather_feedback()
+	var selection := main.get_selection_manager()
+	var inventory := main.get_settlement_inventory()
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+
+	assert_false(main.get_economy_admission_reason().is_empty(), "R1.1-T04: Community economy admission must be blocked")
+	assert_eq(main.get_economy_admission_reason(), "load_unavailable_for_admission", "R1.1-T04: Exact admission failure reason")
+	assert_not_null(board, "R1.1-T04: Board present")
+	assert_not_null(dispatcher, "R1.1-T04: Dispatcher present")
+	assert_not_null(feedback, "R1.1-T04: Feedback present")
+	assert_not_null(inventory, "R1.1-T04: Inventory present")
+	assert_not_null(leader_b, "R1.1-T04: LeaderB present")
+	assert_not_null(t1, "R1.1-T04: WoodTree01 present")
+	assert_not_null(t2, "R1.1-T04: WoodTree02 present")
+	assert_not_null(r1, "R1.1-T04: StoneRock01 present")
+	if board == null or dispatcher == null or feedback == null or inventory == null or leader_b == null or t1 == null or t2 == null or r1 == null:
+		await _teardown_fixture(view)
+		return
+
+	# Deposit authentic camp piles beforehand so PileReservationLedger / piles snapshot non-trivial state as well.
+	assert_true(inventory.deposit(&"wood", 4), "R1.1-T04: Seed physical wood pile for storage invariance check")
+	assert_true(inventory.deposit(&"stone", 3), "R1.1-T04: Seed physical stone pile for storage invariance check")
+	await wait_process_frames(2)
+
+	var monitored_sources: Array[ResourceSource] = [t1, t2, r1]
+	var snap0 := _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources)
+
+	# Confirm baseline atomic provenance invariants: neither LeaderA nor LeaderB enabled provenance on failed admission,
+	# and LeaderA retained un-admitted legacy cargo WITHOUT conversion!
+	assert_false(bool(snap0["a_provenance_enabled"]), "R1.1-T04: LeaderA provenance NOT enabled (legacy load not converted)")
+	assert_false(bool(snap0["a_provenance_valid"]), "R1.1-T04: LeaderA validate_provenance() remains false")
+	assert_eq(snap0["a_provenance"], {}, "R1.1-T04: LeaderA provenance_snapshot empty")
+	assert_eq(int((snap0["a_amounts"] as Dictionary).get(&"wood", 0)), 1, "R1.1-T04: LeaderA keeps {wood: 1} untouched")
+	assert_false(bool(snap0["b_provenance_enabled"]), "R1.1-T04: Atomic rollback leaves LeaderB provenance disabled on region admission failure")
+	assert_false(bool(snap0["b_provenance_valid"]), "R1.1-T04: LeaderB validate_provenance() remains false")
+	assert_eq(snap0["b_provenance"], {}, "R1.1-T04: LeaderB provenance_snapshot empty")
+
+	selection.select_single(leader_b)
+	leader_a.global_position = Vector3(10.0, 0.0, 2.0)
+	_focus_camera(main, Vector2(9.5, 2.0))
+	await wait_process_frames(2)
+
+	# Vector 1: Left-click on source
+	await _left_click(view, _source_screen_point(view, t1), false)
+	await wait_process_frames(2)
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-Click")
+
+	# Vector 2: Shift+left-click on source
+	await _left_click(view, _source_screen_point(view, t2), true)
+	await wait_process_frames(2)
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-ShiftClick")
+
+	# Vector 3: Source-origin box drag
+	var p_t1 := _source_screen_point(view, t1)
+	var p_t2 := _source_screen_point(view, t2)
+	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), false)
+	await wait_process_frames(2)
+	assert_eq(selection.get_selected_units(), [leader_b], "R1.1-T04-BoxDrag: Selection preserved")
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-SourceBoxDrag")
+
+	# Vector 4: Direct register_gather_group -> dispatcher must issue zero orders and mutate zero storage/provenance
+	board.register_gather_group([t1, t2])
+	await wait_process_frames(3)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "R1.1-T04-RegisterGroup: Zero dispatch despite direct board call")
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-RegisterGroup")
+
+	# Vector 5: Direct register_gather_task -> dispatcher must issue zero orders and mutate zero storage/provenance
+	board.register_gather_task(r1)
+	await wait_process_frames(3)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "R1.1-T04-RegisterTask: Zero dispatch despite direct board call")
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-RegisterTask")
+
+	# Vector 6: Explicit dispatcher.request_dispatch()
+	dispatcher.request_dispatch()
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "R1.1-T04-RequestDispatch: Zero unit orders")
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-RequestDispatch")
+
+	await _teardown_fixture(view)
