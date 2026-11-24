@@ -1,7 +1,8 @@
 extends TestCase
 ## Integration suite for R-03A: Playable multi-source selection and automatic
 ## community gathering directly inside the real MainScene (res://src/main/main.tscn).
-## Covers contracts A01-A20 without substituting RUX-2B sandbox for MainScene.
+## Covers contracts A01-A20 (19 core tests; A09+A10 combined in sequential wait->resume test)
+## plus R-03A R1 corrective/coverage suites (F01, F02, T01, T02, T03, T04, R01).
 
 const MAIN_SCENE: PackedScene = preload("res://src/main/main.tscn")
 const D2_SANDBOX_SCENE: PackedScene = preload("res://tests/visual/ui_1_d2_2_sandbox.tscn")
@@ -102,6 +103,7 @@ func _fixture(scene_res: PackedScene = MAIN_SCENE) -> SubViewport:
 		if main.get_test_map().get_navigation().is_navigation_ready():
 			break
 		await wait_physics_frames(1)
+	assert_true(main.get_test_map().get_navigation().is_navigation_ready(), "Fixture: WorldNavigation ready")
 	await wait_process_frames(3)
 	var rig := main.get_node_or_null("RtsCameraRig") as RtsCameraRig
 	if rig != null:
@@ -244,7 +246,11 @@ func test_a02_single_click_registers_dispatches_and_is_idempotent() -> void:
 	var task := board.get_active_task_for_source(tree_1)
 	assert_not_null(task, "A02: Single left-click without unit selection registers community task")
 	assert_true(main.get_selection_manager().is_empty(), "A02: Does not overwrite empty RTS selection")
-	if task == null or task.assigned_unit == null:
+	if task == null:
+		await _teardown_fixture(view)
+		return
+	assert_not_null(task.assigned_unit, "A02: Single click must dispatch an idle worker immediately")
+	if task.assigned_unit == null:
 		await _teardown_fixture(view)
 		return
 
@@ -276,8 +282,12 @@ func test_a03_shift_click_homogeneous_idempotent_and_rejects_mixed_types() -> vo
 	var rock_1 := _find_source_by_id(main, &"stone_rock_01")
 
 	assert_not_null(board, "A03: Board present")
+	assert_not_null(feedback, "A03: Feedback banner present")
+	assert_not_null(tree_1, "A03: WoodTree01 present")
+	assert_not_null(tree_2, "A03: WoodTree02 present")
 	assert_not_null(tree_5, "A03: WoodTree05 present")
-	if board == null or tree_1 == null or tree_2 == null or tree_5 == null or rock_1 == null:
+	assert_not_null(rock_1, "A03: StoneRock01 present")
+	if board == null or feedback == null or tree_1 == null or tree_2 == null or tree_5 == null or rock_1 == null:
 		await _teardown_fixture(view)
 		return
 
@@ -336,6 +346,11 @@ func test_a04_box_select_five_of_six_trees_preserves_sixth_through_completion() 
 	var t6 := _find_source_by_id(main, &"wood_tree_06")
 
 	assert_not_null(board, "A04: Board present")
+	assert_not_null(t1, "A04: WoodTree01 present")
+	assert_not_null(t2, "A04: WoodTree02 present")
+	assert_not_null(t3, "A04: WoodTree03 present")
+	assert_not_null(t4, "A04: WoodTree04 present")
+	assert_not_null(t5, "A04: WoodTree05 present")
 	assert_not_null(t6, "A04: 6th tree present in MainScene")
 	if board == null or t1 == null or t2 == null or t3 == null or t4 == null or t5 == null or t6 == null:
 		await _teardown_fixture(view)
@@ -375,6 +390,7 @@ func test_a04_box_select_five_of_six_trees_preserves_sixth_through_completion() 
 	Engine.time_scale = 1.0
 	await wait_process_frames(3)
 
+	assert_true(board.get_active_tasks().is_empty(), "A04: All 5 marked tree tasks completed without timeout")
 	for t: ResourceSource in selected_five:
 		assert_eq(t.get_remaining_amount(), 0, "A04: Selected tree %s fully harvested" % String(t.source_id))
 	assert_eq(t6.get_remaining_amount(), 24, "A04: 6th unselected tree remains 100% intact after completion")
@@ -395,6 +411,9 @@ func test_a05_multi_stone_extraction_weight_and_delivery() -> void:
 	var r2 := _find_source_by_id(main, &"stone_rock_02")
 
 	assert_not_null(board, "A05: Board present")
+	assert_not_null(r1, "A05: StoneRock01 present")
+	assert_not_null(r2, "A05: StoneRock02 present")
+	assert_not_null(r3, "A05: StoneRock03 present")
 	assert_not_null(r4, "A05: StoneRock04 present")
 	if board == null or r1 == null or r2 == null or r3 == null or r4 == null:
 		await _teardown_fixture(view)
@@ -430,6 +449,7 @@ func test_a05_multi_stone_extraction_weight_and_delivery() -> void:
 	Engine.time_scale = 1.0
 	await wait_process_frames(2)
 
+	assert_true(board.get_active_tasks().is_empty(), "A05: All 3 rock tasks completed without timeout")
 	assert_true(saw_stone_weight, "A05: Stone carried with physical weight 3 per unit")
 	assert_eq(inventory.get_physical_amount(&"stone") - stock_before, 3, "A05: All 3 stones delivered physically")
 	assert_eq(r2.get_remaining_amount(), r2_before, "A05: Unselected StoneRock02 intact")
@@ -448,6 +468,9 @@ func test_a06_multi_food_bushes_extraction_and_delivery() -> void:
 	var b1 := _find_source_by_id(main, &"food_bush_01")
 
 	assert_not_null(board, "A06: Board present")
+	assert_not_null(b1, "A06: FoodBush01 present")
+	assert_not_null(b2, "A06: FoodBush02 present")
+	assert_not_null(b3, "A06: FoodBush03 present")
 	assert_not_null(b4, "A06: FoodBush04 present")
 	if board == null or b1 == null or b2 == null or b3 == null or b4 == null:
 		await _teardown_fixture(view)
@@ -477,6 +500,7 @@ func test_a06_multi_food_bushes_extraction_and_delivery() -> void:
 	Engine.time_scale = 1.0
 	await wait_process_frames(2)
 
+	assert_true(board.get_active_tasks().is_empty(), "A06: All 3 bush tasks completed without timeout")
 	assert_eq(inventory.get_physical_amount(&"food") - stock_before, 6, "A06: All 6 food delivered physically")
 	assert_eq(b1.get_remaining_amount(), b1_before, "A06: Unselected FoodBush01 intact")
 
@@ -493,6 +517,9 @@ func test_a07_ground_box_crossing_sources_preserves_classic_rts_selection() -> v
 	var tree_1 := _find_source_by_id(main, &"wood_tree_01")
 
 	assert_not_null(board, "A07: Board present")
+	assert_not_null(leader_a, "A07: LeaderA present")
+	assert_not_null(leader_b, "A07: LeaderB present")
+	assert_not_null(tree_1, "A07: WoodTree01 present")
 	if board == null or leader_a == null or leader_b == null or tree_1 == null:
 		await _teardown_fixture(view)
 		return
@@ -526,6 +553,10 @@ func test_a08_distribution_busy_protection_and_slot_release_event() -> void:
 	var t4 := _find_source_by_id(main, &"wood_tree_04")
 
 	assert_not_null(board, "A08: Board present")
+	assert_not_null(t1, "A08: WoodTree01 present")
+	assert_not_null(t2, "A08: WoodTree02 present")
+	assert_not_null(t3, "A08: WoodTree03 present")
+	assert_not_null(t4, "A08: WoodTree04 present")
 	if board == null or t1 == null or t2 == null or t3 == null or t4 == null:
 		await _teardown_fixture(view)
 		return
@@ -587,6 +618,11 @@ func test_a09_a10_continuity_and_waiting_without_workers() -> void:
 	var leader_b := _find_unit_by_id(main, &"leader_b")
 
 	assert_not_null(board, "A09/A10: Board present")
+	assert_not_null(t1, "A09/A10: WoodTree01 present")
+	assert_not_null(t2, "A09/A10: WoodTree02 present")
+	assert_not_null(t6, "A09/A10: WoodTree06 present")
+	assert_not_null(leader_a, "A09/A10: LeaderA present")
+	assert_not_null(leader_b, "A09/A10: LeaderB present")
 	if board == null or t1 == null or t2 == null or t6 == null or leader_a == null or leader_b == null:
 		await _teardown_fixture(view)
 		return
@@ -617,6 +653,7 @@ func test_a09_a10_continuity_and_waiting_without_workers() -> void:
 	Engine.time_scale = 1.0
 	await wait_process_frames(2)
 
+	assert_true(board.get_active_tasks().is_empty(), "A09: Both tasks completed without timeout")
 	assert_eq(t1.get_remaining_amount(), 0, "A09: Tree 1 harvested")
 	assert_eq(t2.get_remaining_amount(), 0, "A09: Tree 2 harvested via continuity")
 	assert_eq(t6.get_remaining_amount(), t6_before, "A09: Unmarked tree 6 preserved")
@@ -635,6 +672,9 @@ func test_a11_personal_order_interrupts_preserving_cargo_provenance_and_slot() -
 	var leader_b := _find_unit_by_id(main, &"leader_b")
 
 	assert_not_null(board, "A11: Board present")
+	assert_not_null(tree_1, "A11: WoodTree01 present")
+	assert_not_null(leader_a, "A11: LeaderA present")
+	assert_not_null(leader_b, "A11: LeaderB present")
 	if board == null or tree_1 == null or leader_a == null or leader_b == null:
 		await _teardown_fixture(view)
 		return
@@ -708,6 +748,9 @@ func test_a12_economic_conservation_across_concurrent_groups() -> void:
 	var b2 := _find_source_by_id(main, &"food_bush_02")
 
 	assert_not_null(board, "A12: Board present")
+	assert_not_null(t1, "A12: WoodTree01 present")
+	assert_not_null(r1, "A12: StoneRock01 present")
+	assert_not_null(b2, "A12: FoodBush02 present")
 	if board == null or t1 == null or r1 == null or b2 == null:
 		await _teardown_fixture(view)
 		return
@@ -735,6 +778,7 @@ func test_a12_economic_conservation_across_concurrent_groups() -> void:
 	Engine.time_scale = 1.0
 	await wait_process_frames(2)
 
+	assert_true(board.get_active_tasks().is_empty(), "A12: All 3 concurrent resource tasks completed without timeout")
 	for u: Unit in main.get_units():
 		assert_true(u.get_carry_load().validate_provenance(), "A12: Valid provenance on every unit")
 	assert_eq(inventory.get_physical_amount(&"wood") - w0, 2, "A12: Wood conserved")
@@ -751,7 +795,8 @@ func test_a13_regional_and_world3d_isolation() -> void:
 	var sources_root := main.get_test_map().get_resource_sources_root()
 
 	assert_not_null(board, "A13: Board present")
-	if board == null:
+	assert_not_null(sources_root, "A13: ResourceSources root present")
+	if board == null or sources_root == null:
 		await _teardown_fixture(view)
 		return
 
@@ -781,6 +826,11 @@ func test_a13_regional_and_world3d_isolation() -> void:
 	await wait_physics_frames(2)
 
 	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	assert_not_null(t1, "A13: WoodTree01 present")
+	if t1 == null:
+		other_view.queue_free()
+		await _teardown_fixture(view)
+		return
 	_focus_camera(main, Vector2(9.5, -1.5))
 	await wait_process_frames(2)
 	var p1 := _source_screen_point(view, t1)
@@ -817,13 +867,20 @@ func test_a14_concurrency_with_construction_and_reserved_cargo() -> void:
 	var leader_b := _find_unit_by_id(main, &"leader_b")
 
 	assert_not_null(board, "A14: Board present")
+	assert_not_null(tree_1, "A14: WoodTree01 present")
+	assert_not_null(leader_a, "A14: LeaderA present")
+	assert_not_null(leader_b, "A14: LeaderB present")
 	if board == null or tree_1 == null or leader_a == null or leader_b == null:
 		await _teardown_fixture(view)
 		return
 
-	# Place an active construction site concurrently.
-	var site := main.get_construction_manager().try_create_site_from_placement(SHELTER_DEF, Vector3(-4.0, 0.0, -10.0))
-	assert_not_null(site, "A14: ConstructionSite created concurrently")
+	# Deposit real camp stock and place an active construction site concurrently.
+	var inv := main.get_settlement_inventory()
+	assert_true(inv.deposit(&"wood", 12), "A14: Deposit wood for real site creation")
+	assert_true(inv.deposit(&"stone", 6), "A14: Deposit stone for real site creation")
+	var site_res := main.get_construction_manager().try_create_site_from_placement(SHELTER_DEF, Vector3(-4.0, 0.0, -10.0))
+	assert_true(bool(site_res.get("ok", false)), "A14: Real ConstructionSite created concurrently")
+	assert_true(site_res.get("site") is ConstructionSite, "A14: Created site instance valid")
 
 	# Give closer LeaderB a SITE_RESERVED provenance lot -> must be skipped safely.
 	var b_load := leader_b.get_carry_load()
@@ -859,7 +916,10 @@ func test_a15_invalid_depleted_removed_and_unreachable_do_not_block_peers() -> v
 	var sources_root := main.get_test_map().get_resource_sources_root()
 
 	assert_not_null(board, "A15: Board present")
-	if board == null or t1 == null or t2 == null:
+	assert_not_null(t1, "A15: WoodTree01 present")
+	assert_not_null(t2, "A15: WoodTree02 present")
+	assert_not_null(sources_root, "A15: ResourceSources root present")
+	if board == null or t1 == null or t2 == null or sources_root == null:
 		await _teardown_fixture(view)
 		return
 
@@ -909,6 +969,8 @@ func test_a16_placement_priority_ui_consumption_and_esc_drag_cancel() -> void:
 	var t2 := _find_source_by_id(main, &"wood_tree_02")
 
 	assert_not_null(board, "A16: Board present")
+	assert_not_null(t1, "A16: WoodTree01 present")
+	assert_not_null(t2, "A16: WoodTree02 present")
 	if board == null or t1 == null or t2 == null:
 		await _teardown_fixture(view)
 		return
@@ -984,6 +1046,10 @@ func test_a17_blocked_reauthorization_remains_inert() -> void:
 	var leader_b := _find_unit_by_id(main, &"leader_b")
 
 	assert_not_null(board, "A17: Board present")
+	assert_not_null(dispatcher, "A17: Dispatcher present")
+	assert_not_null(rock_1, "A17: StoneRock01 present")
+	assert_not_null(leader_a, "A17: LeaderA present")
+	assert_not_null(leader_b, "A17: LeaderB present")
 	if board == null or dispatcher == null or rock_1 == null or leader_a == null or leader_b == null:
 		await _teardown_fixture(view)
 		return
@@ -1012,6 +1078,8 @@ func test_a17_blocked_reauthorization_remains_inert() -> void:
 	Engine.time_scale = 1.0
 	await wait_process_frames(3)
 
+	assert_null(leader_a.get_current_order(), "A17: LeaderA personal move completed without timeout")
+	assert_null(leader_b.get_current_order(), "A17: LeaderB personal move completed without timeout")
 	assert_eq(task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "A17: Task enters BLOCKED_REAUTHORIZATION")
 
 	# Spawn a brand-new admitted worker -> blocked task must remain inert.
@@ -1044,25 +1112,35 @@ func test_a18_lifecycle_worker_removal_and_controlled_teardown() -> void:
 	var tree_1 := _find_source_by_id(main, &"wood_tree_01")
 
 	assert_not_null(board, "A18: Board present")
+	assert_not_null(tree_1, "A18: WoodTree01 present")
 	if board == null or tree_1 == null:
 		await _teardown_fixture(view)
 		return
 
+	var world := main.get_world_3d()
 	var reg := board.register_gather_task(tree_1)
 	var task := reg.get("task") as WorkTask
 	await wait_process_frames(2)
 	await wait_physics_frames(1)
+	assert_not_null(task, "A18: Active task registered")
 	assert_eq(_count_highlight_children(tree_1), 1, "A18: Highlight attached to active source")
+	if task == null:
+		await _teardown_fixture(view)
+		return
+	assert_not_null(task.assigned_unit, "A18: Task must dispatch an active worker before removal test")
+	if task.assigned_unit == null:
+		await _teardown_fixture(view)
+		return
 
 	# Remove assigned worker while task is active -> remaining leader picks up safely.
-	var first_worker := task.assigned_unit if task != null else null
-	if first_worker != null:
-		first_worker.cancel_current_order()
-		first_worker.get_parent().remove_child(first_worker)
-		first_worker.queue_free()
-		await wait_process_frames(3)
-		await wait_physics_frames(1)
-		assert_not_null(task.assigned_unit, "A18: Surviving worker reassigned after worker exit")
+	var first_worker := task.assigned_unit
+	first_worker.cancel_current_order()
+	first_worker.get_parent().remove_child(first_worker)
+	first_worker.queue_free()
+	await wait_process_frames(3)
+	await wait_physics_frames(1)
+	assert_not_null(task.assigned_unit, "A18: Surviving worker reassigned after worker exit")
+	assert_ne(task.assigned_unit, first_worker, "A18: Reassigned to surviving distinct worker")
 
 	# Cancel active orders so controlled teardown preflight succeeds with empty backpacks.
 	for u: Unit in main.get_units():
@@ -1073,9 +1151,11 @@ func test_a18_lifecycle_worker_removal_and_controlled_teardown() -> void:
 	assert_true(bool(preflight.get("ok", false)), "A18: Controlled teardown preflight succeeds")
 	var teardown := main.request_controlled_teardown()
 	assert_true(bool(teardown.get("ok", false)), "A18: Controlled teardown succeeds cleanly with active board tasks")
+	# Capture domain release synchronously before queue_free() destroys main.
+	var release_res := main.get_last_domain_release_result()
+	assert_true(bool(release_res.get("ok", false)), "A18: Regional domain release reported ok=true")
 	await wait_process_frames(3)
-
-	assert_true(bool(main.get_last_domain_release_result().get("ok", false)) if is_instance_valid(main) else true, "A18: Domain released cleanly")
+	assert_false(world.has_meta(ReservedWithdrawalCoordinator.DOMAIN_META), "A18: World3D regional authority metadata cleared after release")
 	view.queue_free()
 	await wait_process_frames(2)
 
@@ -1106,7 +1186,10 @@ func test_a19_invalid_economic_admission_blocks_community_dispatch() -> void:
 	var stock_before := inventory.get_physical_amount(&"wood")
 
 	assert_not_null(board, "A19: Board present even when admission blocked")
-	if board == null or tree_1 == null:
+	assert_not_null(feedback, "A19: Feedback banner present")
+	assert_not_null(tree_1, "A19: WoodTree01 present")
+	assert_false(main.get_economy_admission_reason().is_empty(), "A19: Economic admission must be blocked")
+	if board == null or feedback == null or tree_1 == null:
 		await _teardown_fixture(view)
 		return
 
@@ -1181,3 +1264,736 @@ func test_a20_d2_2_sandbox_and_inherited_rux_scenes_compatibility() -> void:
 	var main_ux1 := view_ux1.get_child(0) as MainScene
 	assert_false(main_ux1.get_input_controller() is AutonomousGatherInput, "A20: UX-1 keeps TreeWorkInput override")
 	await _teardown_fixture(view_ux1)
+# ==============================================================================
+# R-03A R1 — Corrective & Coverage Suites (F01, F02, T02, T03, T04, R01)
+# ==============================================================================
+
+func _make_static_wall(wall_name: String, pos: Vector3, size: Vector3) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = wall_name
+	body.collision_layer = CollisionLayers.MASK_OBSTACLES
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	body.add_child(cs)
+	body.position = pos
+	return body
+
+
+func test_r1_f01_placement_connectivity_all_14_sources_and_badges() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var test_map := main.get_test_map()
+	var placement := main.get_placement_controller()
+	var nav := test_map.get_navigation()
+	assert_not_null(placement, "F01: PlacementController present")
+	if placement == null:
+		await _teardown_fixture(view)
+		return
+
+	# 1. Context from real MainScene must include all 14 unique playable sources while preserving 6 canonical sources.
+	assert_eq(test_map.get_resource_sources().size(), 6, "F01: Canonical TestMap.get_resource_sources() stays 6")
+	var ctx := placement.build_validation_context()
+	assert_eq(ctx.resource_sources.size(), 14, "F01: Placement ValidationContext must enumerate all 14 playable sources")
+	var seen_ids: Dictionary = {}
+	var counts: Dictionary = {&"wood": 0, &"stone": 0, &"food": 0}
+	for src: ResourceSource in ctx.resource_sources:
+		assert_false(seen_ids.has(src.get_instance_id()), "F01: No duplicate source instance in context")
+		seen_ids[src.get_instance_id()] = true
+		counts[src.get_resource_id()] = int(counts.get(src.get_resource_id(), 0)) + 1
+	assert_eq(int(counts[&"wood"]), 6, "F01: Context includes all 6 wood sources")
+	assert_eq(int(counts[&"stone"]), 4, "F01: Context includes all 4 stone sources")
+	assert_eq(int(counts[&"food"]), 4, "F01: Context includes all 4 food sources")
+
+	# 2. Sources from another region or another World3D must be excluded from context.
+	var foreign_src := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	foreign_src.name = "ForeignRegionSourceF01"
+	foreign_src.source_id = &"foreign_region_source_f01"
+	foreign_src.position = Vector3(-22.0, 0.0, 22.0)
+	foreign_src.set_meta(&"region_id", &"other_region")
+	test_map.add_child(foreign_src)
+
+	var other_view := SubViewport.new()
+	other_view.own_world_3d = true
+	other_view.size = Vector2i(256, 256)
+	add_test_child(other_view)
+	var other_world_src := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	other_world_src.name = "OtherWorldSourceF01"
+	other_world_src.source_id = &"other_world_source_f01"
+	other_world_src.position = Vector3(20.0, 0.0, 10.0)
+	other_view.add_child(other_world_src)
+	await wait_physics_frames(2)
+
+	var ctx_scoped := placement.build_validation_context()
+	assert_eq(ctx_scoped.resource_sources.size(), 14, "F01: Foreign region and other World3D sources excluded")
+	assert_false(ctx_scoped.resource_sources.has(foreign_src), "F01: Foreign-region source excluded")
+	assert_false(ctx_scoped.resource_sources.has(other_world_src), "F01: Other-World3D source excluded")
+	foreign_src.queue_free()
+	other_view.queue_free()
+	await wait_process_frames(2)
+
+	# 3. Dynamic connectivity proof on an ADDITIONAL source (FoodBush04 at (1.5, 0.0, 11.5)):
+	#    Enclose FoodBush04 on 3 sides (N, W, E) leaving a single south entrance (~4.3m inner width);
+	#    placing SHELTER_DEF (4x4m) directly across the south entrance seals FoodBush04 without overlapping it or walls.
+	var b4 := _find_source_by_id(main, &"food_bush_04")
+	assert_not_null(b4, "F01: Additional source FoodBush04 present")
+	if b4 == null:
+		await _teardown_fixture(view)
+		return
+
+	var alcove_root := Node3D.new()
+	alcove_root.name = "F01AlcoveWalls"
+	var p4: Vector3 = b4.global_position
+	# Inner clear pocket: x in [p4.x - 2.15, p4.x + 2.15], z >= p4.z - 1.35; open south (+Z).
+	alcove_root.add_child(_make_static_wall("WallN", Vector3(p4.x, 1.5, p4.z - 1.6), Vector3(5.3, 3.0, 0.5)))
+	alcove_root.add_child(_make_static_wall("WallW", Vector3(p4.x - 2.4, 1.5, p4.z + 2.7), Vector3(0.5, 3.0, 9.1)))
+	alcove_root.add_child(_make_static_wall("WallE", Vector3(p4.x + 2.4, 1.5, p4.z + 2.7), Vector3(0.5, 3.0, 9.1)))
+	test_map.add_child(alcove_root)
+	await wait_physics_frames(2)
+	nav.request_rebake()
+	for _i: int in range(120):
+		if nav.is_navigation_ready():
+			break
+		await wait_physics_frames(1)
+	assert_true(nav.is_navigation_ready(), "F01: NavMesh rebaked with FoodBush04 alcove")
+
+	# Verify FoodBush04 is initially reachable from camp through the south entrance.
+	var camp_pos: Vector3 = main.get_camp_storage_zone().get_anchor_position()
+	var pre_reach := nav.find_path(camp_pos, p4 + Vector3(0.0, 0.0, 1.2))
+	assert_true(pre_reach.is_ok(), "F01: FoodBush04 initially reachable through south alcove entrance")
+
+	# Candidate shelter sealing the south mouth at (p4.x, 0, p4.z + 4.4) -> footprint x in [p4.x-2.0, p4.x+2.0], z in [p4.z+2.4, p4.z+6.4].
+	# Clears all walls by 0.15m and FoodBush04 by 2.4m (zero overlap), yet leaves < 2*agent_radius gap so FoodBush04 loses all access!
+	var blocking_pos := Vector3(p4.x, 0.0, p4.z + 4.4)
+	var validator := placement.get_validator()
+	var ctx_alcove := placement.build_validation_context()
+	var confirm_blocked := validator.validate_confirm(SHELTER_DEF, blocking_pos, ctx_alcove)
+	assert_false(confirm_blocked.valid, "F01: Sealing access to additional source FoodBush04 must be rejected")
+	assert_eq(confirm_blocked.reason_code, PlacementValidator.REASON_CORRIDOR_BLOCKED, "F01: Rejection reason must be corridor_blocked")
+
+	# Legitimate open placement away from entrance must remain valid.
+	var legitimate_pos := Vector3(-4.0, 0.0, -10.5)
+	var confirm_ok := validator.validate_confirm(SHELTER_DEF, legitimate_pos, ctx_alcove)
+	assert_true(confirm_ok.valid, "F01: Legitimate open placement remains valid (got %s)" % String(confirm_ok.reason_code))
+
+	alcove_root.queue_free()
+	await wait_process_frames(2)
+
+	# 4. Discoverability badges toggle must apply to ALL 14 playable sources (not only canonical 6).
+	var all_14: Array[ResourceSource] = []
+	for node: Node in main.get_tree().get_nodes_in_group(ResourceSource.GROUP_RESOURCE_SOURCES):
+		if node is ResourceSource and is_instance_valid(node) and node.is_inside_tree() and (node as ResourceSource).get_world_3d() == main.get_world_3d():
+			all_14.append(node as ResourceSource)
+	assert_eq(all_14.size(), 14, "F01: Scene exposes 14 playable sources for badge check")
+	test_map.set_resource_discoverability_badges_visible(false)
+	for src: ResourceSource in all_14:
+		var badge := src.get_node_or_null("DiscoverabilityBadge") as Node3D
+		assert_not_null(badge, "F01: Source %s has DiscoverabilityBadge" % String(src.source_id))
+		if badge != null:
+			assert_false(badge.visible, "F01: Badge hidden on %s when toggled off" % String(src.source_id))
+	test_map.set_resource_discoverability_badges_visible(true)
+	for src: ResourceSource in all_14:
+		var badge := src.get_node_or_null("DiscoverabilityBadge") as Node3D
+		if badge != null:
+			assert_true(badge.visible, "F01: Badge restored on %s when toggled on" % String(src.source_id))
+
+	await _teardown_fixture(view)
+
+
+func _start_left_drag_hold(viewport: SubViewport, start_point: Vector2, shift_pressed: bool = false) -> void:
+	var m0 := InputEventMouseMotion.new()
+	m0.position = start_point
+	m0.global_position = start_point
+	m0.shift_pressed = shift_pressed
+	viewport.push_input(m0, false)
+	await wait_process_frames(1)
+
+	var down := InputEventMouseButton.new()
+	down.position = start_point
+	down.global_position = start_point
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.shift_pressed = shift_pressed
+	viewport.push_input(down, false)
+	await wait_process_frames(1)
+
+
+func _finish_left_drag_hold(viewport: SubViewport, start_point: Vector2, end_point: Vector2, shift_pressed: bool = false) -> void:
+	var mid := start_point.lerp(end_point, 0.5)
+	for pt: Vector2 in [mid, end_point]:
+		var mm := InputEventMouseMotion.new()
+		mm.position = pt
+		mm.global_position = pt
+		mm.shift_pressed = shift_pressed
+		viewport.push_input(mm, false)
+		await wait_process_frames(1)
+
+	var up := InputEventMouseButton.new()
+	up.position = end_point
+	up.global_position = end_point
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.shift_pressed = shift_pressed
+	viewport.push_input(up, false)
+	await wait_process_frames(2)
+
+
+func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var selection := main.get_selection_manager()
+	var feedback := main.get_autonomous_gather_feedback()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t3 := _find_source_by_id(main, &"wood_tree_03")
+	var t4 := _find_source_by_id(main, &"wood_tree_04")
+	var t5 := _find_source_by_id(main, &"wood_tree_05")
+	assert_not_null(board, "F02: Board present")
+	assert_not_null(leader_a, "F02: LeaderA present")
+	assert_not_null(leader_b, "F02: LeaderB present")
+	assert_not_null(t3, "F02: WoodTree03 present")
+	assert_not_null(t4, "F02: WoodTree04 present")
+	assert_not_null(t5, "F02: WoodTree05 present")
+	if board == null or leader_a == null or leader_b == null or t3 == null or t4 == null or t5 == null:
+		await _teardown_fixture(view)
+		return
+
+	# Place LeaderB inside the eastern grove drag area and pre-select LeaderA.
+	leader_b.global_position = Vector3(14.0, 0.0, -0.5)
+	selection.select_single(leader_a)
+	_focus_camera(main, Vector2(14.8, -0.8))
+	await wait_process_frames(2)
+
+	# Case 1: Origin source depleted between mouse_down and mouse_up, another valid tree + LeaderB inside box.
+	var p_t3 := _source_screen_point(view, t3)
+	var p_t4 := _source_screen_point(view, t4)
+	await _start_left_drag_hold(view, p_t3, false)
+	while not t3.is_depleted():
+		t3.extract(t3.get_remaining_amount())
+	assert_true(t3.is_depleted(), "F02-C1: Origin tree depleted mid-drag")
+	await _finish_left_drag_hold(view, p_t3, Vector2(p_t4.x + 28.0, p_t4.y + 28.0), false)
+
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C1: Depleted origin drag must NOT convert to RTS unit selection")
+	assert_null(board.get_active_task_for_source(t3), "F02-C1: Depleted origin tree not registered")
+	assert_not_null(board.get_active_task_for_source(t4), "F02-C1: Peer valid tree inside box still registered")
+
+	# Clean board for Case 2
+	for u: Unit in main.get_units():
+		u.cancel_current_order()
+	for tk: WorkTask in board.get_active_tasks():
+		board.close_task(tk, WorkTask.State.CANCELLED, "f02_reset")
+	await wait_process_frames(2)
+
+	# Case 2: Origin source FREED (effectively destroyed!) between mouse_down and mouse_up, with peer t5 + LeaderB inside box.
+	var ephemeral_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	ephemeral_tree.name = "F02EphemeralTree"
+	ephemeral_tree.source_id = &"f02_ephemeral_tree"
+	ephemeral_tree.position = Vector3(13.0, 0.0, 1.5)
+	main.get_test_map().get_resource_sources_root().add_child(ephemeral_tree)
+	await wait_physics_frames(2)
+
+	selection.select_single(leader_a)
+	var p_eph := _source_screen_point(view, ephemeral_tree)
+	var p_t5 := _source_screen_point(view, t5)
+	await _start_left_drag_hold(view, p_eph, false)
+	ephemeral_tree.free() # Immediate effective destruction before mouse_up!
+	await wait_process_frames(1)
+	await _finish_left_drag_hold(view, p_eph, Vector2(p_t5.x + 28.0, p_t5.y + 28.0), false)
+
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C2: Freed origin drag must NEVER convert into RTS unit selection")
+	assert_not_null(board.get_active_task_for_source(t5), "F02-C2: Valid peer tree t5 inside box still registered")
+
+	# Clean board for Case 3
+	for u: Unit in main.get_units():
+		u.cancel_current_order()
+	for tk: WorkTask in board.get_active_tasks():
+		board.close_task(tk, WorkTask.State.CANCELLED, "f02_reset2")
+	await wait_process_frames(2)
+
+	# Case 3: Origin source destroyed AND NO valid peer source inside box, WITH LeaderB inside box.
+	var solo_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	solo_tree.name = "F02SoloTree"
+	solo_tree.source_id = &"f02_solo_tree"
+	solo_tree.position = Vector3(-2.0, 0.0, -10.0)
+	main.get_test_map().get_resource_sources_root().add_child(solo_tree)
+	leader_b.global_position = Vector3(-0.5, 0.0, -10.0)
+	_focus_camera(main, Vector2(-1.2, -10.0))
+	await wait_physics_frames(2)
+
+	selection.select_single(leader_a)
+	var p_solo := _source_screen_point(view, solo_tree)
+	var p_lb := view.get_camera_3d().unproject_position(leader_b.global_position + Vector3(0.0, 0.9, 0.0))
+	await _start_left_drag_hold(view, p_solo, false)
+	solo_tree.queue_free()
+	await wait_process_frames(2)
+	await _finish_left_drag_hold(view, p_solo, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), false)
+
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C3: Destroyed solo origin must preserve previous unit selection")
+	assert_eq(board.get_active_tasks().size(), 0, "F02-C3: Zero tasks registered when no valid source in box")
+	assert_false(feedback.last_message.is_empty(), "F02-C3: Safe feedback shown when no valid source remains")
+
+	# Case 4: Origin source moved out of allowed domain (other_region) between mouse_down and mouse_up.
+	var domain_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	domain_tree.name = "F02DomainTree"
+	domain_tree.source_id = &"f02_domain_tree"
+	domain_tree.position = Vector3(-2.0, 0.0, -10.0)
+	main.get_test_map().get_resource_sources_root().add_child(domain_tree)
+	await wait_physics_frames(2)
+
+	selection.select_single(leader_a)
+	var p_dom := _source_screen_point(view, domain_tree)
+	await _start_left_drag_hold(view, p_dom, false)
+	domain_tree.set_meta(&"region_id", &"other_region")
+	await _finish_left_drag_hold(view, p_dom, Vector2(p_lb.x + 24.0, p_lb.y + 24.0), false)
+
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C4: Out-of-domain origin must NOT convert into RTS unit selection")
+	assert_null(board.get_active_task_for_source(domain_tree), "F02-C4: Out-of-domain source rejected")
+
+	# Case 5: Esc cancels source-origin drag even if origin was destroyed mid-drag.
+	await _start_left_drag_hold(view, p_dom, false)
+	domain_tree.free()
+	var mm := InputEventMouseMotion.new()
+	mm.position = p_dom + Vector2(40.0, 30.0)
+	mm.global_position = mm.position
+	view.push_input(mm, false)
+	await wait_process_frames(1)
+	await _press_esc(view)
+	var up := InputEventMouseButton.new()
+	up.position = p_dom + Vector2(40.0, 30.0)
+	up.global_position = up.position
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	view.push_input(up, false)
+	await wait_process_frames(2)
+	assert_eq(selection.get_selected_units(), [leader_a], "F02-C5: Esc preserves selection cleanly")
+
+	# Case 6: Ground-origin drag still selects LeaderB cleanly (RTS selection preserved).
+	var p_ground := view.get_camera_3d().unproject_position(Vector3(-3.0, 0.0, -11.5))
+	await _left_drag(view, p_ground, Vector2(p_lb.x + 26.0, p_lb.y + 26.0), false)
+	await wait_process_frames(2)
+	assert_true(selection.get_selected_units().has(leader_b), "F02-C6: Ground-origin drag still selects RTS units")
+
+	await _teardown_fixture(view)
+
+
+func test_r1_t02_real_construction_reserved_withdrawal_and_community_coexistence() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var inventory := main.get_settlement_inventory()
+	var cm := main.get_construction_manager()
+	var cmd := main.get_command_controller()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+
+	assert_not_null(board, "T02: Board present")
+	assert_not_null(dispatcher, "T02: Dispatcher present")
+	assert_not_null(leader_a, "T02: LeaderA present")
+	assert_not_null(leader_b, "T02: LeaderB present")
+	assert_not_null(t1, "T02: WoodTree01 present")
+	assert_not_null(t2, "T02: WoodTree02 present")
+	if board == null or dispatcher == null or leader_a == null or leader_b == null or t1 == null or t2 == null:
+		await _teardown_fixture(view)
+		return
+
+	# 1. Real physical stock on CampStorageZone + legitimate ConstructionSite creation.
+	assert_true(inventory.deposit(&"wood", 12), "T02: Physical camp wood deposited")
+	assert_true(inventory.deposit(&"stone", 6), "T02: Physical camp stone deposited")
+	var site_res := cm.try_create_site_from_placement(SHELTER_DEF, Vector3(-6.0, 0.0, -5.0))
+	assert_true(bool(site_res.get("ok", false)), "T02: Legitimate ConstructionSite created from real stock")
+	var site := site_res.get("site") as ConstructionSite
+	assert_not_null(site, "T02: Site instance valid")
+	if site == null:
+		await _teardown_fixture(view)
+		return
+	assert_true(inventory.get_reserved_pile_entries(site.reservation_id, &"wood").size() > 0, "T02: Real physical reserved wood pile exists")
+
+	# 2. Issue real ConstructOrder so LeaderB performs legitimate ReservedWithdrawalCoordinator withdrawal.
+	assert_true(cmd.command_units_to_site(site, [leader_b]), "T02: Legitimate ConstructOrder accepted for LeaderB")
+	Engine.time_scale = 3.0
+	var withdrew_reserved: bool = false
+	for _i: int in range(3000):
+		var b_load := leader_b.get_carry_load()
+		if b_load.get_current_weight() > 0 and CommunityTaskDispatcher._has_non_free_provenance_lots(b_load):
+			withdrew_reserved = true
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	assert_true(withdrew_reserved, "T02: LeaderB withdrew legitimate SITE_RESERVED lot via ReservedWithdrawalCoordinator")
+	if not withdrew_reserved:
+		await _teardown_fixture(view)
+		return
+
+	# Interrupt LeaderB so it is IDLE while holding legitimate SITE_RESERVED cargo (and move closer to t1 than LeaderA).
+	leader_b.cancel_current_order()
+	await wait_process_frames(2)
+	leader_b.global_position = Vector3(7.5, 0.0, -1.5)
+	leader_a.global_position = Vector3(-2.5, 0.0, 2.5)
+	await wait_physics_frames(1)
+	var b_wood_before := leader_b.get_carry_load().get_amount(&"wood")
+	var b_stone_before := leader_b.get_carry_load().get_amount(&"stone")
+	assert_eq(leader_b.get_state(), Unit.State.IDLE, "T02: LeaderB IDLE with legitimate SITE_RESERVED cargo")
+	assert_true(leader_b.get_carry_load().validate_provenance(), "T02: LeaderB SITE_RESERVED provenance valid")
+
+	# 3. Register community gather on t1 -> closer LeaderB must be skipped, eligible LeaderA completes full cycle.
+	t1.configure(t1.source_id, t1.get_definition(), 2, 2, 2)
+	var wood_before_gather := inventory.get_physical_amount(&"wood")
+	var reg1 := board.register_gather_task(t1)
+	var task1 := reg1.get("task") as WorkTask
+	await wait_process_frames(2)
+	await wait_physics_frames(1)
+	assert_not_null(task1, "T02: Gather task registered alongside active site")
+	assert_eq(task1.assigned_unit, leader_a, "T02: Eligible LeaderA dispatched while closer IDLE LeaderB with SITE_RESERVED is protected")
+	assert_null(leader_b.get_current_order(), "T02: LeaderB with SITE_RESERVED cargo receives no incompatible community order")
+
+	Engine.time_scale = 3.0
+	for _i: int in range(6000):
+		if board.get_active_tasks().is_empty():
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	await wait_process_frames(2)
+	assert_true(board.get_active_tasks().is_empty(), "T02: LeaderA completed community gather cleanly")
+	assert_eq(inventory.get_physical_amount(&"wood") - wood_before_gather, 2, "T02: Exact +2 wood delivered without disturbing reserved stock")
+	assert_eq(leader_b.get_carry_load().get_amount(&"wood"), b_wood_before, "T02: LeaderB SITE_RESERVED wood conserved")
+	assert_eq(leader_b.get_carry_load().get_amount(&"stone"), b_stone_before, "T02: LeaderB SITE_RESERVED stone conserved")
+	assert_true(CommunityTaskDispatcher._has_non_free_provenance_lots(leader_b.get_carry_load()), "T02: SITE_RESERVED lot never converted to FREE_GATHERED")
+
+	# 4. Regional transactional lock blocks community dispatch until released, then resumes cleanly.
+	t2.configure(t2.source_id, t2.get_definition(), 2, 2, 2)
+	inventory._is_delivering = true
+	var reg2 := board.register_gather_task(t2)
+	var task2 := reg2.get("task") as WorkTask
+	await wait_process_frames(3)
+	assert_not_null(task2, "T02: Second task registered during transactional busy window")
+	assert_null(task2.assigned_unit, "T02: No dispatch while regional inventory transaction is busy")
+	assert_eq(task2.last_reason, "economy_busy", "T02: Task waits with economy_busy during lock")
+
+	inventory._is_delivering = false
+	dispatcher.request_dispatch()
+	await wait_process_frames(3)
+	await wait_physics_frames(1)
+	assert_eq(task2.assigned_unit, leader_a, "T02: Resumes dispatch cleanly after transactional lock release")
+	assert_null(leader_b.get_current_order(), "T02: LeaderB still protected after lock release")
+
+	await _teardown_fixture(view)
+
+
+func test_r1_t03_lifecycle_signals_ensure_wired_and_reinstantiation() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var world := main.get_world_3d()
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var agi := main.get_input_controller() as AutonomousGatherInput
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+
+	assert_not_null(board, "T03: Board present")
+	assert_not_null(dispatcher, "T03: Dispatcher present")
+	assert_not_null(agi, "T03: AutonomousGatherInput present")
+	assert_not_null(t1, "T03: WoodTree01 present")
+	if board == null or dispatcher == null or agi == null or t1 == null:
+		await _teardown_fixture(view)
+		return
+
+	# 1. Active task & highlight -> teardown_community_work disconnects signals & prevents _ensure_wired reactivation.
+	var reg := board.register_gather_task(t1)
+	var task := reg.get("task") as WorkTask
+	await wait_process_frames(2)
+	await wait_physics_frames(1)
+	assert_not_null(task, "T03: Task registered")
+	assert_not_null(task.assigned_unit, "T03: Worker dispatched")
+	assert_eq(_count_highlight_children(t1), 1, "T03: Highlight attached")
+
+	for u: Unit in main.get_units():
+		u.cancel_current_order()
+	await wait_process_frames(2)
+
+	agi.teardown_community_work()
+	dispatcher.teardown()
+	board.teardown()
+	await wait_process_frames(2)
+
+	assert_false(board.task_registered.is_connected(agi._on_task_registered), "T03: Input disconnected from board.task_registered")
+	assert_false(board.task_registered.is_connected(dispatcher._on_board_task_registered), "T03: Dispatcher disconnected from board")
+	assert_eq(_count_highlight_children(t1), 0, "T03: Zero orphan highlights after teardown")
+
+	# Deferred or explicit _ensure_wired() MUST NOT reactivate torn-down community components!
+	agi.call("_ensure_wired")
+	agi.call_deferred("_ensure_wired")
+	await wait_process_frames(3)
+	assert_false(board.task_registered.is_connected(agi._on_task_registered), "T03: _ensure_wired must NOT reconnect torn-down input")
+	assert_false(board.task_registered.is_connected(dispatcher._on_board_task_registered), "T03: _ensure_wired must NOT reactivate torn-down dispatcher")
+
+	# Idempotent second teardown call
+	agi.teardown_community_work()
+	dispatcher.teardown()
+	board.teardown()
+
+	# 2. Controlled teardown releases regional authority cleanly (observed synchronously & via World3D).
+	var pre := main.preflight_economic_teardown()
+	assert_true(bool(pre.get("ok", false)), "T03: Preflight ok")
+	var td := main.request_controlled_teardown()
+	assert_true(bool(td.get("ok", false)), "T03: Controlled teardown ok")
+	var rel := main.get_last_domain_release_result()
+	assert_true(bool(rel.get("ok", false)), "T03: Release result ok captured synchronously")
+	await wait_process_frames(3)
+	assert_false(world.has_meta(ReservedWithdrawalCoordinator.DOMAIN_META), "T03: RegionalAuthority removed from World3D")
+
+	# 3. Legitimate reinstantiation of a fresh MainScene in the same SubViewport/World3D works cleanly.
+	var main2 := MAIN_SCENE.instantiate() as MainScene
+	view.add_child(main2)
+	for _i: int in range(120):
+		if main2.get_test_map().get_navigation().is_navigation_ready():
+			break
+		await wait_physics_frames(1)
+	assert_true(main2.get_test_map().get_navigation().is_navigation_ready(), "T03: Reinstantiated MainScene navigation ready")
+	await wait_process_frames(3)
+	var rig2 := main2.get_node_or_null("RtsCameraRig") as RtsCameraRig
+	if rig2 != null:
+		rig2.edge_pan_enabled = false
+
+	var board2 := main2.get_community_work_board()
+	var t1_2 := _find_source_by_id(main2, &"wood_tree_01")
+	assert_not_null(board2, "T03: Second MainScene has fresh board")
+	assert_not_null(t1_2, "T03: Second MainScene has WoodTree01")
+	if board2 != null and t1_2 != null:
+		_focus_camera(main2, Vector2(9.5, -1.5))
+		await wait_process_frames(1)
+		await _left_click(view, _source_screen_point(view, t1_2), false)
+		await wait_process_frames(2)
+		await wait_physics_frames(1)
+		var task2 := board2.get_active_task_for_source(t1_2)
+		assert_not_null(task2, "T03: Fresh MainScene registers community task normally")
+		if task2 != null:
+			assert_not_null(task2.assigned_unit, "T03: Fresh MainScene dispatches worker without stale interference")
+			assert_eq(task2.state, WorkTask.State.IN_PROGRESS, "T03: Fresh MainScene enters IN_PROGRESS")
+
+	await _teardown_fixture(view)
+
+
+func test_r1_t04_invalid_economic_admission_all_entry_vectors() -> void:
+	var view := SubViewport.new()
+	view.own_world_3d = true
+	view.size = Vector2i(1280, 720)
+	add_test_child(view)
+
+	var main := MAIN_SCENE.instantiate() as MainScene
+	var leader_a := main.get_node("Units/LeaderA") as Unit
+	var wood_def: ResourceDefinition = load("res://data/resources/wood.tres") as ResourceDefinition
+	leader_a.get_carry_load().add_units(wood_def, 1) # Invalid pre-admission non-empty carry!
+	view.add_child(main)
+	for _i: int in range(120):
+		if main.get_test_map().get_navigation().is_navigation_ready():
+			break
+		await wait_physics_frames(1)
+	assert_true(main.get_test_map().get_navigation().is_navigation_ready(), "T04: Navigation ready")
+	await wait_process_frames(3)
+	var rig := main.get_node_or_null("RtsCameraRig") as RtsCameraRig
+	if rig != null:
+		rig.edge_pan_enabled = false
+
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var feedback := main.get_autonomous_gather_feedback()
+	var selection := main.get_selection_manager()
+	var inventory := main.get_settlement_inventory()
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+
+	assert_false(main.get_economy_admission_reason().is_empty(), "T04: Admission reason populated")
+	assert_not_null(board, "T04: Board present")
+	assert_not_null(dispatcher, "T04: Dispatcher present")
+	assert_not_null(feedback, "T04: Feedback present")
+	assert_not_null(leader_b, "T04: LeaderB present")
+	assert_not_null(t1, "T04: WoodTree01 present")
+	assert_not_null(t2, "T04: WoodTree02 present")
+	assert_not_null(r1, "T04: StoneRock01 present")
+	if board == null or dispatcher == null or feedback == null or leader_b == null or t1 == null or t2 == null or r1 == null:
+		await _teardown_fixture(view)
+		return
+
+	var w0 := inventory.get_physical_amount(&"wood")
+	var s0 := inventory.get_physical_amount(&"stone")
+	var f0 := inventory.get_physical_amount(&"food")
+	var t1_rem0 := t1.get_remaining_amount()
+	var t2_rem0 := t2.get_remaining_amount()
+	var r1_rem0 := r1.get_remaining_amount()
+	var a_wood0 := leader_a.get_carry_load().get_amount(&"wood")
+	var b_weight0 := leader_b.get_carry_load().get_current_weight()
+
+	# Pre-select LeaderB and place LeaderA near wood grove to catch any accidental RTS drag fallback.
+	selection.select_single(leader_b)
+	leader_a.global_position = Vector3(10.0, 0.0, 2.0)
+	_focus_camera(main, Vector2(9.5, 2.0))
+	await wait_process_frames(2)
+
+	# 1. Single left-click on source
+	feedback.last_message = ""
+	await _left_click(view, _source_screen_point(view, t1), false)
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 0, "T04-1: Single click registers 0 tasks")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-1: Honest blocked feedback on click")
+
+	# 2. Shift + left-click on source
+	feedback.last_message = ""
+	await _left_click(view, _source_screen_point(view, t2), true)
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 0, "T04-2: Shift+click registers 0 tasks")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-2: Honest blocked feedback on Shift+click")
+
+	# 3. Box drag starting on source across another tree AND LeaderA -> must NOT select LeaderA, must report blocked!
+	feedback.last_message = ""
+	var p_t1 := _source_screen_point(view, t1)
+	var p_t2 := _source_screen_point(view, t2)
+	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), false)
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 0, "T04-3: Source-origin drag registers 0 tasks under blocked admission")
+	assert_eq(selection.get_selected_units(), [leader_b], "T04-3: Blocked source drag must preserve previous RTS selection")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T04-3: Honest blocked feedback on source drag")
+
+	# 4. Direct board group registration + explicit dispatch request -> zero dispatch
+	board.register_gather_group([t1, t2])
+	dispatcher.request_dispatch()
+	await wait_process_frames(3)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "T04-4: Zero dispatch after direct register_gather_group")
+
+	# 5. Direct board single registration + explicit dispatch request -> zero dispatch
+	board.register_gather_task(r1)
+	dispatcher.request_dispatch()
+	await wait_process_frames(3)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "T04-5: Zero dispatch after direct register_gather_task")
+
+	# 6. Zero economic mutation across stock, sources, and carry loads
+	assert_eq(inventory.get_physical_amount(&"wood"), w0, "T04-6: Wood stock untouched")
+	assert_eq(inventory.get_physical_amount(&"stone"), s0, "T04-6: Stone stock untouched")
+	assert_eq(inventory.get_physical_amount(&"food"), f0, "T04-6: Food stock untouched")
+	assert_eq(t1.get_remaining_amount(), t1_rem0, "T04-6: WoodTree01 untouched")
+	assert_eq(t2.get_remaining_amount(), t2_rem0, "T04-6: WoodTree02 untouched")
+	assert_eq(r1.get_remaining_amount(), r1_rem0, "T04-6: StoneRock01 untouched")
+	assert_eq(leader_a.get_carry_load().get_amount(&"wood"), a_wood0, "T04-6: LeaderA carry load untouched")
+	assert_eq(leader_b.get_carry_load().get_current_weight(), b_weight0, "T04-6: LeaderB carry load untouched")
+
+	await _teardown_fixture(view)
+
+
+func test_r1_r01_regional_isolation_adversarial_investigation() -> void:
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var t1 := _find_source_by_id(main, &"wood_tree_01") # canonical without region_id meta
+	var t3 := _find_source_by_id(main, &"wood_tree_03") # additional with region_id="default" meta
+
+	assert_not_null(board, "R01: Board present")
+	assert_not_null(dispatcher, "R01: Dispatcher present")
+	assert_not_null(t1, "R01: Canonical WoodTree01 present")
+	assert_not_null(t3, "R01: Additional WoodTree03 present")
+	if board == null or dispatcher == null or t1 == null or t3 == null:
+		await _teardown_fixture(view)
+		return
+
+	# 1 & 2. Canonical source without metadata + additional source with region_id="default" both accepted.
+	assert_true(board.is_source_in_region_domain(t1), "R01-1: Canonical source without explicit region_id accepted")
+	assert_true(board.is_source_in_region_domain(t3), "R01-2: Additional source with region_id=default accepted")
+
+	# 3. Explicitly foreign-region source rejected in direct, group, click, and box selection.
+	var foreign_root := Node3D.new()
+	foreign_root.name = "R01ForeignRegionRoot"
+	foreign_root.set_meta(&"region_id", &"region_beta")
+	main.add_child(foreign_root)
+	var foreign_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	foreign_tree.name = "R01ForeignTree"
+	foreign_tree.source_id = &"r01_foreign_tree"
+	foreign_tree.position = Vector3(11.5, 0.0, 2.0)
+	foreign_root.add_child(foreign_tree)
+	await wait_physics_frames(2)
+
+	assert_false(board.is_source_in_region_domain(foreign_tree), "R01-3: Foreign ancestral region_id rejected")
+	var reg_direct := board.register_gather_task(foreign_tree)
+	assert_false(bool(reg_direct.get("ok", false)), "R01-3: Direct registration rejected")
+	assert_eq(String(reg_direct.get("reason", "")), "region_mismatch", "R01-3: Direct rejection reason is region_mismatch")
+	var reg_group := board.register_gather_group([foreign_tree])
+	assert_false(bool(reg_group.get("ok", false)), "R01-3: Group registration rejected")
+
+	_focus_camera(main, Vector2(11.5, 2.0))
+	await wait_process_frames(1)
+	var p_for := _source_screen_point(view, foreign_tree)
+	await _left_click(view, p_for, false)
+	await wait_process_frames(2)
+	assert_null(board.get_active_task_for_source(foreign_tree), "R01-3: Click on foreign-region tree rejected")
+
+	# 4. Separate World3D source rejected everywhere.
+	var other_vp := SubViewport.new()
+	other_vp.own_world_3d = true
+	other_vp.size = Vector2i(256, 256)
+	add_test_child(other_vp)
+	var other_w_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	other_w_tree.name = "R01OtherWorldTree"
+	other_w_tree.source_id = &"r01_other_world_tree"
+	other_w_tree.position = Vector3(11.5, 0.0, 2.0)
+	other_vp.add_child(other_w_tree)
+	await wait_physics_frames(2)
+	assert_false(board.is_source_in_region_domain(other_w_tree), "R01-4: Other World3D rejected by board")
+	assert_false(SelectionBoxMath.is_source_in_box(view.get_camera_3d(), other_w_tree, Rect2(0, 0, 1280, 720), Rect2(0, 0, 1280, 720)), "R01-4: Other World3D rejected by SelectionBoxMath")
+	other_vp.queue_free()
+
+	# 5. Two distinct regions in the SAME World3D with region_id roots stay mutually isolated.
+	var alpha_root := Node3D.new()
+	alpha_root.set_meta(&"region_id", &"region_alpha")
+	main.add_child(alpha_root)
+	var alpha_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	alpha_tree.source_id = &"r01_alpha_tree"
+	alpha_tree.position = Vector3(4.0, 0.0, -10.0)
+	alpha_root.add_child(alpha_tree)
+	var board_alpha := CommunityWorkBoard.new()
+	alpha_root.add_child(board_alpha)
+	board_alpha.configure(&"region_alpha", main.get_world_3d())
+	var board_beta := CommunityWorkBoard.new()
+	foreign_root.add_child(board_beta)
+	board_beta.configure(&"region_beta", main.get_world_3d())
+	await wait_physics_frames(1)
+
+	assert_true(bool(board_alpha.register_gather_task(alpha_tree).get("ok", false)), "R01-6: Alpha board accepts alpha source")
+	assert_false(bool(board_alpha.register_gather_task(foreign_tree).get("ok", false)), "R01-6: Alpha board rejects beta source")
+	assert_true(bool(board_beta.register_gather_task(foreign_tree).get("ok", false)), "R01-6: Beta board accepts beta source")
+	assert_false(bool(board_beta.register_gather_task(alpha_tree).get("ok", false)), "R01-6: Beta board rejects alpha source")
+
+	# 6. Reparenting/domain change after registration prevents dispatch and economic mutation.
+	for u: Unit in main.get_units():
+		u.issue_order(MoveOrder.new(Vector3(-18.0, 0.0, -18.0), Vector3(-18.0, 0.0, -18.0), false))
+	await wait_physics_frames(1)
+	var movable_tree := TREE_SOURCE_SCENE.instantiate() as ResourceSource
+	movable_tree.source_id = &"r01_movable_tree"
+	movable_tree.position = Vector3(5.0, 0.0, -10.0)
+	main.get_test_map().get_resource_sources_root().add_child(movable_tree)
+	await wait_physics_frames(1)
+	var reg_mov := board.register_gather_task(movable_tree)
+	assert_true(bool(reg_mov.get("ok", false)), "R01-7: Initially valid tree registered while workers busy")
+	var mov_rem0 := movable_tree.get_remaining_amount()
+	# Reparent into foreign_root (region_beta) before workers become free!
+	movable_tree.reparent(foreign_root)
+	await wait_process_frames(1)
+	for u: Unit in main.get_units():
+		u.cancel_current_order()
+	dispatcher.request_dispatch()
+	await wait_process_frames(3)
+	for u: Unit in main.get_units():
+		assert_null(u.get_current_order(), "R01-7: Reparented foreign-region source must NOT be dispatched")
+	assert_eq(movable_tree.get_remaining_amount(), mov_rem0, "R01-7: Zero extraction after domain change")
+
+	board_alpha.teardown()
+	board_beta.teardown()
+	alpha_root.queue_free()
+	foreign_root.queue_free()
+	await _teardown_fixture(view)
