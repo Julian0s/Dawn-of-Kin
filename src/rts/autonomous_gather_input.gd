@@ -47,7 +47,6 @@ var _task_highlights: Dictionary = {}
 var _selection_highlights: Dictionary = {}
 
 var _drag_mode: DragMode = DragMode.NONE
-var _press_shift_held: bool = false
 
 
 func _ready() -> void:
@@ -281,14 +280,13 @@ func _disconnect_signals() -> void:
 	_wired = false
 
 
-func _on_left_press_started_with_shift(_press_pos: Vector2, shift_held: bool) -> void:
+func _on_left_press_started_with_shift(_press_pos: Vector2, _shift_held: bool) -> void:
 	_drag_mode = DragMode.NONE
-	_press_shift_held = shift_held
 
 
-func _on_drag_threshold_crossed(_start_pos: Vector2, _current_pos: Vector2, _shift_held: bool) -> void:
-	# Lock drag mode once at threshold based on Shift state at gesture start (prevents mid-drag flips).
-	if multi_source_enabled and _press_shift_held:
+func _on_drag_threshold_crossed(_start_pos: Vector2, _current_pos: Vector2, shift_held: bool) -> void:
+	# Lock drag mode once at threshold using the Shift state of the event that crosses the threshold (D0 / F01).
+	if multi_source_enabled and shift_held:
 		_drag_mode = DragMode.SOURCE_BOX_ADD
 	else:
 		_drag_mode = DragMode.UNIT_BOX_RTS
@@ -308,7 +306,6 @@ func _on_clear_selection_requested() -> void:
 
 func _clear_drag_state() -> void:
 	_drag_mode = DragMode.NONE
-	_press_shift_held = false
 
 
 func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
@@ -344,7 +341,7 @@ func _handle_left_click(screen_pos: Vector2, shift_held: bool) -> void:
 func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: bool) -> void:
 	var active_mode: DragMode = _drag_mode
 	if active_mode == DragMode.NONE:
-		active_mode = DragMode.SOURCE_BOX_ADD if (multi_source_enabled and _press_shift_held) else DragMode.UNIT_BOX_RTS
+		active_mode = DragMode.SOURCE_BOX_ADD if (multi_source_enabled and shift_held) else DragMode.UNIT_BOX_RTS
 	_clear_drag_state()
 
 	if active_mode == DragMode.SOURCE_BOX_ADD:
