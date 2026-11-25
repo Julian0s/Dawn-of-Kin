@@ -361,11 +361,10 @@ func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: boo
 	var unit_shift: bool = shift_held if not multi_source_enabled else false
 	super._handle_box_selection(start_pos, end_pos, unit_shift)
 
-	# H-F01: An unshifted drag on free terrain (including natural pointer drift > 6px
-	# during a quick left-click outside sources) that captures zero units clears RTS
-	# selection; clear natural source selection too while preserving obstacle, unit,
-	# construction, and Shift+drag boundaries.
-	if not unit_shift and not shift_held and _selection_manager != null and _selection_manager.is_empty():
+	# H-F01 / C-02 focal: Once UNIT_BOX_RTS is locked at threshold, release Shift state
+	# must not reclassify the completed gesture; preserve obstacle, unit, construction,
+	# and SOURCE_BOX_ADD boundaries per R2-A01.
+	if active_mode == DragMode.UNIT_BOX_RTS and not unit_shift and _selection_manager != null and _selection_manager.is_empty():
 		var start_pick: PickResult = pick_at_screen_pos(start_pos)
 		var end_pick: PickResult = pick_at_screen_pos(end_pos)
 		if (start_pick.is_ground() or start_pick.is_none()) and (end_pick.is_ground() or end_pick.is_none()):

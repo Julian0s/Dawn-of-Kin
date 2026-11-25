@@ -346,6 +346,6 @@ func _extract_event_position(event: InputEvent, viewport: Viewport) -> Vector2:
 
 
 static func _is_shift_held(event: InputEvent) -> bool:
-	if event is InputEventWithModifiers and (event as InputEventWithModifiers).shift_pressed:
-		return true
+	if event is InputEventWithModifiers:
+		return (event as InputEventWithModifiers).shift_pressed
 	return Input.is_action_pressed(InputActions.SELECTION_MODIFIER) or Input.is_key_pressed(KEY_SHIFT)
