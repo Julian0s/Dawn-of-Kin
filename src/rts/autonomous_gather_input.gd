@@ -17,14 +17,20 @@ enum DragMode {
 }
 
 const RING_SEGMENTS: int = 24
-const RING_INNER_RADIUS: float = 0.72
-const RING_OUTER_RADIUS: float = 0.90
-const SELECTION_RING_INNER_RADIUS: float = 0.98
-const SELECTION_RING_OUTER_RADIUS: float = 1.12
-const RING_COLOR_WOOD: Color = Color(0.55, 0.86, 0.42, 0.85)
-const RING_COLOR_STONE: Color = Color(0.66, 0.78, 0.90, 0.85)
-const RING_COLOR_FOOD: Color = Color(0.92, 0.66, 0.34, 0.85)
-const SELECTION_RING_COLOR: Color = Color(0.95, 0.85, 0.56, 0.90)
+const SELECTION_RING_INNER_RADIUS: float = 0.86
+const SELECTION_RING_OUTER_RADIUS: float = 0.98
+const SELECTION_RING_COLOR: Color = Color(0.95, 0.85, 0.56, 0.88)
+
+const WORK_MARKER_PREFIX: String = "AutoGatherWorkMarker_"
+const WORK_MARKER_TEX_SIZE: int = 64
+const WORK_MARKER_PIXEL_SIZE: float = 0.0110
+const WORK_MARKER_HEIGHT_WOOD: float = 4.40
+const WORK_MARKER_HEIGHT_STONE: float = 1.72
+const WORK_MARKER_HEIGHT_FOOD: float = 1.38
+
+const WORK_ICON_WOOD: Texture2D = preload("res://assets/ui/d2/icons/ico_work_chop.png")
+const WORK_ICON_STONE: Texture2D = preload("res://assets/ui/d2/icons/ico_work_mine.png")
+const WORK_ICON_FOOD: Texture2D = preload("res://assets/ui/d2/icons/ico_work_harvest.png")
 
 @export var supported_resource_ids: PackedStringArray = PackedStringArray(["wood"])
 @export var multi_source_enabled: bool = false
@@ -39,10 +45,9 @@ var _torn_down: bool = false
 var _use_provenance_economy: bool = true
 var _economy_admission_reason: String = ""
 
-var _shared_ring_mesh: ArrayMesh = null
 var _shared_selection_ring_mesh: ArrayMesh = null
-var _shared_ring_materials: Dictionary = {}
 var _shared_selection_ring_material: StandardMaterial3D = null
+var _shared_work_marker_textures: Dictionary = {}
 var _task_highlights: Dictionary = {}
 var _selection_highlights: Dictionary = {}
 
@@ -97,6 +102,8 @@ func configure_community_work(
 
 	if not _board.task_registered.is_connected(_on_task_registered):
 		_board.task_registered.connect(_on_task_registered)
+	if not _board.task_updated.is_connected(_on_task_updated):
+		_board.task_updated.connect(_on_task_updated)
 	if not _board.task_closed.is_connected(_on_task_closed):
 		_board.task_closed.connect(_on_task_closed)
 	if not _dispatcher.task_feedback.is_connected(_on_dispatcher_feedback):
@@ -269,6 +276,8 @@ func _disconnect_signals() -> void:
 	if _board != null and is_instance_valid(_board):
 		if _board.task_registered.is_connected(_on_task_registered):
 			_board.task_registered.disconnect(_on_task_registered)
+		if _board.task_updated.is_connected(_on_task_updated):
+			_board.task_updated.disconnect(_on_task_updated)
 		if _board.task_closed.is_connected(_on_task_closed):
 			_board.task_closed.disconnect(_on_task_closed)
 	if _dispatcher != null and is_instance_valid(_dispatcher):
@@ -352,6 +361,16 @@ func _handle_box_selection(start_pos: Vector2, end_pos: Vector2, shift_held: boo
 	var unit_shift: bool = shift_held if not multi_source_enabled else false
 	super._handle_box_selection(start_pos, end_pos, unit_shift)
 
+	# H-F01: An unshifted drag on free terrain (including natural pointer drift > 6px
+	# during a quick left-click outside sources) that captures zero units clears RTS
+	# selection; clear natural source selection too while preserving obstacle, unit,
+	# construction, and Shift+drag boundaries.
+	if not unit_shift and not shift_held and _selection_manager != null and _selection_manager.is_empty():
+		var start_pick: PickResult = pick_at_screen_pos(start_pos)
+		var end_pick: PickResult = pick_at_screen_pos(end_pos)
+		if (start_pick.is_ground() or start_pick.is_none()) and (end_pick.is_ground() or end_pick.is_none()):
+			_selection_model.clear()
+
 
 func _handle_source_box_selection(start_pos: Vector2, end_pos: Vector2) -> void:
 	_ensure_wired()
@@ -402,6 +421,15 @@ func _on_task_registered(task: WorkTask) -> void:
 	if task == null or not task.is_source_valid():
 		return
 	_attach_task_highlight(task)
+
+
+func _on_task_updated(task: WorkTask) -> void:
+	if task == null:
+		return
+	if not task.is_active() or not task.is_source_valid():
+		_remove_task_highlight(task.task_id)
+		return
+	_sync_task_highlight(task)
 
 
 func _on_task_closed(task: WorkTask) -> void:
@@ -472,19 +500,46 @@ func _clear_all_selection_highlights() -> void:
 
 
 func _attach_task_highlight(task: WorkTask) -> void:
-	if _task_highlights.has(task.task_id):
+	if task == null or not task.is_source_valid() or not task.source.is_inside_tree():
 		return
-	_ensure_shared_ring_mesh()
-	var mesh_inst := MeshInstance3D.new()
-	mesh_inst.name = "AutoGatherTaskRing_%d" % task.task_id
-	mesh_inst.mesh = _shared_ring_mesh
-	mesh_inst.material_override = _get_shared_ring_material(task.resource_id)
-	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mesh_inst.position = Vector3(0.0, 0.05, 0.0)
-	var radius_scale: float = maxf(task.source.get_solid_radius() + 0.65, 1.15)
-	mesh_inst.scale = Vector3(radius_scale, 1.0, radius_scale)
-	task.source.add_child(mesh_inst)
-	_task_highlights[task.task_id] = weakref(mesh_inst)
+	if _task_highlights.has(task.task_id):
+		_sync_task_highlight(task)
+		return
+	var is_blocked: bool = task.is_blocked_reauthorization()
+	var sprite := Sprite3D.new()
+	sprite.name = "%s%d" % [WORK_MARKER_PREFIX, task.task_id]
+	sprite.texture = _get_shared_work_marker_texture(task.resource_id, is_blocked)
+	sprite.pixel_size = WORK_MARKER_PIXEL_SIZE
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.shaded = false
+	sprite.no_depth_test = false
+	sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	sprite.position = _work_marker_offset_for_resource(task.resource_id)
+	sprite.set_meta(&"work_marker_resource", task.resource_id)
+	sprite.set_meta(&"work_marker_state", "blocked" if is_blocked else "active")
+	task.source.add_child(sprite)
+	_task_highlights[task.task_id] = weakref(sprite)
+
+
+func _sync_task_highlight(task: WorkTask) -> void:
+	if task == null:
+		return
+	if not _task_highlights.has(task.task_id):
+		_attach_task_highlight(task)
+		return
+	var ref: WeakRef = _task_highlights[task.task_id] as WeakRef
+	var obj: Object = ref.get_ref() if ref != null else null
+	if obj == null or not is_instance_valid(obj) or not (obj is Sprite3D):
+		_task_highlights.erase(task.task_id)
+		_attach_task_highlight(task)
+		return
+	var sprite: Sprite3D = obj as Sprite3D
+	var is_blocked: bool = task.is_blocked_reauthorization()
+	var desired_state: String = "blocked" if is_blocked else "active"
+	if String(sprite.get_meta(&"work_marker_state", "")) != desired_state:
+		sprite.texture = _get_shared_work_marker_texture(task.resource_id, is_blocked)
+		sprite.set_meta(&"work_marker_state", desired_state)
 
 
 func _remove_task_highlight(task_id: int) -> void:
@@ -493,16 +548,16 @@ func _remove_task_highlight(task_id: int) -> void:
 	var ref: WeakRef = _task_highlights[task_id] as WeakRef
 	_task_highlights.erase(task_id)
 	var obj: Object = ref.get_ref() if ref != null else null
-	if obj != null and is_instance_valid(obj) and obj is MeshInstance3D:
-		(obj as MeshInstance3D).queue_free()
+	if obj != null and is_instance_valid(obj) and obj is Node3D:
+		(obj as Node3D).queue_free()
 
 
 func _clear_all_task_highlights() -> void:
 	for key: Variant in _task_highlights.keys():
 		var ref: WeakRef = _task_highlights[key] as WeakRef
 		var obj: Object = ref.get_ref() if ref != null else null
-		if obj != null and is_instance_valid(obj) and obj is MeshInstance3D:
-			(obj as MeshInstance3D).queue_free()
+		if obj != null and is_instance_valid(obj) and obj is Node3D:
+			(obj as Node3D).queue_free()
 	_task_highlights.clear()
 
 
@@ -518,28 +573,114 @@ func _get_shared_selection_ring_material() -> StandardMaterial3D:
 	return mat
 
 
-func _get_shared_ring_material(resource_id: StringName) -> StandardMaterial3D:
-	if _shared_ring_materials.has(resource_id):
-		return _shared_ring_materials[resource_id] as StandardMaterial3D
-	var mat := StandardMaterial3D.new()
+func _get_shared_work_marker_texture(resource_id: StringName, is_blocked: bool) -> Texture2D:
+	var cache_key: String = "%s_%s" % [String(resource_id), "blocked" if is_blocked else "active"]
+	if _shared_work_marker_textures.has(cache_key):
+		return _shared_work_marker_textures[cache_key] as Texture2D
+
+	var base_icon: Texture2D = _work_icon_for_resource(resource_id)
+	var tex: Texture2D = _build_work_marker_seal_texture(base_icon, is_blocked)
+	_shared_work_marker_textures[cache_key] = tex
+	return tex
+
+
+static func _work_icon_for_resource(resource_id: StringName) -> Texture2D:
 	match resource_id:
 		&"stone":
-			mat.albedo_color = RING_COLOR_STONE
+			return WORK_ICON_STONE
 		&"food":
-			mat.albedo_color = RING_COLOR_FOOD
+			return WORK_ICON_FOOD
 		_:
-			mat.albedo_color = RING_COLOR_WOOD
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_shared_ring_materials[resource_id] = mat
-	return mat
+			return WORK_ICON_WOOD
 
 
-func _ensure_shared_ring_mesh() -> void:
-	if _shared_ring_mesh != null:
-		return
-	_shared_ring_mesh = _build_ring_mesh(RING_INNER_RADIUS, RING_OUTER_RADIUS)
+static func _work_marker_offset_for_resource(resource_id: StringName) -> Vector3:
+	match resource_id:
+		&"stone":
+			return Vector3(0.0, WORK_MARKER_HEIGHT_STONE, 0.0)
+		&"food":
+			return Vector3(0.0, WORK_MARKER_HEIGHT_FOOD, 0.0)
+		_:
+			return Vector3(0.0, WORK_MARKER_HEIGHT_WOOD, 0.0)
+
+
+static func _build_work_marker_seal_texture(icon_tex: Texture2D, is_blocked: bool) -> Texture2D:
+	var sz: int = WORK_MARKER_TEX_SIZE
+	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.0, 0.0, 0.0, 0.0))
+
+	var fill_col := Color(0.078, 0.086, 0.094, 0.90) if not is_blocked else Color(0.118, 0.094, 0.070, 0.92)
+	var border_col := D2Tokens.COLOR_ACCENT_GOLD_PRIMARY if not is_blocked else D2Tokens.COLOR_FEEDBACK_AMBER
+	var margin: int = 4
+	var bevel: int = 10
+	var inner_border: int = 2
+
+	# Draw chamfered octagonal D2.2 volcanic basalt seal (mineral silhouette, crisp border).
+	for y: int in range(margin, sz - margin):
+		for x: int in range(margin, sz - margin):
+			var dx_left: int = x - margin
+			var dx_right: int = (sz - 1 - margin) - x
+			var dy_top: int = y - margin
+			var dy_bot: int = (sz - 1 - margin) - y
+			var d_tl: int = dx_left + dy_top
+			var d_tr: int = dx_right + dy_top
+			var d_bl: int = dx_left + dy_bot
+			var d_br: int = dx_right + dy_bot
+			if d_tl < bevel or d_tr < bevel or d_bl < bevel or d_br < bevel:
+				continue
+			var on_edge: bool = (
+				dx_left < inner_border
+				or dx_right < inner_border
+				or dy_top < inner_border
+				or dy_bot < inner_border
+				or d_tl < bevel + inner_border
+				or d_tr < bevel + inner_border
+				or d_bl < bevel + inner_border
+				or d_br < bevel + inner_border
+			)
+			img.set_pixel(x, y, border_col if on_edge else fill_col)
+
+	# Composite refined H-V02 work icon cleanly centered inside the basalt seal.
+	if icon_tex != null:
+		var icon_img: Image = icon_tex.get_image()
+		if icon_img != null and not icon_img.is_empty():
+			var working: Image = icon_img.duplicate() as Image
+			if working.get_format() != Image.FORMAT_RGBA8:
+				working.convert(Image.FORMAT_RGBA8)
+			var icon_sz: int = 38
+			working.resize(icon_sz, icon_sz, Image.INTERPOLATE_LANCZOS)
+			var ox: int = int((sz - icon_sz) / 2)
+			var oy: int = int((sz - icon_sz) / 2)
+			var alpha_mul: float = 0.68 if is_blocked else 1.0
+			for py: int in range(icon_sz):
+				for px: int in range(icon_sz):
+					var src_c: Color = working.get_pixel(px, py)
+					var a: float = src_c.a * alpha_mul
+					if a <= 0.01:
+						continue
+					var dst_c: Color = img.get_pixel(ox + px, oy + py)
+					var out_a: float = a + dst_c.a * (1.0 - a)
+					var out_r: float = (src_c.r * a + dst_c.r * dst_c.a * (1.0 - a)) / maxf(out_a, 0.0001)
+					var out_g: float = (src_c.g * a + dst_c.g * dst_c.a * (1.0 - a)) / maxf(out_a, 0.0001)
+					var out_b: float = (src_c.b * a + dst_c.b * dst_c.a * (1.0 - a)) / maxf(out_a, 0.0001)
+					img.set_pixel(ox + px, oy + py, Color(out_r, out_g, out_b, out_a))
+
+	# Discreet semantic pause/attention badge for BLOCKED_REAUTHORIZATION (non-color-only cue).
+	if is_blocked:
+		var amber := D2Tokens.COLOR_FEEDBACK_AMBER
+		var dark := D2Tokens.COLOR_SURFACE_BASALT_DEEP
+		for py: int in range(9, 25):
+			for px: int in range(44, 56):
+				img.set_pixel(px, py, dark)
+		for py: int in range(11, 20):
+			for px: int in range(48, 52):
+				img.set_pixel(px, py, amber)
+		for py: int in range(21, 24):
+			for px: int in range(48, 52):
+				img.set_pixel(px, py, amber)
+
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
 
 
 func _ensure_shared_selection_ring_mesh() -> void:
