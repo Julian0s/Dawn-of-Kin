@@ -272,6 +272,36 @@ func get_all_tasks() -> Array[WorkTask]:
 	return _tasks.duplicate()
 
 
+func get_cancellable_tasks_for_sources(
+	sources: Array[ResourceSource],
+	resource_id: StringName
+) -> Array[WorkTask]:
+	## Returns active tasks strictly matching (selected sources ∩ resource_id ∩ valid regional domain).
+	## Includes PENDING_WORKERS, IN_PROGRESS, and BLOCKED_REAUTHORIZATION; never expands by group_id.
+	var result: Array[WorkTask] = []
+	if not SUPPORTED_RESOURCE_IDS.has(resource_id):
+		return result
+	var seen_source_ids: Dictionary = {}
+	for src: ResourceSource in sources:
+		if src == null or not is_instance_valid(src):
+			continue
+		var sid: int = src.get_instance_id()
+		if seen_source_ids.has(sid):
+			continue
+		seen_source_ids[sid] = true
+		if not is_source_in_region_domain(src):
+			continue
+		var task: WorkTask = get_active_task_for_source(src)
+		if task == null or not task.is_active():
+			continue
+		if task.resource_id != resource_id:
+			continue
+		if task.region_id != _region_id:
+			continue
+		result.append(task)
+	return result
+
+
 func notify_task_updated(task: WorkTask) -> void:
 	if task == null or not _tasks.has(task):
 		return

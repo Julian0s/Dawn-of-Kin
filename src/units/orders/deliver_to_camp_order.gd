@@ -195,6 +195,10 @@ func _start_legacy_walk(movement: UnitMovement) -> void:
 
 
 func _start_selective_walk(movement: UnitMovement, initial_start: bool) -> void:
+	if camp_zone == null or not is_instance_valid(camp_zone) or not camp_zone.is_inside_tree() or camp_zone.is_queued_for_deletion():
+		movement.stop_movement()
+		_finish_selective_failed(REASON_CAMP_UNREACHABLE)
+		return
 	var occupied: Array[Vector3] = GatherSlotPlanner.collect_other_unit_positions(_unit, true)
 	var slot_res: Dictionary = GatherSlotPlanner.compute_camp_dropoff_slot(
 		_unit.global_position,

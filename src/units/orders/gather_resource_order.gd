@@ -27,6 +27,7 @@ const REASON_CAMP_UNREACHABLE: String = DeliverToCampOrder.REASON_CAMP_UNREACHAB
 const REASON_DELIVERY_REJECTED: String = DeliverToCampOrder.REASON_DELIVERY_REJECTED
 const REASON_PROVENANCE_OPT_IN_REQUIRED: String = DeliverToCampOrder.REASON_PROVENANCE_OPT_IN_REQUIRED
 const REASON_PROVENANCE_REQUIRED: String = DeliverToCampOrder.REASON_PROVENANCE_REQUIRED
+const REASON_COMMUNITY_WORK_CANCELLED: String = "community_work_cancelled"
 
 var source: ResourceSource = null
 var camp_zone: CampStorageZone = null
@@ -63,6 +64,8 @@ var _waiting_for_navigation: bool = false
 var _replan_requested: bool = false
 var _deferred_navigation_failure: bool = false
 var _nav_signals_bound: bool = false
+var _stop_after_delivery: bool = false
+var _community_cancel_requested: bool = false
 
 
 func _init(
@@ -107,6 +110,14 @@ func is_preparing_gather() -> bool:
 
 func is_preparing_work() -> bool:
 	return is_preparing_gather()
+
+
+func is_community_cancel_requested() -> bool:
+	return _community_cancel_requested
+
+
+func is_stop_after_delivery_requested() -> bool:
+	return _stop_after_delivery
 
 
 func get_work_category() -> int:
@@ -302,6 +313,9 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 			movement.stop_movement()
 			_finish_failed(REASON_PROVENANCE_OPT_IN_REQUIRED)
 			return
+		if _phase != Phase.DELIVERING_TO_CAMP and _community_cancel_requested:
+			_apply_deferred_community_cancel(movement)
+			return
 		if _world_nav == null or not _world_nav.is_navigation_ready():
 			_finish_failed(REASON_NAVIGATION_NOT_READY)
 			return
@@ -316,6 +330,10 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 
 	if _phase == Phase.DELIVERING_TO_CAMP:
 		_update_delivering(movement, delta)
+		return
+
+	if _community_cancel_requested and not is_provenance_transfer_executing():
+		_apply_deferred_community_cancel(movement)
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
@@ -377,6 +395,80 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if movement != null:
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	super.cancel(movement, reason)
+
+
+func request_community_cancel(movement: UnitMovement = null) -> Dictionary:
+	## Cooperative selective community work cancellation (R-03A D2 / D2-B).
+	## Never aborts an active provenance transfer, never mutates cargo/inventory/source directly,
+	## preserves eligible carried cargo via a single legitimate final delivery, and never returns to source.
+	if status != Status.RUNNING:
+		return {"ok": false, "action": "not_running"}
+
+	var resolved_movement: UnitMovement = movement if movement != null else _movement
+	if resolved_movement != null:
+		_movement = resolved_movement
+
+	_community_cancel_requested = true
+	_stop_after_delivery = true
+
+	if _phase == Phase.DELIVERING_TO_CAMP:
+		return {"ok": true, "action": "finish_current_delivery"}
+
+	if use_provenance_transactions and is_provenance_transfer_executing():
+		return {"ok": true, "action": "deferred_during_transfer"}
+
+	if use_provenance_transactions and _active_gather_session != null:
+		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
+		if not recovered.is_empty():
+			last_extraction_receipt = recovered.duplicate(true)
+			last_extracted_units = 0
+			last_extraction_replayed = true
+		_active_gather_session = null
+
+	var carry_load: UnitCarryLoad = _unit.get_carry_load() if (_unit != null and is_instance_valid(_unit)) else null
+	if _can_start_delivery_with_current_cargo(carry_load):
+		_awaiting_felling_before_delivery = false
+		_disconnect_navigation_signals()
+		if resolved_movement != null:
+			resolved_movement.stop_movement()
+		_start_delivering(resolved_movement)
+		return {"ok": true, "action": "transitioned_to_final_delivery"}
+
+	return {"ok": true, "action": "cancel_immediately"}
+
+
+func _apply_deferred_community_cancel(movement: UnitMovement) -> void:
+	if status != Status.RUNNING:
+		return
+	if _phase == Phase.DELIVERING_TO_CAMP:
+		_stop_after_delivery = true
+		return
+	if use_provenance_transactions and is_provenance_transfer_executing():
+		return
+
+	if use_provenance_transactions and _active_gather_session != null:
+		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
+		if not recovered.is_empty():
+			last_extraction_receipt = recovered.duplicate(true)
+			last_extracted_units = 0
+			last_extraction_replayed = true
+		_active_gather_session = null
+
+	_awaiting_felling_before_delivery = false
+	_disconnect_navigation_signals()
+	var resolved_movement: UnitMovement = movement if movement != null else _movement
+	if resolved_movement != null:
+		_movement = resolved_movement
+	var carry_load: UnitCarryLoad = _unit.get_carry_load() if (_unit != null and is_instance_valid(_unit)) else null
+	if _can_start_delivery_with_current_cargo(carry_load):
+		if resolved_movement != null:
+			resolved_movement.stop_movement()
+		_start_delivering(resolved_movement)
+		return
+
+	if resolved_movement != null:
+		resolved_movement.stop_movement()
+	_finish_cancelled(REASON_COMMUNITY_WORK_CANCELLED)
 
 
 func _create_gather_session() -> GatherTransferSession:
@@ -627,6 +719,10 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 			extraction_cycles_completed += 1
 		_active_gather_session = null
 
+		if _community_cancel_requested:
+			_apply_deferred_community_cancel(movement)
+			return
+
 		var source_gone_or_depleted: bool = not _is_source_usable()
 		var needs_delivery: bool = (
 			carry_load == null
@@ -647,6 +743,9 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 		return
 
 	var reason: String = String(result.get("reason", REASON_INVALID_SOURCE))
+	if _community_cancel_requested:
+		_apply_deferred_community_cancel(movement)
+		return
 	if reason == "busy" and _active_gather_session.is_retry_scheduled():
 		return
 
@@ -706,7 +805,7 @@ func _handle_deliver_finished(movement: UnitMovement) -> void:
 		else:
 			_delivered_trips += 1
 		_deliver_order = null
-		if not _is_source_usable():
+		if _stop_after_delivery or not _is_source_usable():
 			_finish_succeeded()
 			return
 
@@ -929,6 +1028,7 @@ func _finish_cancelled(reason: String) -> void:
 	_deliver_order = null
 	_release_source_reservation()
 	if _movement != null:
+		_movement.stop_movement()
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_cancelled(reason)
 

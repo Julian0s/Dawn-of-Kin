@@ -1,12 +1,14 @@
 class_name CommunitySelectionActionsHud
 extends Control
-## D2.2-faithful contextual work bar for selected natural resource sources (R-03A D1 R2).
+## D2.2-faithful contextual work bar for selected natural resource sources (R-03A D1 R2 + D2).
 ## Reuses the homologated D2.2 volcanic basalt command slab ("slab_cmd_basalt" via D2AtlasLibrary),
 ## D2PolygonalSlab geometry, D2ThemeFactory serif typography, and independent D2.2-aligned work icons.
-## Displays only icon + selected count per present category (wood/stone/food).
-## Strictly signal-driven (zero _process/_physics_process), polygonal anti-click-through, no "Parar" button.
+## Displays icon + selected count per present category (wood/stone/food) plus a contextual
+## D2.2 mineral "×" cancel seal above each category that has active cancellable tasks (D2-A).
+## Strictly signal-driven (zero _process/_physics_process), polygonal anti-click-through, no global "Parar" button.
 
 signal category_authorize_requested(resource_id: StringName)
+signal category_cancel_requested(resource_id: StringName)
 
 const CATEGORY_ORDER: Array[StringName] = [&"wood", &"stone", &"food"]
 const ATLAS_REGION_KEY: String = "slab_cmd_basalt"
@@ -26,6 +28,16 @@ const SLAB_STAGGER_Y: Array[float] = [0.0, 3.0, 1.0]
 const BOTTOM_OFFSET_PX: float = 16.0
 const ICON_DISPLAY_SIZE: Vector2 = Vector2(22.0, 22.0)
 const COUNT_FONT_SIZE: int = 16
+
+## D2-A mineral "×" cancel seal positioned above each category slab with a 6 px transparent pass-through gap
+## to the solid stone top edge of the slab (y=4..26 seal, y=26..32 transparent shadow pad, y=32..74 solid slab).
+const SEAL_HEADROOM_Y: float = 26.0
+const SEAL_TOP_Y: float = 4.0
+const SEAL_HEIGHT: float = 22.0
+const SEAL_WIDTH_SINGLE: float = 34.0
+const SEAL_WIDTH_PARTIAL: float = 44.0
+const SEAL_CHAMFER: float = 5.0
+const SEAL_FONT_SIZE: int = 12
 
 const STATE_HIDDEN: String = "hidden"
 const STATE_AVAILABLE: String = "available"
@@ -235,6 +247,182 @@ class _PolygonalCommandButton:
 		_scaled_polygon = rebuilt
 
 
+class _PolygonalCancelSealButton:
+	extends Button
+	## Chamfered volcanic basalt D2.2 mineral "×" cancel seal positioned above a category slab (R-03A D2-A).
+	## Enforces polygonal hit-testing (transparent corners pass through), blocks RMB/MMB/scroll on solid stone,
+	## and activates strictly on LMB release inside the polygon.
+
+	var _polygon: PackedVector2Array = PackedVector2Array()
+	var _is_hovered_visual: bool = false
+	var _glyph_label: Label = null
+	var _last_glyph_color: Color = Color(-1.0, -1.0, -1.0, -1.0)
+
+	func _init() -> void:
+		flat = true
+		text = ""
+		focus_mode = Control.FOCUS_NONE
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_force_pass_scroll_events = false
+		action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
+		button_mask = MOUSE_BUTTON_MASK_LEFT
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		var empty := StyleBoxEmpty.new()
+		add_theme_stylebox_override(&"normal", empty)
+		add_theme_stylebox_override(&"hover", empty)
+		add_theme_stylebox_override(&"pressed", empty)
+		add_theme_stylebox_override(&"disabled", empty)
+		add_theme_stylebox_override(&"focus", empty)
+
+	func _ready() -> void:
+		if not mouse_entered.is_connected(_on_mouse_entered):
+			mouse_entered.connect(_on_mouse_entered)
+		if not mouse_exited.is_connected(_on_mouse_exited):
+			mouse_exited.connect(_on_mouse_exited)
+		if not button_down.is_connected(_on_button_state_changed):
+			button_down.connect(_on_button_state_changed)
+		if not button_up.is_connected(_on_button_state_changed):
+			button_up.connect(_on_button_state_changed)
+
+	func setup_glyph_label(font: Font) -> void:
+		if _glyph_label != null:
+			return
+		_glyph_label = Label.new()
+		_glyph_label.name = "Glyph"
+		_glyph_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_glyph_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_glyph_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_glyph_label.add_theme_font_size_override(&"font_size", SEAL_FONT_SIZE)
+		if font != null:
+			_glyph_label.add_theme_font_override(&"font", font)
+		_glyph_label.add_theme_color_override(&"font_color", D2Tokens.COLOR_FEEDBACK_ERROR_ROSE)
+		_glyph_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_glyph_label)
+
+	func set_seal_size(target_size: Vector2) -> void:
+		if _polygon.size() >= 3 and size.is_equal_approx(target_size) and custom_minimum_size.is_equal_approx(target_size):
+			return
+		custom_minimum_size = target_size
+		size = target_size
+		_rebuild_polygon()
+		queue_redraw()
+
+	func set_glyph_text(glyph_text: String) -> void:
+		var changed: bool = false
+		if _glyph_label != null and _glyph_label.text != glyph_text:
+			_glyph_label.text = glyph_text
+			changed = true
+		if _sync_glyph_color() or changed:
+			queue_redraw()
+
+	func get_glyph_text() -> String:
+		return _glyph_label.text if _glyph_label != null else ""
+
+	func get_polygon() -> PackedVector2Array:
+		return _polygon.duplicate()
+
+	func contains_local_point(local_point: Vector2) -> bool:
+		return _has_point(local_point)
+
+	func contains_global_point(global_point: Vector2) -> bool:
+		var local_point: Vector2 = get_global_transform_with_canvas().affine_inverse() * global_point
+		return _has_point(local_point)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			_rebuild_polygon()
+			queue_redraw()
+
+	func _has_point(point: Vector2) -> bool:
+		if _polygon.size() < 3:
+			return Rect2(Vector2.ZERO, size).has_point(point)
+		return Geometry2D.is_point_in_polygon(point, _polygon)
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb: InputEventMouseButton = event as InputEventMouseButton
+			if disabled or mb.button_index != MOUSE_BUTTON_LEFT:
+				accept_event()
+
+	func _draw() -> void:
+		if _polygon.size() < 3:
+			return
+		var shadow_poly := PackedVector2Array()
+		shadow_poly.resize(_polygon.size())
+		for i: int in range(_polygon.size()):
+			shadow_poly[i] = _polygon[i] + Vector2(0.0, 1.2)
+		draw_colored_polygon(shadow_poly, Color(0.02, 0.022, 0.028, 0.48))
+
+		var fill_col: Color = Color(
+			D2Tokens.COLOR_SURFACE_BASALT_DEEP.r,
+			D2Tokens.COLOR_SURFACE_BASALT_DEEP.g,
+			D2Tokens.COLOR_SURFACE_BASALT_DEEP.b,
+			0.95
+		)
+		var border_col: Color = D2Tokens.COLOR_FEEDBACK_ERROR_DARK
+		var border_w: float = 1.35
+		if is_pressed():
+			fill_col = Color(0.115, 0.072, 0.070, 0.98)
+			border_col = D2Tokens.COLOR_FEEDBACK_ERROR_ROSE
+			border_w = 1.75
+		elif _is_hovered_visual:
+			fill_col = Color(0.165, 0.102, 0.098, 0.96)
+			border_col = D2Tokens.COLOR_FEEDBACK_ERROR_ROSE
+			border_w = 1.60
+
+		draw_colored_polygon(_polygon, fill_col)
+		var outline := PackedVector2Array(_polygon)
+		outline.append(_polygon[0])
+		draw_polyline(outline, border_col, border_w, true)
+
+		# Subtle mineral top bevel highlight for D2.2 carved-stone continuity.
+		if _polygon.size() >= 2:
+			var top_l: Vector2 = _polygon[0] + Vector2(1.5, 1.5)
+			var top_r: Vector2 = _polygon[1] + Vector2(-1.5, 1.5)
+			if top_r.x > top_l.x:
+				draw_line(top_l, top_r, Color(D2Tokens.COLOR_ACCENT_GOLD_PRIMARY.r, D2Tokens.COLOR_ACCENT_GOLD_PRIMARY.g, D2Tokens.COLOR_ACCENT_GOLD_PRIMARY.b, 0.18), 1.0, true)
+
+	func _on_mouse_entered() -> void:
+		if not disabled:
+			_is_hovered_visual = true
+			_sync_glyph_color()
+			queue_redraw()
+
+	func _on_mouse_exited() -> void:
+		_is_hovered_visual = false
+		_sync_glyph_color()
+		queue_redraw()
+
+	func _on_button_state_changed() -> void:
+		_sync_glyph_color()
+		queue_redraw()
+
+	func _sync_glyph_color() -> bool:
+		if _glyph_label == null:
+			return false
+		var col: Color = D2Tokens.COLOR_TEXT_PRIMARY_IVORY if (_is_hovered_visual or is_pressed()) else D2Tokens.COLOR_FEEDBACK_ERROR_ROSE
+		if _last_glyph_color == col:
+			return false
+		_last_glyph_color = col
+		_glyph_label.add_theme_color_override(&"font_color", col)
+		return true
+
+	func _rebuild_polygon() -> void:
+		var w: float = maxf(size.x, 2.0)
+		var h: float = maxf(size.y, 2.0)
+		var c: float = minf(SEAL_CHAMFER, minf(w, h) * 0.35)
+		_polygon = PackedVector2Array([
+			Vector2(c, 0.0),
+			Vector2(w - c, 0.0),
+			Vector2(w, c),
+			Vector2(w, h - c),
+			Vector2(w - c, h),
+			Vector2(c, h),
+			Vector2(0.0, h - c),
+			Vector2(0.0, c),
+		])
+
+
 var _selection_model: SourceSelectionModel = null
 var _board: CommunityWorkBoard = null
 var _use_provenance_economy: bool = true
@@ -247,9 +435,11 @@ var _panel: Control = null
 var _category_slots: Dictionary = {}
 var _category_slabs: Dictionary = {}
 var _category_buttons: Dictionary = {}
+var _category_cancel_buttons: Dictionary = {}
 var _category_icons: Dictionary = {}
 var _category_count_labels: Dictionary = {}
 var _category_states: Dictionary = {}
+var _category_cancel_counts: Dictionary = {}
 var _panel_content_rect: Rect2 = Rect2()
 var _ui_built: bool = false
 
@@ -308,6 +498,11 @@ func unbind() -> void:
 	_selection_model = null
 	_board = null
 	_category_states.clear()
+	_category_cancel_counts.clear()
+	for res_id: StringName in CATEGORY_ORDER:
+		var cancel_btn: _PolygonalCancelSealButton = _category_cancel_buttons.get(res_id) as _PolygonalCancelSealButton
+		if cancel_btn != null:
+			cancel_btn.visible = false
 	_panel_content_rect = Rect2()
 	if _panel != null:
 		_panel.visible = false
@@ -317,6 +512,11 @@ func refresh() -> void:
 	_ensure_ui_built()
 	if _selection_model == null:
 		_category_states.clear()
+		_category_cancel_counts.clear()
+		for res_id: StringName in CATEGORY_ORDER:
+			var cancel_btn_empty: _PolygonalCancelSealButton = _category_cancel_buttons.get(res_id) as _PolygonalCancelSealButton
+			if cancel_btn_empty != null:
+				cancel_btn_empty.visible = false
 		_panel_content_rect = Rect2()
 		_panel.visible = false
 		return
@@ -326,15 +526,20 @@ func refresh() -> void:
 	for res_id: StringName in CATEGORY_ORDER:
 		var slot: Control = _category_slots.get(res_id) as Control
 		var btn: _PolygonalCommandButton = _category_buttons.get(res_id) as _PolygonalCommandButton
+		var cancel_btn: _PolygonalCancelSealButton = _category_cancel_buttons.get(res_id) as _PolygonalCancelSealButton
 		var icon_rect: TextureRect = _category_icons.get(res_id) as TextureRect
 		var count_lbl: Label = _category_count_labels.get(res_id) as Label
-		if slot == null or btn == null or icon_rect == null or count_lbl == null:
+		if slot == null or btn == null or cancel_btn == null or icon_rect == null or count_lbl == null:
 			continue
 		var count: int = int(counts.get(res_id, 0))
 		if count <= 0:
 			slot.visible = false
 			btn.visible = false
+			cancel_btn.visible = false
+			cancel_btn.set_glyph_text("")
+			cancel_btn.tooltip_text = ""
 			_category_states[res_id] = STATE_HIDDEN
+			_category_cancel_counts[res_id] = 0
 			continue
 
 		visible_ids.append(res_id)
@@ -345,6 +550,23 @@ func refresh() -> void:
 		var visual_state: String = _compute_category_visual_state(res_id)
 		_category_states[res_id] = visual_state
 		_apply_button_visual_state(btn, icon_rect, count_lbl, res_id, count, visual_state)
+
+		var cancellable_count: int = _count_cancellable_tasks_for_category(res_id)
+		_category_cancel_counts[res_id] = cancellable_count
+		if cancellable_count > 0:
+			var is_partial: bool = cancellable_count < count
+			var seal_text: String = ("×%d" % cancellable_count) if is_partial else "×"
+			var seal_w: float = SEAL_WIDTH_PARTIAL if is_partial else SEAL_WIDTH_SINGLE
+			cancel_btn.visible = true
+			cancel_btn.disabled = false
+			cancel_btn.set_seal_size(Vector2(seal_w, SEAL_HEIGHT))
+			cancel_btn.set_glyph_text(seal_text)
+			cancel_btn.position = Vector2((SLAB_OUTER_SIZE.x - seal_w) * 0.5, SEAL_TOP_Y)
+			cancel_btn.tooltip_text = "Cancelar %s (%d)" % [_action_verb(res_id), cancellable_count]
+		else:
+			cancel_btn.visible = false
+			cancel_btn.set_glyph_text("")
+			cancel_btn.tooltip_text = ""
 
 	if visible_ids.is_empty():
 		_panel_content_rect = Rect2()
@@ -357,6 +579,24 @@ func refresh() -> void:
 
 func has_stop_button() -> bool:
 	return false
+
+
+func get_category_cancel_button(resource_id: StringName) -> Button:
+	return _category_cancel_buttons.get(resource_id) as Button
+
+
+func is_category_cancel_visible(resource_id: StringName) -> bool:
+	var btn: Button = _category_cancel_buttons.get(resource_id) as Button
+	return btn != null and btn.visible
+
+
+func get_category_cancel_count(resource_id: StringName) -> int:
+	return int(_category_cancel_counts.get(resource_id, 0))
+
+
+func get_category_cancel_text(resource_id: StringName) -> String:
+	var btn: _PolygonalCancelSealButton = _category_cancel_buttons.get(resource_id) as _PolygonalCancelSealButton
+	return btn.get_glyph_text() if btn != null else ""
 
 
 func get_atlas_region_key() -> String:
@@ -407,6 +647,15 @@ func get_visible_category_ids() -> Array[StringName]:
 
 func _is_economy_blocked() -> bool:
 	return _use_provenance_economy and not _economy_admission_reason.is_empty()
+
+
+func _count_cancellable_tasks_for_category(resource_id: StringName) -> int:
+	if _selection_model == null or _board == null or not is_instance_valid(_board):
+		return 0
+	var selected_sources: Array[ResourceSource] = _selection_model.get_selected_by_resource(resource_id)
+	if selected_sources.is_empty():
+		return 0
+	return _board.get_cancellable_tasks_for_sources(selected_sources, resource_id).size()
 
 
 func _compute_category_visual_state(resource_id: StringName) -> String:
@@ -461,14 +710,24 @@ func _ensure_ui_built() -> void:
 	_panel.visible = false
 	add_child(_panel)
 
+	var slot_size := Vector2(SLAB_OUTER_SIZE.x, SLAB_OUTER_SIZE.y + SEAL_HEADROOM_Y)
 	for res_id: StringName in CATEGORY_ORDER:
 		var slot := Control.new()
 		slot.name = "Slot_%s" % String(res_id)
-		slot.custom_minimum_size = SLAB_OUTER_SIZE
-		slot.size = SLAB_OUTER_SIZE
+		slot.custom_minimum_size = slot_size
+		slot.size = slot_size
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.visible = false
 		_panel.add_child(slot)
+
+		var cancel_btn := _PolygonalCancelSealButton.new()
+		cancel_btn.name = "Cancel_%s" % String(res_id)
+		cancel_btn.setup_glyph_label(serif_bold)
+		cancel_btn.set_seal_size(Vector2(SEAL_WIDTH_SINGLE, SEAL_HEIGHT))
+		cancel_btn.position = Vector2((SLAB_OUTER_SIZE.x - SEAL_WIDTH_SINGLE) * 0.5, SEAL_TOP_Y)
+		cancel_btn.visible = false
+		cancel_btn.pressed.connect(_on_category_cancel_button_pressed.bind(res_id))
+		slot.add_child(cancel_btn)
 
 		var slab := D2PolygonalSlab.new()
 		slab.name = "Slab_%s" % String(res_id)
@@ -478,7 +737,7 @@ func _ensure_ui_built() -> void:
 			D2Tokens.ACTION_SLAB_CMD_SIZE,
 			shadow_pad
 		)
-		slab.position = Vector2.ZERO
+		slab.position = Vector2(0.0, SEAL_HEADROOM_Y)
 		slab.set_scaled_size(SLAB_OUTER_SIZE)
 		slot.add_child(slab)
 
@@ -489,7 +748,7 @@ func _ensure_ui_built() -> void:
 			D2Tokens.ACTION_SLAB_CMD_SIZE,
 			shadow_pad
 		)
-		btn.position = Vector2.ZERO
+		btn.position = Vector2(0.0, SEAL_HEADROOM_Y)
 		btn.set_scaled_size(SLAB_OUTER_SIZE)
 		btn.visible = false
 		btn.pressed.connect(_on_category_button_pressed.bind(res_id))
@@ -528,6 +787,7 @@ func _ensure_ui_built() -> void:
 		_category_slots[res_id] = slot
 		_category_slabs[res_id] = slab
 		_category_buttons[res_id] = btn
+		_category_cancel_buttons[res_id] = cancel_btn
 		_category_icons[res_id] = icon_rect
 		_category_count_labels[res_id] = count_lbl
 
@@ -541,7 +801,7 @@ func _layout_slabs_bottom_center(visible_ids: Array[StringName]) -> void:
 			max_stagger = maxf(max_stagger, SLAB_STAGGER_Y[i % SLAB_STAGGER_Y.size()])
 	var content_h: float = SLAB_CONTENT_SIZE.y + max_stagger
 	var panel_w: float = content_w + SLAB_SHADOW_PAD_SCALED * 2.0
-	var panel_h: float = content_h + SLAB_SHADOW_PAD_SCALED * 2.0
+	var panel_h: float = SEAL_HEADROOM_Y + content_h + SLAB_SHADOW_PAD_SCALED * 2.0
 	var half_w: float = panel_w * 0.5
 
 	_panel.anchor_left = 0.5
@@ -554,6 +814,9 @@ func _layout_slabs_bottom_center(visible_ids: Array[StringName]) -> void:
 	_panel.offset_top = -(BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED + panel_h)
 	_panel.size = Vector2(panel_w, panel_h)
 
+	var slot_size := Vector2(SLAB_OUTER_SIZE.x, SLAB_OUTER_SIZE.y + SEAL_HEADROOM_Y)
+	var any_cancel_visible: bool = false
+	var min_seal_slot_y: float = INF
 	for i: int in range(count):
 		var res_id: StringName = visible_ids[i]
 		var slot: Control = _category_slots.get(res_id) as Control
@@ -562,14 +825,21 @@ func _layout_slabs_bottom_center(visible_ids: Array[StringName]) -> void:
 		var sx: float = float(i) * (SLAB_CONTENT_SIZE.x + SLAB_GAP_X)
 		var sy: float = SLAB_STAGGER_Y[i % SLAB_STAGGER_Y.size()] if count > 1 else 0.0
 		slot.position = Vector2(sx, sy)
-		slot.size = SLAB_OUTER_SIZE
+		slot.size = slot_size
+		if is_category_cancel_visible(res_id):
+			any_cancel_visible = true
+			min_seal_slot_y = minf(min_seal_slot_y, sy)
 
 	var vp: Viewport = get_viewport()
 	var vp_size: Vector2 = vp.get_visible_rect().size if vp != null else size
 	if vp_size.x > 0.0 and vp_size.y > 0.0:
 		var left_x: float = (vp_size.x - content_w) * 0.5
-		var top_y: float = vp_size.y - BOTTOM_OFFSET_PX - content_h
-		_panel_content_rect = Rect2(Vector2(left_x, top_y), Vector2(content_w, content_h))
+		var bottom_y: float = vp_size.y - BOTTOM_OFFSET_PX
+		var top_y: float = bottom_y - content_h
+		if any_cancel_visible and is_finite(min_seal_slot_y):
+			var panel_top_y: float = vp_size.y - (BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED + panel_h)
+			top_y = minf(top_y, panel_top_y + min_seal_slot_y + SEAL_TOP_Y)
+		_panel_content_rect = Rect2(Vector2(left_x, top_y), Vector2(content_w, bottom_y - top_y))
 	else:
 		_panel_content_rect = Rect2()
 
@@ -602,8 +872,10 @@ func _apply_button_visual_state(
 		_:
 			text_color = D2Tokens.COLOR_TEXT_PRIMARY_IVORY
 			icon_modulate = Color.WHITE
-	count_lbl.add_theme_color_override(&"font_color", text_color)
-	icon_rect.modulate = icon_modulate
+	if count_lbl.get_theme_color(&"font_color") != text_color:
+		count_lbl.add_theme_color_override(&"font_color", text_color)
+	if icon_rect.modulate != icon_modulate:
+		icon_rect.modulate = icon_modulate
 
 	var verb: String = _action_verb(resource_id)
 	match visual_state:
@@ -651,3 +923,9 @@ func _on_category_button_pressed(resource_id: StringName) -> void:
 	if _is_economy_blocked():
 		return
 	category_authorize_requested.emit(resource_id)
+
+
+func _on_category_cancel_button_pressed(resource_id: StringName) -> void:
+	if _count_cancellable_tasks_for_category(resource_id) <= 0:
+		return
+	category_cancel_requested.emit(resource_id)

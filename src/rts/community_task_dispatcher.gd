@@ -22,6 +22,7 @@ var _economy_admission_reason: String = ""
 var _unit_callbacks: Dictionary = {}
 var _flush_queued: bool = false
 var _dispatching: bool = false
+var _cancelling_batch_depth: int = 0
 var _is_tearing_down: bool = false
 
 
@@ -36,6 +37,7 @@ func _exit_tree() -> void:
 
 func teardown() -> void:
 	_is_tearing_down = true
+	_cancelling_batch_depth = 0
 	_unbind_all()
 	_board = null
 	_command_controller = null
@@ -94,6 +96,138 @@ func request_dispatch() -> void:
 		return
 	_flush_queued = true
 	call_deferred("_flush_dispatch")
+
+
+func cancel_tasks_for_sources(
+	sources: Array[ResourceSource],
+	resource_id: StringName,
+	reason: String = WorkTask.REASON_PLAYER_CANCELLED
+) -> Dictionary:
+	## Selective community work cancellation (R-03A D2 / D2-B).
+	## Scope: strictly (sources ∩ resource_id ∩ valid regional domain ∩ active tasks).
+	## Closes tasks on the board first (under batch reentrancy guard), then cooperatively
+	## reconciles each worker's GatherResourceOrder without breaking provenance transactions
+	## or overwriting personal orders.
+	var empty_result: Dictionary = {
+		"ok": false,
+		"reason": "",
+		"resource_id": resource_id,
+		"cancelled_count": 0,
+		"cancelled_task_ids": [],
+		"delivering_count": 0,
+		"stopped_immediately_count": 0,
+		"deferred_transfer_count": 0,
+		"preserved_personal_orders_count": 0,
+		"rejected_domain_count": 0,
+	}
+	if _is_tearing_down or _board == null or not is_instance_valid(_board):
+		empty_result["reason"] = "missing_board"
+		return empty_result
+	if not CommunityWorkBoard.SUPPORTED_RESOURCE_IDS.has(resource_id):
+		empty_result["reason"] = "unsupported_resource"
+		return empty_result
+
+	var rejected_domain_count: int = 0
+	var seen_sids: Dictionary = {}
+	for src: ResourceSource in sources:
+		if src == null or not is_instance_valid(src):
+			continue
+		var sid: int = src.get_instance_id()
+		if seen_sids.has(sid):
+			continue
+		seen_sids[sid] = true
+		if not _board.is_source_in_region_domain(src):
+			rejected_domain_count += 1
+
+	var cancellable_tasks: Array[WorkTask] = _board.get_cancellable_tasks_for_sources(sources, resource_id)
+	if cancellable_tasks.is_empty():
+		empty_result["rejected_domain_count"] = rejected_domain_count
+		empty_result["reason"] = "region_mismatch" if rejected_domain_count > 0 else "no_cancellable_tasks"
+		return empty_result
+
+	var snapshot: Array[Dictionary] = []
+	for task: WorkTask in cancellable_tasks:
+		snapshot.append({
+			"task": task,
+			"task_id": task.task_id,
+			"group_id": task.group_id,
+			"source": task.source,
+			"source_id": task.source_id,
+			"resource_id": task.resource_id,
+			"region_id": task.region_id,
+			"unit": task.assigned_unit,
+			"order": task.assigned_order,
+			"order_revision": task.assigned_order_revision,
+		})
+
+	var cancelled_task_ids: Array[int] = []
+	var delivering_count: int = 0
+	var stopped_immediately_count: int = 0
+	var deferred_transfer_count: int = 0
+	var preserved_personal_orders_count: int = 0
+
+	_cancelling_batch_depth += 1
+
+	# Phase 1 (board-first): close tasks as CANCELLED before touching any worker order so
+	# order_finished callbacks cannot resurrect tasks or mark workers as excluded.
+	for entry: Dictionary in snapshot:
+		var task: WorkTask = entry["task"] as WorkTask
+		if task != null and task.is_active():
+			_board.close_task(task, WorkTask.State.CANCELLED, reason)
+			cancelled_task_ids.append(int(entry["task_id"]))
+
+	# Phase 2 (cooperative order reconciliation): reconcile only orders that still match
+	# the exact snapshot identity & revision, preserving personal/replacement orders.
+	for entry: Dictionary in snapshot:
+		var unit: Unit = entry["unit"] as Unit
+		var snap_order: GatherResourceOrder = entry["order"] as GatherResourceOrder
+		var snap_rev: int = int(entry["order_revision"])
+		if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or snap_order == null:
+			continue
+		if (
+			snap_order.is_active()
+			and unit.get_current_order() == snap_order
+			and unit.get_order_revision() == snap_rev
+		):
+			var action: String = _apply_community_cancel_to_order(unit, snap_order)
+			match action:
+				"finish_current_delivery", "transitioned_to_final_delivery":
+					delivering_count += 1
+				"cancelled_immediately":
+					stopped_immediately_count += 1
+				"deferred_during_transfer":
+					deferred_transfer_count += 1
+		elif unit.get_current_order() != null and unit.get_current_order() != snap_order:
+			preserved_personal_orders_count += 1
+
+	_cancelling_batch_depth = maxi(_cancelling_batch_depth - 1, 0)
+	if _cancelling_batch_depth == 0:
+		request_dispatch()
+
+	return {
+		"ok": not cancelled_task_ids.is_empty(),
+		"reason": "" if not cancelled_task_ids.is_empty() else "already_closed",
+		"resource_id": resource_id,
+		"cancelled_count": cancelled_task_ids.size(),
+		"cancelled_task_ids": cancelled_task_ids,
+		"delivering_count": delivering_count,
+		"stopped_immediately_count": stopped_immediately_count,
+		"deferred_transfer_count": deferred_transfer_count,
+		"preserved_personal_orders_count": preserved_personal_orders_count,
+		"rejected_domain_count": rejected_domain_count,
+	}
+
+
+func _apply_community_cancel_to_order(unit: Unit, order: GatherResourceOrder) -> String:
+	if unit == null or not is_instance_valid(unit) or order == null or not order.is_active():
+		return "not_running"
+	var order_res: Dictionary = order.request_community_cancel(unit.get_movement())
+	var action: String = String(order_res.get("action", "not_running"))
+	if action == "cancel_immediately":
+		if unit.get_current_order() == order and order.is_active():
+			unit.cancel_current_order(GatherResourceOrder.REASON_COMMUNITY_WORK_CANCELLED)
+		return "cancelled_immediately"
+	return action
 
 
 func _unbind_all() -> void:
@@ -288,6 +422,9 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 func _flush_dispatch() -> void:
 	if _dispatching or _is_tearing_down:
 		return
+	if _cancelling_batch_depth > 0:
+		_flush_queued = true
+		return
 	_flush_queued = false
 	if not is_inside_tree() or _board == null or not is_instance_valid(_board) or _command_controller == null or not is_instance_valid(_command_controller):
 		return
@@ -416,11 +553,16 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 
 
 func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
+	if task == null or not task.is_active() or task.state != WorkTask.State.PENDING_WORKERS:
+		return false
 	if not _check_pre_nav_eligibility(chosen_unit, task).is_empty():
 		return false
 
+	var pre_order_rev: int = chosen_unit.get_order_revision()
 	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false)
 	if not bool(dispatch_res.get("ok", false)):
+		if not task.is_active():
+			return false
 		var reject_reason: String = String(dispatch_res.get("reason", "dispatch_rejected"))
 		if reject_reason in [
 			GatherResourceOrder.REASON_SOURCE_UNREACHABLE,
@@ -435,6 +577,18 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 
 	var assigned_orders: Dictionary = dispatch_res.get("assigned_orders", {}) as Dictionary
 	var order: GatherResourceOrder = assigned_orders.get(chosen_unit.get_instance_id()) as GatherResourceOrder
+	if not task.is_active():
+		# Reentrancy guard (R-03A D2 / E11): task was closed during dispatch; never resurrect it.
+		if (
+			order != null
+			and order.is_active()
+			and is_instance_valid(chosen_unit)
+			and chosen_unit.is_inside_tree()
+			and chosen_unit.get_current_order() == order
+			and chosen_unit.get_order_revision() > pre_order_rev
+		):
+			_apply_community_cancel_to_order(chosen_unit, order)
+		return false
 	if order == null:
 		_mark_task_waiting(task, "dispatch_rejected", "")
 		return false
@@ -445,6 +599,8 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	if not order.is_active():
 		_mark_task_waiting(task, order.failure_reason if not order.failure_reason.is_empty() else "order_not_active", "")
 		return false
+	if chosen_unit.get_current_order() != order:
+		return false
 
 	task.assigned_unit = chosen_unit
 	task.assigned_order = order
@@ -452,6 +608,8 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	task.state = WorkTask.State.IN_PROGRESS
 	task.last_reason = ""
 	_board.notify_task_updated(task)
+	if not task.is_active() or task.assigned_order != order:
+		return false
 	task_assigned.emit(task, chosen_unit, order)
 
 	var unit_label: String = chosen_unit.get_definition().display_name if chosen_unit.get_definition() != null else String(chosen_unit.get_character_id())

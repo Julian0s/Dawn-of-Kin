@@ -111,6 +111,8 @@ func configure_community_work(
 	if _actions_hud != null and is_instance_valid(_actions_hud):
 		if not _actions_hud.category_authorize_requested.is_connected(_on_hud_category_authorize_requested):
 			_actions_hud.category_authorize_requested.connect(_on_hud_category_authorize_requested)
+		if not _actions_hud.category_cancel_requested.is_connected(_on_hud_category_cancel_requested):
+			_actions_hud.category_cancel_requested.connect(_on_hud_category_cancel_requested)
 
 	for existing_task: WorkTask in _board.get_active_tasks():
 		if existing_task != null and existing_task.is_source_valid():
@@ -227,6 +229,47 @@ func authorize_selected_category(resource_id: StringName) -> Dictionary:
 	}
 
 
+func cancel_selected_category(resource_id: StringName) -> Dictionary:
+	## Selective cancellation of community tasks for (selected sources ∩ resource_id ∩ valid domain).
+	## Preserves source selection, preserves other categories/unselected sources, and permits
+	## administrative cancellation of already-registered tasks even if new economy admission is blocked.
+	_ensure_wired()
+	var empty_result: Dictionary = {
+		"ok": false,
+		"reason": "",
+		"resource_id": resource_id,
+		"cancelled_count": 0,
+		"cancelled_task_ids": [],
+		"delivering_count": 0,
+		"stopped_immediately_count": 0,
+		"deferred_transfer_count": 0,
+		"preserved_personal_orders_count": 0,
+		"rejected_domain_count": 0,
+	}
+	if _board == null or not is_instance_valid(_board) or _dispatcher == null or not is_instance_valid(_dispatcher):
+		empty_result["reason"] = "missing_board"
+		return empty_result
+	if not _supports_resource_id(resource_id):
+		empty_result["reason"] = "unsupported_resource"
+		return empty_result
+
+	var selected_sources: Array[ResourceSource] = _selection_model.get_selected_by_resource(resource_id)
+	if selected_sources.is_empty():
+		empty_result["reason"] = "no_selected_sources"
+		return empty_result
+
+	var cancel_res: Dictionary = _dispatcher.cancel_tasks_for_sources(
+		selected_sources,
+		resource_id,
+		WorkTask.REASON_PLAYER_CANCELLED
+	)
+	var cancelled_count: int = int(cancel_res.get("cancelled_count", 0))
+	if cancelled_count > 0:
+		var delivering_count: int = int(cancel_res.get("delivering_count", 0))
+		_show_feedback(_cancelled_feedback(resource_id, cancelled_count, delivering_count))
+	return cancel_res
+
+
 func _is_community_economy_blocked() -> bool:
 	return _use_provenance_economy and not _economy_admission_reason.is_empty()
 
@@ -286,6 +329,8 @@ func _disconnect_signals() -> void:
 	if _actions_hud != null and is_instance_valid(_actions_hud):
 		if _actions_hud.category_authorize_requested.is_connected(_on_hud_category_authorize_requested):
 			_actions_hud.category_authorize_requested.disconnect(_on_hud_category_authorize_requested)
+		if _actions_hud.category_cancel_requested.is_connected(_on_hud_category_cancel_requested):
+			_actions_hud.category_cancel_requested.disconnect(_on_hud_category_cancel_requested)
 	_wired = false
 
 
@@ -410,6 +455,10 @@ func _supports_resource_id(resource_id: StringName) -> bool:
 
 func _on_hud_category_authorize_requested(resource_id: StringName) -> void:
 	authorize_selected_category(resource_id)
+
+
+func _on_hud_category_cancel_requested(resource_id: StringName) -> void:
+	cancel_selected_category(resource_id)
 
 
 func _on_source_selection_changed() -> void:
@@ -758,3 +807,15 @@ static func _source_plural_noun(resource_id: StringName) -> String:
 			return "arbustos"
 		_:
 			return "árvores"
+
+
+static func _cancelled_feedback(resource_id: StringName, cancelled_count: int, delivering_count: int) -> String:
+	var activity: String = "Corte de madeira cancelado"
+	if resource_id == &"stone":
+		activity = "Mineração cancelada"
+	elif resource_id == &"food":
+		activity = "Colheita cancelada"
+	var noun: String = _source_noun_for_count(resource_id, cancelled_count)
+	if delivering_count > 0:
+		return "%s (%d %s; entrega final em andamento)." % [activity, cancelled_count, noun]
+	return "%s (%d %s)." % [activity, cancelled_count, noun]

@@ -18,6 +18,7 @@ enum State {
 }
 
 const REASON_ALL_WORKERS_EXCLUDED: String = "all_workers_manually_excluded"
+const REASON_PLAYER_CANCELLED: String = "player_cancelled_community_work"
 
 var task_id: int = 0
 var group_id: int = 0
