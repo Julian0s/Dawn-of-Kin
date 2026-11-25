@@ -96,7 +96,7 @@ Nenhuma asserção econômica, de proveniência, de conservação, de autoridade
 |---|---|---|---|
 | **Validação estática** | `.\tools\validate.ps1` | **PASS** — `0` erros, `0` avisos, **`213`** scripts verificados, boot headless limpo, `DOCS_DESIGN_IMPORT_COUNT = 0` | `+4` scripts (`209 → 213`) |
 | **Suítes focais (7 suítes)** | `source_selection_model`, `d1`, `box_selection`, `rux_1`, `rux_2a`, `rux_2b`, `r_03a_main_scene` | **PASS** — `83/83` testes, `1.451` asserções, `0` falhas, `0` avisos | `+17` testes novos D1 (`4` unit + `13` int) |
-| **Regressão segmentada integral** | `.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1` | **PASS** — `62/62` lotes, **`88/88` suítes**, **`637/637` testes**, **`30.001` asserções**, `0` falhas, `0` `SuiteErrors`, `Discovered=88 == ExecutedUnique=88`, `Duplicates=0`, `Missing=0`, exit `0` | `+2` suítes (`86 → 88`), `+17` testes (`620 → 637`), `+285` asserções (`29.716 → 30.001`) |
+| **Regressão segmentada integral** | `.\tools\run_tests.ps1 -Segmented -MaxIntegrationPerGroup 1` | **PASS** — `62/62` lotes, **`88/88` suítes**, **`637/637` testes**, **`30.001` asserções**, `0` falhas, `0` `SuiteErrors`, `Discovered=88 == ExecutedUnique=88`, `Duplicates=0`, `Missing=0`, exit `0` | `+2` suítes (`86 → 88`), `+17` testes (`620 → 637`), **`+245` asserções (`29.756 → 30.001`)** *(errata `DOC01`: substitui `+285` / `29.716` grafados incorretamente na versão `a56af98`)* |
 | **Smoke real `MainScene`** | `.\tools\run_game.ps1 -Resolution 1280x720 / 1920x1080 -QuitAfter 45 -FailOnWarnings` | **PASS** — `SMOKE_720P = 0`, `SMOKE_1080P = 0` (OpenGL 3.3 Compatibility, Intel UHD Graphics 620) | Mantido `0`/`0` |
 
 ---
@@ -129,10 +129,20 @@ Zero polling confirmado em runtime: `board_proc=false`, `board_phys=false`, `dis
 
 ---
 
-## 7. Itens Não-Escopo e Pendências Preservadas para `D2`–`D4`
+## 7. Itens Não-Escopo e Pendências Preservadas para `D2`–`D4` *(atualizado pela Errata `D1 R1 / DOC01`)*
 
-- **`D0-A02` (Aberto para `D2`):** Ação contextual `[Parar]` na HUD para cancelamento definitivo individual/coletivo de tarefas comunitárias das fontes selecionadas (explicitamente ausente na `D1`).
-- **`D0-A03` (Aberto para `D3`):** Corte progressivo de árvores sem extração prévia de madeira até a confirmação de derrubada.
-- **`D0-A04` (Aberto para `D4`):** Reteste humano completo `M1`–`M8` na `MainScene`, revisão de documentação definitiva e preparação para homologação/integração final de `R-03A` à `develop`.
+- **`D0-A02` (Aberto para `D2`):** Cancelamento comunitário definitivo via ação contextual `[Parar]` na HUD (explicitamente ausente na `D1`), garantindo que uma ordem existente não continue extraindo após o encerramento da autorização, preservando carga e ordem pessoal e sem retorno indevido à fonte cancelada.
+- **`D0-A03` (Aberto para `D3`):** Fronteira irreversível da derrubada no corte progressivo de árvores (decisão entre irreversibilidade no início da queda vs confirmação definitiva a ser submetida ao proprietário em `D3`).
+- **`D0-A04` (Aberto para `D3`):** Conservação econômica do novo ciclo de corte (utilizando balanço regional completo ou rastreabilidade individual efetivamente comprovada, considerando materiais fora do armazenamento válido e evitando dupla contagem das pilhas já integrantes do estoque — sem comparar a quantidade inicial de uma única árvore com todo o estoque comunitário).
+- **`D4` (não substitui `D0-A04`):** Auditoria consolidada, regressão final, desempenho (incluindo avaliação do comportamento a frio), smokes e novo protocolo humano completo `M1`–`M8`, com preparação para homologação/integração final de `R-03A` à `develop`.
 - **Testes humanos da `D1`:** `NÃO REALIZADOS` (aguardam auditoria independente e execução humana opcional/orientada pelo proprietário).
 - **Flags e invariantes preservados:** `use_d2_2_hud = false` mantido até `R-05B`; `docs/Dawn_of_Kin_GDD.md` (`v1.3`) intocado; `assets/ui/d2/d2_2_faithful_atlas.png` e `atlas_manifest.json` intocados; `develop`, `main`, tags e checkout permanente `C:\Projetos\Dawn of Kin` intocados.
+
+---
+
+## 8. Errata Rastreável (`R-03A D1 R1` — `DOC01`)
+
+Na revisão corretiva focal **`R-03A D1 R1`** (ver relatório completo em [R_03A_D1_R1_focal_correction_candidate_report.md](R_03A_D1_R1_focal_correction_candidate_report.md)), foram corrigidas duas inconsistências editoriais identificadas na auditoria independente sobre o commit `a56af98`:
+1. **Contagem de asserções `R1.1 → D1`:** o valor correto da `R1.1` (`f77e99e`) é **`29.756`** (e não `29.716`), resultando no delta correto de **`+245` asserções** (`29.756 → 30.001`), e não `+285`.
+2. **Destinação das ressalvas `D0`:** `D0-A02` pertence à **`D2`**, `D0-A03` e **`D0-A04`** pertencem à **`D3`**, enquanto **`D4`** permanece reservada à auditoria consolidada, regressão final, desempenho, smokes e protocolo humano `M1`–`M8` (não substituindo `D0-A04`).
+3. **Observação sobre desempenho a frio (`§6.2`):** a atribuição do pico a frio (`max = 72,630 ms`, `p95 = 22,710 ms` em `P2`) à primeira compilação de shader permanece como hipótese observacional de `D1`, sujeita a avaliação consolidada na `D4` (não como comprovação independente encerrada).
