@@ -1776,30 +1776,46 @@ func test_r2_hv03_work_marker_lifecycle_pending_blocked_depletion_removal_and_pi
 		var pk: PickResult = input_ctrl.pick_at_screen_pos(_source_screen_point(view, src))
 		assert_true(pk.is_resource_source() and pk.resource_source == src, "H-V03: WorldPicker unaffected by work marker on %s" % String(src.source_id))
 
-	# Drive t1 task into BLOCKED_REAUTHORIZATION and verify marker switches to "blocked" state via signal, then back on reauth.
+	# Close r1 and b1 deterministically via depletion so task_w can test BLOCKED_REAUTHORIZATION
+	# unconditionally without another pending/active task holding the second worker busy (R2-T01).
+	while not r1.is_depleted():
+		r1.extract(r1.max_extract_per_operation)
+	while not b1.is_depleted():
+		b1.extract(b1.max_extract_per_operation)
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+	assert_eq(_count_rings_on_source(r1, "AutoGatherWorkMarker_"), 0, "H-V03: Depletion removes stone work marker")
+	assert_eq(_count_rings_on_source(b1, "AutoGatherWorkMarker_"), 0, "H-V03: Depletion removes food work marker")
+
+	# Drive t1 task deterministically into BLOCKED_REAUTHORIZATION and assert marker + HUD + reauth unconditionally.
+	assert_not_null(task_w, "R2-T01: Wood task must exist prior to blocked-state check")
 	if task_w != null:
+		var orig_w_task_id: int = task_w.task_id
+		var orig_w_group_id: int = task_w.group_id
 		for override_idx: int in range(2):
 			if task_w.is_blocked_reauthorization():
 				break
 			var w: Unit = task_w.assigned_unit
+			assert_not_null(w, "R2-T01: Assigned worker present for override #%d" % (override_idx + 1))
 			if w != null:
 				selection.select_single(w)
 				cmd.command_at(PickResult.from_ground(Vector3(3.0 + float(override_idx) * 2.0, 0.0, 12.0), Vector3.UP))
 				await wait_process_frames(4)
 				await wait_physics_frames(2)
-		if task_w.is_blocked_reauthorization():
-			assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "blocked", "H-V03: Blocked task switches marker to blocked treatment")
-			model.select_single(t1)
-			await wait_process_frames(1)
-			await _click_hud_button(view, hud.get_category_button(&"wood"))
-			await wait_process_frames(3)
-			assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "active", "H-V03: Reauthorization restores active work marker")
-
-	# Depletion closes task and removes work marker cleanly.
-	while not r1.is_depleted():
-		r1.extract(r1.max_extract_per_operation)
-	await wait_process_frames(2)
-	assert_eq(_count_rings_on_source(r1, "AutoGatherWorkMarker_"), 0, "H-V03: Depletion removes work marker")
+		assert_true(task_w.is_blocked_reauthorization(), "R2-T01: task_w must reach BLOCKED_REAUTHORIZATION deterministically")
+		assert_true(task_w.is_active(), "R2-T01: Blocked task stays administratively active")
+		assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "R2-T01: Exactly one blocked marker attached")
+		assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "blocked", "H-V03/R2-T01: Blocked task switches marker to blocked treatment")
+		model.select_single(t1)
+		await wait_process_frames(2)
+		assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_BLOCKED_REAUTH, "R2-T01: HUD reflects blocked_reauthorization")
+		await _click_hud_button(view, hud.get_category_button(&"wood"))
+		await wait_process_frames(4)
+		assert_false(task_w.is_blocked_reauthorization(), "R2-T01: Explicit HUD reauthorization clears BLOCKED_REAUTHORIZATION")
+		assert_eq(task_w.task_id, orig_w_task_id, "R2-T01: Reauthorization preserves task_id")
+		assert_eq(task_w.group_id, orig_w_group_id, "R2-T01: Reauthorization preserves group_id")
+		assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "R2-T01: Reauthorization creates zero duplicate markers")
+		assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "active", "H-V03/R2-T01: Reauthorization restores active work marker")
 
 	# Source removal from tree closes task and leaves zero orphan markers.
 	model.select_single(t2)
@@ -1821,3 +1837,512 @@ func test_r2_hv03_work_marker_lifecycle_pending_blocked_depletion_removal_and_pi
 	assert_eq(_count_all_rings(main2, "SourceSelectionRing_"), 0, "H-V03: Clean selection rings on reinstantiated MainScene")
 	assert_eq(_count_all_rings(main2, "AutoGatherWorkMarker_"), 0, "H-V03: Clean work markers on reinstantiated MainScene")
 	await _teardown_fixture(view2)
+
+
+func _trigger_echo_shift_desync() -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_SHIFT
+	ev.physical_keycode = KEY_SHIFT
+	ev.location = KEY_LOCATION_LEFT
+	ev.pressed = true
+	ev.echo = true
+	Input.parse_input_event(ev)
+	await wait_process_frames(1)
+
+
+func _clear_synthetic_shift_state() -> void:
+	var rel := InputEventKey.new()
+	rel.keycode = KEY_SHIFT
+	rel.physical_keycode = KEY_SHIFT
+	rel.location = KEY_LOCATION_LEFT
+	rel.pressed = false
+	rel.echo = false
+	Input.parse_input_event(rel)
+	if Input.is_action_pressed(InputActions.SELECTION_MODIFIER):
+		Input.action_release(InputActions.SELECTION_MODIFIER)
+	await wait_process_frames(1)
+
+
+func test_r3_r2t01_blocked_marker_lifecycle_and_reauthorization_invariants() -> void:
+	var view := await _fixture(Vector2i(1280, 720))
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var cmd := main.get_command_controller()
+	var selection := main.get_selection_manager()
+	var inv := main.get_settlement_inventory()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	assert_not_null(leader_a)
+	assert_not_null(leader_b)
+	assert_not_null(t1)
+	if leader_a == null or leader_b == null or t1 == null:
+		await _teardown_fixture(view)
+		return
+
+	model.select_single(t1)
+	await wait_process_frames(1)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var task: WorkTask = board.get_active_task_for_source(t1)
+	assert_not_null(task, "R2-T01 isolated: Task created for wood_tree_01")
+	if task == null:
+		await _teardown_fixture(view)
+		return
+
+	var orig_task_id: int = task.task_id
+	var orig_group_id: int = task.group_id
+
+	for override_idx: int in range(2):
+		if task.is_blocked_reauthorization():
+			break
+		var w: Unit = task.assigned_unit
+		assert_not_null(w, "R2-T01 isolated: Legitimate assignment prior to personal override #%d" % (override_idx + 1))
+		if w != null:
+			selection.select_single(w)
+			var dest := Vector3(4.0 + float(override_idx) * 2.5, 0.0, 12.0)
+			assert_true(cmd.command_at(PickResult.from_ground(dest, Vector3.UP)), "R2-T01 isolated: Personal override #%d issued" % (override_idx + 1))
+			await wait_process_frames(4)
+			await wait_physics_frames(2)
+
+	assert_true(task.is_blocked_reauthorization(), "R2-T01 isolated: Task reached BLOCKED_REAUTHORIZATION")
+	assert_true(task.is_active(), "R2-T01 isolated: Blocked task remains active on board")
+	assert_true(board.get_active_tasks().has(task), "R2-T01 isolated: board.get_active_tasks() includes blocked task")
+	assert_eq(task.excluded_unit_ids.size(), 2, "R2-T01 isolated: Both leaders excluded legitimately")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "R2-T01 isolated: Exactly 1 work marker present")
+	var blocked_marker := _find_work_marker(t1)
+	assert_not_null(blocked_marker, "R2-T01 isolated: Work marker exists in blocked state")
+	if blocked_marker != null:
+		assert_eq(String(blocked_marker.get_meta(&"work_marker_state")), "blocked", "R2-T01 isolated: Marker visual state is blocked")
+
+	model.select_single(t1)
+	await wait_process_frames(2)
+	assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_BLOCKED_REAUTH, "R2-T01 isolated: HUD category state is blocked_reauthorization")
+
+	var stock_before: int = inv.get_physical_amount(&"wood")
+	var rem_before: int = t1.get_remaining_amount()
+	var carry_a_before: int = leader_a.get_carry_load().get_current_weight()
+	var carry_b_before: int = leader_b.get_carry_load().get_current_weight()
+	var order_a_before: UnitOrder = leader_a.get_current_order()
+	var order_b_before: UnitOrder = leader_b.get_current_order()
+	assert_not_null(order_b_before, "R2-T01 isolated: LeaderB holding active personal order")
+
+	# Reauthorize via public HUD button -> leaves BLOCKED_REAUTHORIZATION, restores active marker, preserves personal orders & economy.
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	assert_false(task.is_blocked_reauthorization(), "R2-T01 isolated: Task leaves BLOCKED_REAUTHORIZATION on HUD reauth")
+	assert_true(task.is_active(), "R2-T01 isolated: Task remains active after reauth")
+	assert_eq(task.task_id, orig_task_id, "R2-T01 isolated: D1-C task_id preserved")
+	assert_eq(task.group_id, orig_group_id, "R2-T01 isolated: D1-C group_id preserved")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "R2-T01 isolated: Zero duplicate markers after reauth")
+	var active_marker := _find_work_marker(t1)
+	assert_not_null(active_marker, "R2-T01 isolated: Active marker present after reauth")
+	if active_marker != null:
+		assert_eq(String(active_marker.get_meta(&"work_marker_state")), "active", "R2-T01 isolated: Marker restored to active state")
+	assert_eq(leader_a.get_current_order(), order_a_before, "R2-T01 isolated: LeaderA personal order not overwritten by HUD reauth")
+	assert_eq(leader_b.get_current_order(), order_b_before, "R2-T01 isolated: LeaderB personal order not overwritten by HUD reauth")
+	assert_eq(inv.get_physical_amount(&"wood"), stock_before, "R2-T01 isolated: Zero spurious wood stock change")
+	assert_eq(t1.get_remaining_amount(), rem_before, "R2-T01 isolated: Zero spurious source extraction")
+	assert_eq(leader_a.get_carry_load().get_current_weight(), carry_a_before, "R2-T01 isolated: Zero spurious carry change A")
+	assert_eq(leader_b.get_carry_load().get_current_weight(), carry_b_before, "R2-T01 isolated: Zero spurious carry change B")
+
+	# Free LeaderA -> resumes same task_id while LeaderB personal order stays untouched.
+	leader_a.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+	assert_eq(task.assigned_unit, leader_a, "R2-T01 isolated: Freed LeaderA dispatched to reauthorized task")
+	assert_eq(task.task_id, orig_task_id, "R2-T01 isolated: Same task_id after worker dispatch")
+	assert_eq(leader_b.get_current_order(), order_b_before, "R2-T01 isolated: LeaderB personal order still intact")
+
+	await _teardown_fixture(view)
+
+
+func test_r3_c03_01_echo_shift_desync_ground_deselect_and_additive_selection() -> void:
+	await _clear_synthetic_shift_state()
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var ctrl := main.get_input_controller() as AutonomousGatherInput
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var t3 := _find_source_by_id(main, &"wood_tree_03")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(t3)
+	assert_not_null(r1)
+	if t1 == null or t2 == null or t3 == null or r1 == null:
+		await _clear_synthetic_shift_state()
+		await _teardown_fixture(view)
+		return
+
+	# Reproduce exact Godot 4.7.2 mechanism: InputEventKey(KEY_SHIFT, pressed=true, echo=true)
+	# activates Input.is_action_pressed(SELECTION_MODIFIER) while key_shift == false and physical_key_shift == false.
+	await _trigger_echo_shift_desync()
+	assert_true(Input.is_action_pressed(InputActions.SELECTION_MODIFIER), "C-03 precond: echo=true sets action selection_modifier=true")
+	assert_false(Input.is_key_pressed(KEY_SHIFT), "C-03 precond: logical KEY_SHIFT stays false")
+	assert_false(Input.is_physical_key_pressed(KEY_SHIFT), "C-03 precond: physical KEY_SHIFT stays false")
+
+	# §7.2 RED/GREEN — Left-click on free ground WITHOUT Shift must clear 3 selected sources despite stale global action.
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	model.add_sources([t1, t2, t3])
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_count(), 3, "C-03 terrain setup: 3 sources selected")
+	assert_true(hud.is_panel_visible(), "C-03 terrain setup: HUD visible")
+
+	var ground_pt := _world_screen_point(view, Vector3(0.0, 0.0, -2.0))
+	assert_true(ctrl.pick_at_screen_pos(ground_pt).is_ground(), "C-03 terrain setup: free ground pick")
+	await _left_click(view, ground_pt, false)
+	await wait_process_frames(2)
+
+	assert_true(model.is_empty(), "C-03 §7.2: Ground click with event.shift_pressed=false MUST deselect all sources under echo desync")
+	assert_false(hud.is_panel_visible(), "C-03 §7.2: HUD MUST hide after ground deselect under echo desync")
+	assert_eq(_count_all_rings(main, "SourceSelectionRing_"), 0, "C-03 §7.2: All selection rings cleared")
+
+	# §7.3 RED/GREEN (novo relato humano) — With 2+ sources selected and desync active,
+	# clicking a new eligible source WITHOUT Shift MUST replace selection (individual), NOT append additively!
+	model.clear()
+	model.add_sources([t1, t2])
+	await wait_process_frames(2)
+	_focus_camera(main, Vector2(r1.global_position.x, r1.global_position.z), 22.0)
+	await wait_process_frames(2)
+	var r1_pt := _source_screen_point(view, r1)
+	var r1_pick := ctrl.pick_at_screen_pos(r1_pt)
+	assert_true(r1_pick.is_resource_source() and r1_pick.resource_source == r1, "C-03 §7.3 setup: r1 picked cleanly")
+
+	await _left_click(view, r1_pt, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_sources(), [r1], "C-03 §7.3: Unshifted click on new source MUST select individually [r1], not append [t1, t2, r1]")
+
+	# Clicking r1 again with event.shift_pressed=false obeys D1-B (deselects r1 cleanly).
+	await _left_click(view, r1_pt, false)
+	await wait_process_frames(2)
+	assert_true(model.is_empty(), "C-03 §7.3: Second unshifted click on r1 obeys D1-B under desync")
+
+	# Check also clicking an already-selected source in a multi-source group without Shift obeys D1-B.
+	model.add_sources([t1, r1])
+	await wait_process_frames(2)
+	await _left_click(view, r1_pt, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_sources(), [t1], "C-03 §7.3: D1-B single-deselect inside group works under desync")
+
+	await _clear_synthetic_shift_state()
+	assert_false(Input.is_action_pressed(InputActions.SELECTION_MODIFIER), "C-03 teardown: selection_modifier restored false")
+	assert_false(Input.is_key_pressed(KEY_SHIFT), "C-03 teardown: KEY_SHIFT restored false")
+	await _teardown_fixture(view)
+
+
+func test_r3_c03_02_echo_shift_desync_unshifted_drag_locks_rts_and_modifier_truth_table() -> void:
+	await _clear_synthetic_shift_state()
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var model := main.get_source_selection_model()
+	var selection := main.get_selection_manager()
+	var overlay := main.get_selection_box_overlay()
+	var ctrl := main.get_input_controller() as AutonomousGatherInput
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var t3 := _find_source_by_id(main, &"wood_tree_03")
+	assert_not_null(leader_a)
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(t3)
+	if leader_a == null or t1 == null or t2 == null or t3 == null:
+		await _clear_synthetic_shift_state()
+		await _teardown_fixture(view)
+		return
+
+	# §7.4 RED/GREEN — Under echo=true desync, unshifted drag crossing threshold with ev.shift_pressed=false
+	# MUST lock DragMode.UNIT_BOX_RTS (never SOURCE_BOX_ADD).
+	await _trigger_echo_shift_desync()
+	model.add_sources([t2, t3])
+	selection.clear_selection()
+	leader_a.global_position = t1.global_position + Vector3(-2.0, 0.0, 1.5)
+	_focus_camera(main, Vector2(t1.global_position.x, t1.global_position.z), 22.0)
+	await wait_process_frames(2)
+
+	var pt_t1 := _source_screen_point(view, t1)
+	var pt_u := _unit_screen_point(view, leader_a)
+	var start_pt := Vector2(minf(pt_t1.x, pt_u.x) - 42.0, minf(pt_t1.y, pt_u.y) - 42.0)
+	var cross_pt := start_pt + Vector2(ctrl.get_drag_threshold_px() + 10.0, ctrl.get_drag_threshold_px() + 10.0)
+	var end_pt := Vector2(maxf(pt_t1.x, pt_u.x) + 42.0, maxf(pt_t1.y, pt_u.y) + 42.0)
+
+	await _push_motion(view, start_pt, false)
+	await _push_left_button(view, start_pt, true, false)
+	await _push_motion(view, cross_pt, false)
+
+	assert_eq(ctrl.get_active_drag_mode(), AutonomousGatherInput.DragMode.UNIT_BOX_RTS, "C-03 §7.4: Locked DragMode MUST be UNIT_BOX_RTS despite echo desync")
+	assert_false(overlay.is_source_mode(), "C-03 §7.4: Overlay style MUST be RTS unit box, not source box")
+
+	await _push_motion(view, end_pt, false)
+	await _push_left_button(view, end_pt, false, false)
+	await wait_process_frames(2)
+
+	assert_true(selection.is_selected(leader_a), "C-03 §7.4: LeaderA selected via RTS box under desync")
+	assert_eq(model.get_selected_sources(), [t2, t3], "C-03 §7.4: Source model not mutated by SOURCE_BOX_ADD (t1 not added, [t2, t3] kept due to unit capture)")
+
+	# §10.2 Full modifier truth table on real events:
+	# 1) Global=false, Event=false -> false
+	await _clear_synthetic_shift_state()
+	var ev_mf := InputEventMouseButton.new()
+	ev_mf.button_index = MOUSE_BUTTON_LEFT
+	ev_mf.shift_pressed = false
+	assert_false(RtsInputController._is_shift_held(ev_mf), "§10.2: global=F, event=F -> false")
+
+	# 2) Global=false, Event=true -> true
+	var ev_mt := InputEventMouseButton.new()
+	ev_mt.button_index = MOUSE_BUTTON_LEFT
+	ev_mt.shift_pressed = true
+	assert_true(RtsInputController._is_shift_held(ev_mt), "§10.2: global=F, event=T -> true")
+
+	# 3) Global=true (both via echo AND explicit action complement), Event=true -> true; Event=false -> false
+	await _trigger_echo_shift_desync()
+	assert_false(RtsInputController._is_shift_held(ev_mf), "§10.2: global=T(echo), event=F -> false")
+	assert_true(RtsInputController._is_shift_held(ev_mt), "§10.2: global=T(echo), event=T -> true")
+	await _clear_synthetic_shift_state()
+
+	# Action-only event without modifiers uses global fallback cleanly.
+	var act_ev := InputEventAction.new()
+	act_ev.action = InputActions.SELECT
+	act_ev.pressed = true
+	assert_false(RtsInputController._is_shift_held(act_ev), "§10.2: non-modifier event with global=F -> false")
+	Input.action_press(InputActions.SELECTION_MODIFIER)
+	assert_true(RtsInputController._is_shift_held(act_ev), "§10.2: non-modifier event with global=T -> true fallback")
+	assert_false(RtsInputController._is_shift_held(ev_mf), "§10.2: global=T(action_press), event=F -> false (explicit event wins)")
+	await _clear_synthetic_shift_state()
+
+	await _teardown_fixture(view)
+
+
+func test_r3_c02_01_locked_drag_mode_sovereignty_scenarios_a_through_g() -> void:
+	await _clear_synthetic_shift_state()
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var model := main.get_source_selection_model()
+	var selection := main.get_selection_manager()
+	var hud := main.get_community_selection_actions_hud()
+	var overlay := main.get_selection_box_overlay()
+	var ctrl := main.get_input_controller() as AutonomousGatherInput
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var t3 := _find_source_by_id(main, &"wood_tree_03")
+	var t4 := _find_source_by_id(main, &"wood_tree_04")
+	assert_not_null(leader_a)
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(t3)
+	assert_not_null(t4)
+	if leader_a == null or t1 == null or t2 == null or t3 == null or t4 == null:
+		await _teardown_fixture(view)
+		return
+
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	var g0 := _world_screen_point(view, Vector3(0.0, 0.0, -2.0))
+	var g1 := _world_screen_point(view, Vector3(3.5, 0.0, -3.5))
+	assert_true(ctrl.pick_at_screen_pos(g0).is_ground(), "C-02 setup: g0 free ground")
+	assert_true(ctrl.pick_at_screen_pos(g1).is_ground(), "C-02 setup: g1 free ground")
+
+	# Scenario A (§8.4 A — RED on base 5824c3e): Drag locked UNIT_BOX_RTS (D=F, cross=F), Shift pressed AFTER threshold and held on release (U=T), empty ground box -> clears sources per R2-A01!
+	model.add_sources([t1, t2, t3])
+	selection.clear_selection()
+	await wait_process_frames(2)
+	await _left_drag(view, g0, g1, false, false, true)
+	await wait_process_frames(2)
+	assert_true(model.is_empty(), "C-02 Scenario A (§8.4): Shift pressed post-threshold MUST NOT block R2-A01 empty-ground clear")
+	assert_false(hud.is_panel_visible(), "C-02 Scenario A: HUD hidden after R2-A01 clear")
+
+	# Scenario B (§8.4 B): Drag locked SOURCE_BOX_ADD (D=T, cross=T), Shift released BEFORE release (U=F) -> stays SOURCE_BOX_ADD (empty box preserves selection, box over t4 adds t4).
+	selection.clear_selection()
+	model.select_single(t1)
+	await wait_process_frames(2)
+	await _left_drag(view, g0, g1, true, true, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_sources(), [t1], "C-02 Scenario B: Empty SOURCE_BOX_ADD with Shift released pre-up keeps selection, no RTS fallback")
+
+	_focus_camera(main, Vector2(t4.global_position.x, t4.global_position.z), 22.0)
+	await wait_process_frames(2)
+	var p4 := _source_screen_point(view, t4)
+	await _left_drag(view, p4 - Vector2(36.0, 36.0), p4 + Vector2(36.0, 36.0), true, true, false)
+	await wait_process_frames(2)
+	assert_true(model.is_selected(t1) and model.is_selected(t4), "C-02 Scenario B: Locked SOURCE_BOX_ADD adds t4 even after Shift released before up")
+	assert_true(selection.is_empty(), "C-02 Scenario B: SelectionManager untouched")
+
+	# Scenario C (§8.4 C): Shift changes BEFORE crossing threshold -> mode decided by event crossing threshold.
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	selection.clear_selection()
+	model.add_sources([t1, t2])
+	var sub := Vector2(ctrl.get_drag_threshold_px() * 0.4, 0.0)
+	await _push_motion(view, g0, true)
+	await _push_left_button(view, g0, true, true)
+	await _push_motion(view, g0 + sub, true)
+	await _push_motion(view, g1, false)
+	assert_eq(ctrl.get_active_drag_mode(), AutonomousGatherInput.DragMode.UNIT_BOX_RTS, "C-02 Scenario C: T->F before threshold locks UNIT_BOX_RTS")
+	await _push_left_button(view, g1, false, false)
+	await wait_process_frames(1)
+	assert_true(model.is_empty(), "C-02 Scenario C: Crossing threshold with Shift=false performs UNIT_BOX_RTS R2-A01 clear")
+
+	# Scenario D (§8.4 D): Threshold crossed ONLY on release (F->T clears nothing because SOURCE_BOX_ADD; T->F clears under R2-A01).
+	selection.clear_selection()
+	model.select_single(t1)
+	await wait_process_frames(1)
+	await _push_motion(view, g0, false)
+	await _push_left_button(view, g0, true, false)
+	await _push_left_button(view, g1, false, true)
+	await wait_process_frames(1)
+	assert_eq(model.get_selected_sources(), [t1], "C-02 Scenario D1: Release-only threshold with Shift=true locks SOURCE_BOX_ADD")
+
+	selection.clear_selection()
+	await _push_motion(view, g0, true)
+	await _push_left_button(view, g0, true, true)
+	await _push_left_button(view, g1, false, false)
+	await wait_process_frames(1)
+	assert_true(model.is_empty(), "C-02 Scenario D2: Release-only threshold with Shift=false locks UNIT_BOX_RTS and obeys R2-A01")
+
+	# Scenario E (§8.4 E): RTS drag captures inhabitants while sources selected -> preserves sources and selects unit.
+	model.add_sources([t1, t2, t3])
+	selection.clear_selection()
+	await wait_process_frames(2)
+	var pu := _unit_screen_point(view, leader_a)
+	await _left_drag(view, pu - Vector2(36.0, 36.0), pu + Vector2(36.0, 36.0), false, false, true)
+	await wait_process_frames(2)
+	assert_true(selection.is_selected(leader_a), "C-02 Scenario E: RTS drag selects LeaderA")
+	assert_eq(model.get_selected_count(), 3, "C-02 Scenario E: Sources preserved when inhabitants captured")
+
+	# Scenario F (§8.4 F): Empty RTS drag with start or end on source or obstacle MUST preserve R2 boundary (no expansion of C-02).
+	selection.clear_selection()
+	model.clear()
+	model.add_sources([t1, t2, t3])
+	await wait_process_frames(2)
+	var wall_pt := _world_screen_point(view, Vector3(-8.0, 1.25, -6.0))
+	assert_true(ctrl.pick_at_screen_pos(wall_pt).is_obstacle(), "C-02 Scenario F setup: wall_pt is obstacle")
+	await _left_drag(view, wall_pt, g0, false, false, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_count(), 3, "C-02 Scenario F1: Empty RTS drag starting on obstacle MUST preserve R2 boundary (keep sources)")
+
+	_focus_camera(main, Vector2(t1.global_position.x, t1.global_position.z), 22.0)
+	await wait_process_frames(2)
+	var pt1 := _source_screen_point(view, t1)
+	var free_near_t1 := _world_screen_point(view, t1.global_position + Vector3(-2.5, 0.0, 1.5))
+	await _left_drag(view, pt1, free_near_t1, false, false, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_count(), 3, "C-02 Scenario F2: Empty RTS drag starting on source MUST preserve R2 boundary (keep sources)")
+
+	# Scenario G (§8.4 G): Esc cancels drag mid-flight; subsequent release leaves zero residual selection/work effects.
+	model.select_single(t1)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(2)
+	assert_eq(board.get_active_tasks().size(), 1, "C-02 Scenario G setup: 1 authorized task")
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	await _push_motion(view, g0, false)
+	await _push_left_button(view, g0, true, false)
+	await _push_motion(view, g1, false)
+	assert_true(overlay.is_box_active(), "C-02 Scenario G: Drag active before Esc")
+	await _press_escape(view)
+	await _push_left_button(view, g1, false, false)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_sources(), [t1], "C-02 Scenario G: Esc cancelled drag without changing source selection")
+	assert_eq(board.get_active_tasks().size(), 1, "C-02 Scenario G: Active community work preserved")
+
+	await _clear_synthetic_shift_state()
+	await _teardown_fixture(view)
+
+
+func test_r3_regression_matrix_quantities_and_economy_invariants() -> void:
+	await _clear_synthetic_shift_state()
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var inv := main.get_settlement_inventory()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	assert_not_null(leader_a)
+	assert_not_null(leader_b)
+
+	var all_sources := main.get_test_map().get_all_region_resource_sources()
+	assert_eq(all_sources.size(), 14, "§10.3: All 14 playable sources present on MainScene")
+
+	var stock_wood0 := inv.get_physical_amount(&"wood")
+	var stock_stone0 := inv.get_physical_amount(&"stone")
+	var stock_food0 := inv.get_physical_amount(&"food")
+
+	# §10.3: Real click / Shift+click selection across 1, 2, 3 trees, 6 wood, heterogeneous, and all 14 sources (no add_sources shortcut).
+	var ordered_ids: Array[StringName] = [
+		&"wood_tree_01", &"wood_tree_02", &"wood_tree_03", &"wood_tree_04", &"wood_tree_05", &"wood_tree_06",
+		&"stone_rock_01", &"stone_rock_02", &"stone_rock_03", &"stone_rock_04",
+		&"food_bush_01", &"food_bush_02", &"food_bush_03", &"food_bush_04",
+	]
+	var ctrl := main.get_input_controller() as AutonomousGatherInput
+	var cam := (main.get_node("RtsCameraRig") as RtsCameraRig).get_camera()
+	for idx: int in range(ordered_ids.size()):
+		var src := _find_source_by_id(main, ordered_ids[idx])
+		assert_not_null(src, "§10.3: Source %s present" % String(ordered_ids[idx]))
+		if src == null:
+			continue
+		_focus_camera(main, Vector2(src.global_position.x, src.global_position.z), 16.0)
+		await wait_process_frames(2)
+		var offsets: Array[Vector3] = []
+		if src.get_resource_id() == &"wood":
+			offsets = [
+				Vector3(0.0, 0.7, 0.0),
+				Vector3(0.0, 2.2, 0.0),
+				Vector3(-0.35, 1.5, -0.35),
+				Vector3(0.35, 1.5, -0.35),
+				Vector3(0.0, 0.25, 0.0),
+			]
+		else:
+			offsets = [Vector3(0.0, 0.25, 0.0), Vector3(0.0, 0.1, 0.0)]
+		var click_pt: Vector2 = cam.unproject_position(src.global_position + offsets[0])
+		var pk: PickResult = ctrl.pick_at_screen_pos(click_pt)
+		for off: Vector3 in offsets:
+			var cand_pt: Vector2 = cam.unproject_position(src.global_position + off)
+			var cand_pk: PickResult = ctrl.pick_at_screen_pos(cand_pt)
+			if cand_pk.is_resource_source() and cand_pk.resource_source == src:
+				click_pt = cand_pt
+				pk = cand_pk
+				break
+		assert_true(pk.is_resource_source() and pk.resource_source == src, "§10.3: Clean pick for %s" % String(ordered_ids[idx]))
+		await _left_click(view, click_pt, idx > 0)
+		await wait_process_frames(1)
+		if idx == 0:
+			assert_eq(model.get_selected_count(), 1, "§10.3: 1 tree selected by real click")
+		elif idx == 1:
+			assert_eq(model.get_selected_count(), 2, "§10.3: 2 trees selected by real Shift+click")
+		elif idx == 2:
+			assert_eq(model.get_selected_count(), 3, "§10.3: 3 trees selected by real Shift+click")
+		elif idx == 5:
+			assert_eq(model.get_count_for_resource(&"wood"), 6, "§10.3: All 6 wood trees selected by real clicks")
+		elif idx == 6:
+			assert_eq(model.get_counts_by_resource(), {&"wood": 6, &"stone": 1}, "§10.3: Heterogeneous selection verified via real click")
+
+	assert_eq(model.get_selected_count(), 14, "§10.3: All 14 playable sources selected via real Shift+clicks without duplicates")
+	assert_eq(board.get_active_tasks().size(), 0, "§10.6: Selection alone creates zero community tasks")
+
+	# Free-ground click without Shift clears all 14 cleanly and preserves HUD hide + economy invariance.
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	await _left_click(view, _world_screen_point(view, Vector3(0.0, 0.0, -2.0)), false)
+	await wait_process_frames(2)
+	assert_true(model.is_empty(), "§10.3: Ground click clears all 14 selected sources")
+	assert_false(hud.is_panel_visible(), "§10.5: HUD hides after clearing 14 sources")
+	assert_eq(inv.get_physical_amount(&"wood"), stock_wood0, "§10.6: Wood stock unchanged")
+	assert_eq(inv.get_physical_amount(&"stone"), stock_stone0, "§10.6: Stone stock unchanged")
+	assert_eq(inv.get_physical_amount(&"food"), stock_food0, "§10.6: Food stock unchanged")
+
+	await _clear_synthetic_shift_state()
+	await _teardown_fixture(view)
