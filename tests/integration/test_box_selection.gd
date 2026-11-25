@@ -44,11 +44,12 @@ func _project_unit_anchor(camera: Camera3D, unit: Unit) -> Vector2:
 	return camera.unproject_position(SelectionBoxMath.get_unit_world_anchor(unit))
 
 
-func _push_mouse_move(screen_pos: Vector2, relative: Vector2 = Vector2.ZERO) -> void:
+func _push_mouse_move(screen_pos: Vector2, relative: Vector2 = Vector2.ZERO, shift_held: bool = false) -> void:
 	var motion := InputEventMouseMotion.new()
 	motion.position = screen_pos
 	motion.global_position = screen_pos
 	motion.relative = relative
+	motion.shift_pressed = shift_held
 	get_viewport().push_input(motion, true)
 
 
@@ -63,13 +64,13 @@ func _push_mouse_button(button: MouseButton, screen_pos: Vector2, pressed: bool,
 
 
 func _simulate_box_drag(start_pos: Vector2, end_pos: Vector2, shift_held: bool = false) -> void:
-	_push_mouse_move(start_pos)
+	_push_mouse_move(start_pos, Vector2.ZERO, shift_held)
 	await wait_process_frames(1)
 	_push_mouse_button(MOUSE_BUTTON_LEFT, start_pos, true, shift_held)
 	await wait_process_frames(1)
-	_push_mouse_move(start_pos.lerp(end_pos, 0.5))
+	_push_mouse_move(start_pos.lerp(end_pos, 0.5), Vector2.ZERO, shift_held)
 	await wait_process_frames(1)
-	_push_mouse_move(end_pos)
+	_push_mouse_move(end_pos, Vector2.ZERO, shift_held)
 	await wait_process_frames(1)
 	_push_mouse_button(MOUSE_BUTTON_LEFT, end_pos, false, shift_held)
 	await wait_process_frames(2)

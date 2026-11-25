@@ -4,6 +4,7 @@ extends TestCase
 ## concentric selection vs task rings, anti-click-through, and 720p/1080p layout geometry.
 
 const MAIN_SCENE: PackedScene = preload("res://src/main/main.tscn")
+const SHELTER_DEF: BuildingDefinition = preload("res://data/buildings/shelter_basic.tres")
 const D1_ICON_WOOD: Texture2D = preload("res://assets/ui/d2/icons/ico_work_chop.png")
 const D1_ICON_STONE: Texture2D = preload("res://assets/ui/d2/icons/ico_work_mine.png")
 const D1_ICON_FOOD: Texture2D = preload("res://assets/ui/d2/icons/ico_work_harvest.png")
@@ -480,7 +481,27 @@ func test_d1_06_shift_drag_from_all_origins_subset_5_of_6_trees_and_empty_box_no
 	await _teardown_fixture(view)
 
 
-func test_d1_07_mid_drag_shift_lock_and_escape_cancellation_without_stopping_tasks() -> void:
+func _push_motion(view: SubViewport, pos: Vector2, shift_held: bool) -> void:
+	var mm := InputEventMouseMotion.new()
+	mm.position = pos
+	mm.global_position = pos
+	mm.shift_pressed = shift_held
+	view.push_input(mm, true)
+	await wait_process_frames(1)
+
+
+func _push_left_button(view: SubViewport, pos: Vector2, pressed: bool, shift_held: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.position = pos
+	ev.global_position = pos
+	ev.pressed = pressed
+	ev.shift_pressed = shift_held
+	view.push_input(ev, true)
+	await wait_process_frames(1)
+
+
+func test_d1_07_f01_pre_and_post_threshold_shift_capture_and_esc_hygiene() -> void:
 	var view := await _fixture()
 	var main := view.get_child(0) as MainScene
 	var board := main.get_community_work_board()
@@ -488,80 +509,152 @@ func test_d1_07_mid_drag_shift_lock_and_escape_cancellation_without_stopping_tas
 	var selection := main.get_selection_manager()
 	var hud := main.get_community_selection_actions_hud()
 	var overlay := main.get_selection_box_overlay()
+	var ctrl := main.get_input_controller() as AutonomousGatherInput
 	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
 	var t1 := _find_source_by_id(main, &"wood_tree_01")
 	var t2 := _find_source_by_id(main, &"wood_tree_02")
 	assert_not_null(leader_a)
+	assert_not_null(leader_b)
 	assert_not_null(t1)
 	assert_not_null(t2)
-	if leader_a == null or t1 == null or t2 == null:
+	assert_not_null(ctrl)
+	if leader_a == null or leader_b == null or t1 == null or t2 == null or ctrl == null:
 		await _teardown_fixture(view)
 		return
 
-	# A) Hold Shift at press, release Shift mid-drag -> stays SOURCE_BOX_ADD (no flip to RTS unit box).
-	selection.select_single(leader_a)
-	_focus_camera(main, Vector2(t1.global_position.x, t1.global_position.z), 22.0)
-	await wait_process_frames(2)
-	var p1 := _source_screen_point(view, t1)
-	await _left_drag(view, p1 - Vector2(40.0, 40.0), p1 + Vector2(40.0, 40.0), true, false, false)
-	assert_true(model.is_selected(t1), "Releasing Shift mid-drag keeps locked SOURCE_BOX_ADD mode")
-	assert_eq(selection.get_selected_units(), [leader_a], "Unit selection untouched on locked source drag")
-
-	# B) Press WITHOUT Shift, press Shift mid-drag -> stays UNIT_BOX_RTS (no flip to source box).
-	model.clear()
-	selection.clear_selection()
+	var sub_px: float = ctrl.get_drag_threshold_px() * 0.4
 	leader_a.global_position = t1.global_position + Vector3(-2.0, 0.0, 1.5)
 	_focus_camera(main, Vector2(t1.global_position.x, t1.global_position.z), 22.0)
 	await wait_process_frames(2)
-	var pu := _unit_screen_point(view, leader_a)
-	await _left_drag(view, pu - Vector2(45.0, 45.0), pu + Vector2(45.0, 45.0), false, true, true)
-	assert_true(selection.is_selected(leader_a), "Pressing Shift mid-drag keeps locked UNIT_BOX_RTS mode")
-	assert_true(model.is_empty(), "Locked UNIT_BOX_RTS does NOT add sources")
 
-	# C) Esc during active Shift+drag cancels gesture without mutating selection.
+	var p1 := _source_screen_point(view, t1)
+	var pu := _unit_screen_point(view, leader_a)
+	var box_start := Vector2(minf(p1.x, pu.x) - 45.0, minf(p1.y, pu.y) - 45.0)
+	var box_end := Vector2(maxf(p1.x, pu.x) + 45.0, maxf(p1.y, pu.y) + 45.0)
+	var box_cross := box_start + Vector2(ctrl.get_drag_threshold_px() + 10.0, ctrl.get_drag_threshold_px() + 10.0)
+
+	# F01-A (pre-threshold False -> True): press without Shift, move below threshold, press Shift BEFORE crossing threshold.
+	model.clear()
+	selection.select_single(leader_b)
+	await _push_motion(view, box_start, false)
+	await _push_left_button(view, box_start, true, false)
+	await _push_motion(view, box_start + Vector2(sub_px, 0.0), false)
+	assert_false(overlay.is_box_active(), "F01-A: Sub-threshold motion does not lock mode yet")
+	await _push_motion(view, box_cross, true)
+	assert_true(overlay.is_box_active(), "F01-A: Overlay active after crossing threshold")
+	assert_true(overlay.is_source_mode(), "F01-A: Pressing Shift BEFORE threshold locks SOURCE_BOX_ADD overlay")
+	await _push_motion(view, box_end, true)
+	await _push_left_button(view, box_end, false, true)
+	await wait_process_frames(1)
+	assert_true(model.is_selected(t1), "F01-A: Pressing Shift before threshold selects sources")
+	assert_eq(selection.get_selected_units(), [leader_b], "F01-A: RTS unit selection preserved")
+	assert_eq(board.get_active_tasks().size(), 0, "F01-A: Zero tasks created by selection")
+
+	# F01-B (pre-threshold True -> False): press WITH Shift, move below threshold, release Shift BEFORE crossing threshold.
+	model.clear()
+	selection.clear_selection()
+	await _push_motion(view, box_start, true)
+	await _push_left_button(view, box_start, true, true)
+	await _push_motion(view, box_start + Vector2(sub_px, 0.0), true)
+	assert_false(overlay.is_box_active(), "F01-B: Sub-threshold motion does not lock mode yet")
+	await _push_motion(view, box_cross, false)
+	assert_true(overlay.is_box_active(), "F01-B: Overlay active after crossing threshold")
+	assert_false(overlay.is_source_mode(), "F01-B: Releasing Shift BEFORE threshold locks UNIT_BOX_RTS overlay")
+	await _push_motion(view, box_end, false)
+	await _push_left_button(view, box_end, false, false)
+	await wait_process_frames(1)
+	assert_true(selection.is_selected(leader_a), "F01-B: Releasing Shift before threshold performs RTS unit box selection")
+	assert_true(model.is_empty(), "F01-B: Zero sources added when Shift released before threshold")
+	assert_eq(board.get_active_tasks().size(), 0, "F01-B: Zero tasks created")
+
+	# F01-C (post-threshold True -> False): cross threshold WITH Shift, then release Shift AFTER threshold.
+	model.clear()
+	selection.select_single(leader_b)
+	await _push_motion(view, box_start, true)
+	await _push_left_button(view, box_start, true, true)
+	await _push_motion(view, box_cross, true)
+	assert_true(overlay.is_source_mode(), "F01-C: Locked SOURCE_BOX_ADD at threshold")
+	await _push_motion(view, box_end, false)
+	assert_true(overlay.is_source_mode(), "F01-C: Overlay stays SOURCE_BOX_ADD after releasing Shift post-threshold")
+	await _push_left_button(view, box_end, false, false)
+	await wait_process_frames(1)
+	assert_true(model.is_selected(t1), "F01-C: Releasing Shift AFTER threshold keeps locked SOURCE_BOX_ADD")
+	assert_eq(selection.get_selected_units(), [leader_b], "F01-C: Unit selection untouched")
+
+	# F01-D (post-threshold False -> True): cross threshold WITHOUT Shift, then press Shift AFTER threshold.
+	model.clear()
+	selection.clear_selection()
+	await _push_motion(view, box_start, false)
+	await _push_left_button(view, box_start, true, false)
+	await _push_motion(view, box_cross, false)
+	assert_false(overlay.is_source_mode(), "F01-D: Locked UNIT_BOX_RTS at threshold")
+	await _push_motion(view, box_end, true)
+	assert_false(overlay.is_source_mode(), "F01-D: Overlay stays UNIT_BOX_RTS after pressing Shift post-threshold")
+	await _push_left_button(view, box_end, false, true)
+	await wait_process_frames(1)
+	assert_true(selection.is_selected(leader_a), "F01-D: Pressing Shift AFTER threshold keeps locked UNIT_BOX_RTS")
+	assert_true(model.is_empty(), "F01-D: Locked UNIT_BOX_RTS does NOT add sources")
+
+	# F01-E (threshold crossed ONLY on release: press False -> release True with zero intermediate motion).
+	model.clear()
+	selection.select_single(leader_b)
+	await _push_motion(view, box_start, false)
+	await _push_left_button(view, box_start, true, false)
+	await _push_left_button(view, box_end, false, true)
+	await wait_process_frames(1)
+	assert_true(model.is_selected(t1), "F01-E: Release-only threshold with Shift=true locks SOURCE_BOX_ADD")
+	assert_eq(selection.get_selected_units(), [leader_b], "F01-E: Unit selection preserved on release-only source drag")
+
+	# F01-F (threshold crossed ONLY on release: press True -> release False with zero intermediate motion).
+	model.clear()
+	selection.clear_selection()
+	await _push_motion(view, box_start, true)
+	await _push_left_button(view, box_start, true, true)
+	await _push_left_button(view, box_end, false, false)
+	await wait_process_frames(1)
+	assert_true(selection.is_selected(leader_a), "F01-F: Release-only threshold with Shift=false locks UNIT_BOX_RTS")
+	assert_true(model.is_empty(), "F01-F: Zero sources selected on release-only RTS drag")
+
+	# F01-G (Esc cancellation during locked source drag + release ignored + next gesture clean + Esc preserves active tasks).
+	model.clear()
+	selection.clear_selection()
 	var p2 := _source_screen_point(view, t2)
-	var down := InputEventMouseButton.new()
-	down.button_index = MOUSE_BUTTON_LEFT
-	down.position = p2 - Vector2(40.0, 40.0)
-	down.global_position = down.position
-	down.pressed = true
-	down.shift_pressed = true
-	view.push_input(down, true)
-	await wait_process_frames(1)
-	var mm := InputEventMouseMotion.new()
-	mm.position = p2 + Vector2(40.0, 40.0)
-	mm.global_position = mm.position
-	mm.shift_pressed = true
-	view.push_input(mm, true)
-	await wait_process_frames(1)
-	assert_true(overlay.is_box_active(), "Box overlay active before Esc")
-	assert_true(overlay.is_source_mode(), "Overlay uses distinct source style during Shift+drag")
+	await _push_motion(view, p2 - Vector2(40.0, 40.0), true)
+	await _push_left_button(view, p2 - Vector2(40.0, 40.0), true, true)
+	await _push_motion(view, p2 + Vector2(40.0, 40.0), true)
+	assert_true(overlay.is_box_active(), "F01-G: Box overlay active before Esc")
+	assert_true(overlay.is_source_mode(), "F01-G: Overlay uses source style during locked Shift+drag")
 
 	await _press_escape(view)
-	assert_false(overlay.is_box_active(), "Esc cancels active source drag")
-	assert_true(model.is_empty(), "Cancelled drag must NOT select sources")
-	var up := InputEventMouseButton.new()
-	up.button_index = MOUSE_BUTTON_LEFT
-	up.position = p2 + Vector2(40.0, 40.0)
-	up.global_position = up.position
-	up.pressed = false
-	up.shift_pressed = true
-	view.push_input(up, true)
-	await wait_process_frames(1)
-	assert_true(model.is_empty(), "Release after Esc cancellation is ignored")
+	assert_false(overlay.is_box_active(), "F01-G: Esc cancels active source drag")
+	assert_false(overlay.is_source_mode(), "F01-G: Esc resets overlay source style cleanly")
+	assert_true(model.is_empty(), "F01-G: Cancelled drag must NOT select sources")
+	await _push_left_button(view, p2 + Vector2(40.0, 40.0), false, true)
+	assert_true(model.is_empty(), "F01-G: Release after Esc cancellation is ignored")
 
-	# D) Esc outside drag clears selection and hides HUD, WITHOUT cancelling authorized tasks.
+	# Next independent gesture (unshifted RTS drag) has zero residual Shift state.
+	await _push_motion(view, box_start, false)
+	await _push_left_button(view, box_start, true, false)
+	await _push_motion(view, box_cross, false)
+	assert_false(overlay.is_source_mode(), "F01-G: Next unshifted gesture has zero residual source overlay style")
+	await _push_motion(view, box_end, false)
+	await _push_left_button(view, box_end, false, false)
+	assert_true(selection.is_selected(leader_a), "F01-G: Next unshifted gesture selects RTS unit cleanly")
+	assert_true(model.is_empty(), "F01-G: Next unshifted gesture adds zero sources")
+
+	# Esc outside drag clears selection and hides HUD, WITHOUT cancelling authorized tasks.
 	model.select_single(t1)
 	var wood_btn := hud.get_category_button(&"wood")
 	await _click_hud_button(view, wood_btn)
 	await wait_process_frames(3)
-	assert_eq(board.get_active_tasks().size(), 1, "Task active after explicit HUD authorization")
+	assert_eq(board.get_active_tasks().size(), 1, "F01-G: Task active after explicit HUD authorization")
 
 	await _press_escape(view)
 	await wait_process_frames(2)
-	assert_true(model.is_empty(), "Esc clears source selection")
-	assert_false(hud.is_panel_visible(), "HUD hides after Esc clears selection")
-	assert_eq(board.get_active_tasks().size(), 1, "Esc must NEVER cancel active community tasks")
+	assert_true(model.is_empty(), "F01-G: Esc clears source selection")
+	assert_false(hud.is_panel_visible(), "F01-G: HUD hides after Esc clears selection")
+	assert_eq(board.get_active_tasks().size(), 1, "F01-G: Esc must NEVER cancel active community tasks")
 
 	await _teardown_fixture(view)
 
@@ -908,5 +1001,369 @@ func test_d1_13_four_visual_ring_states_and_zero_orphan_rings_on_teardown() -> v
 	await wait_process_frames(2)
 	assert_eq(_count_all_rings(main, "SourceSelectionRing_"), 0, "Zero orphan selection rings after teardown")
 	assert_eq(_count_all_rings(main, "AutoGatherTaskRing_"), 0, "Zero orphan task rings after teardown")
+
+	await _teardown_fixture(view)
+
+
+func test_d1_14_t01a_reauthorization_refused_under_blocked_admission_preserves_state() -> void:
+	## R-03A D1 R1 — T01-A:
+	## Step 1-5: Real behavioral flow produces a legitimate BLOCKED_REAUTHORIZATION task via HUD + personal overrides.
+	## Step 6-7: Minimal controlled configuration establishes blocked economic admission (declared explicitly as controlled
+	##           fixture because production MainScene evaluates admission once at _ready with no dynamic transition API),
+	##           then verifies HUD disabled state, public API refusal, and full preservation of task/orders/economy.
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var feedback := main.get_autonomous_gather_feedback()
+	var hud := main.get_community_selection_actions_hud()
+	var g_in := main.get_input_controller() as AutonomousGatherInput
+	var model := main.get_source_selection_model()
+	var selection := main.get_selection_manager()
+	var cmd := main.get_command_controller()
+	var inventory := main.get_settlement_inventory()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	assert_not_null(leader_a)
+	assert_not_null(leader_b)
+	assert_not_null(t1)
+	if leader_a == null or leader_b == null or t1 == null:
+		await _teardown_fixture(view)
+		return
+
+	# 1-4: Authorize via real HUD and drive task legitimately into BLOCKED_REAUTHORIZATION via personal moves.
+	model.select_single(t1)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var task: WorkTask = board.get_active_task_for_source(t1)
+	assert_not_null(task, "T01-A: Initial wood task registered via HUD")
+	if task == null:
+		await _teardown_fixture(view)
+		return
+
+	for override_idx: int in range(2):
+		if task.is_blocked_reauthorization():
+			break
+		var w: Unit = task.assigned_unit
+		if w != null:
+			selection.select_single(w)
+			var dest := Vector3(4.0 + float(override_idx) * 2.0, 0.0, 12.0)
+			assert_true(cmd.command_at(PickResult.from_ground(dest, Vector3.UP)), "T01-A: Personal override #%d issued" % (override_idx + 1))
+			await wait_process_frames(4)
+			await wait_physics_frames(2)
+
+	assert_true(task.is_blocked_reauthorization(), "T01-A: Task legitimately in BLOCKED_REAUTHORIZATION")
+	assert_eq(task.excluded_unit_ids.size(), 2, "T01-A: Both leaders recorded in excluded_unit_ids")
+
+	# Free leader_a (so an idle worker exists) while keeping leader_b on a real personal order.
+	leader_a.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	selection.select_single(leader_b)
+	assert_true(cmd.command_at(PickResult.from_ground(Vector3(-18.0, 0.0, -14.0), Vector3.UP)), "T01-A: LeaderB personal order active")
+	await wait_process_frames(2)
+	var b_personal_order: UnitOrder = leader_b.get_current_order()
+
+	# 5: Snapshot identity, exclusions, task counts, and economic state before blocked reauthorization attempt.
+	var orig_task_id: int = task.task_id
+	var orig_group_id: int = task.group_id
+	var orig_exclusions: Dictionary = task.excluded_unit_ids.duplicate(true)
+	var orig_all_tasks_count: int = board.get_all_tasks().size()
+	var wood_stock_before: int = inventory.get_physical_amount(&"wood")
+	var t1_rem_before: int = t1.get_remaining_amount()
+	var a_weight_before: int = leader_a.get_carry_load().get_current_weight()
+	var b_weight_before: int = leader_b.get_carry_load().get_current_weight()
+
+	# 6: Minimal controlled fixture applying blocked economic admission reason via supported configure APIs.
+	var blocked_reason: String = "load_unavailable_for_admission"
+	g_in.configure_community_work(board, dispatcher, feedback, true, blocked_reason, hud)
+	hud.configure(model, board, true, blocked_reason)
+	model.select_single(t1)
+	await wait_process_frames(2)
+
+	var wood_btn: Button = hud.get_category_button(&"wood")
+	assert_true(hud.is_panel_visible(), "T01-A: HUD panel visible with selected blocked source")
+	assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_ECONOMY_BLOCKED, "T01-A: HUD indicates economy_blocked")
+	assert_true(wood_btn.disabled, "T01-A: HUD button disabled under blocked economic admission")
+
+	# 7: Attempt explicit reauthorization via public API (defense-in-depth while HUD button is disabled).
+	feedback.last_message = ""
+	var res: Dictionary = g_in.authorize_selected_category(&"wood")
+	await wait_process_frames(3)
+	await wait_physics_frames(2)
+
+	assert_false(bool(res.get("ok", true)), "T01-A: Public authorization API refuses reauthorization under blocked admission")
+	assert_eq(String(res.get("reason", "")), "economy_blocked", "T01-A: Refusal reason is economy_blocked")
+	assert_string_contains(feedback.last_message.to_lower(), "bloqueada", "T01-A: Honest blocked feedback shown")
+	assert_eq(task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "T01-A: Task remains BLOCKED_REAUTHORIZATION")
+	assert_eq(task.task_id, orig_task_id, "T01-A: task_id preserved")
+	assert_eq(task.group_id, orig_group_id, "T01-A: group_id preserved")
+	assert_eq(task.excluded_unit_ids, orig_exclusions, "T01-A: excluded_unit_ids preserved verbatim")
+	assert_eq(board.get_all_tasks().size(), orig_all_tasks_count, "T01-A: Zero new tasks created")
+	assert_null(task.assigned_unit, "T01-A: Zero worker assigned to blocked task")
+	assert_null(leader_a.get_current_order(), "T01-A: Idle LeaderA not dispatched")
+	assert_eq(leader_b.get_current_order(), b_personal_order, "T01-A: LeaderB personal order untouched")
+	assert_eq(inventory.get_physical_amount(&"wood"), wood_stock_before, "T01-A: Wood stock invariant")
+	assert_eq(t1.get_remaining_amount(), t1_rem_before, "T01-A: Source remaining invariant")
+	assert_eq(leader_a.get_carry_load().get_current_weight(), a_weight_before, "T01-A: LeaderA carry invariant")
+	assert_eq(leader_b.get_carry_load().get_current_weight(), b_weight_before, "T01-A: LeaderB carry invariant")
+
+	await _teardown_fixture(view)
+
+
+func test_d1_15_t01b_reauthorization_during_regional_tx_and_selective_scope() -> void:
+	## R-03A D1 R1 — T01-B + Selective Reauthorization:
+	## Exercises explicit reauthorization of a blocked wood task INSIDE an authentic ReservedWithdrawalCoordinator
+	## transaction (real ConstructOrder on LeaderB), using a declared focal reentrant _flush_dispatch() probe to
+	## verify the economy_busy guard during the active RegionalAuthority operation, followed by spontaneous
+	## event-driven resumption from inventory_changed (ZERO manual request_dispatch()), while proving an unrelated
+	## blocked stone task outside the selection/category remains BLOCKED_REAUTHORIZATION with exclusions intact.
+	var view := await _fixture()
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var dispatcher := main.get_community_task_dispatcher()
+	var hud := main.get_community_selection_actions_hud()
+	var g_in := main.get_input_controller() as AutonomousGatherInput
+	var model := main.get_source_selection_model()
+	var selection := main.get_selection_manager()
+	var cmd := main.get_command_controller()
+	var inventory := main.get_settlement_inventory()
+	var cm := main.get_construction_manager()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var leader_b := _find_unit_by_id(main, &"leader_b")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	assert_not_null(leader_a)
+	assert_not_null(leader_b)
+	assert_not_null(t1)
+	assert_not_null(r1)
+	assert_not_null(cm)
+	if leader_a == null or leader_b == null or t1 == null or r1 == null or cm == null:
+		await _teardown_fixture(view)
+		return
+
+	var world := main.get_world_3d()
+	var region_id: StringName = cm.get_region_id()
+	t1.configure(t1.source_id, t1.get_definition(), 2, 2, 2)
+	r1.configure(r1.source_id, r1.get_definition(), 1, 1, 2)
+
+	# 1. Seed authentic physical piles and create a real ConstructionSite.
+	assert_true(inventory.deposit(&"wood", 12), "T01-B: Camp wood deposited")
+	assert_true(inventory.deposit(&"stone", 6), "T01-B: Camp stone deposited")
+	var site_res: Dictionary = cm.try_create_site_from_placement(SHELTER_DEF, Vector3(-6.0, 0.0, -5.0))
+	assert_true(bool(site_res.get("ok", false)), "T01-B: ConstructionSite created")
+	var site := site_res.get("site") as ConstructionSite
+	assert_not_null(site)
+	if site == null:
+		await _teardown_fixture(view)
+		return
+
+	# 2. Authorize wood (t1) and stone (r1) via HUD and legitimately drive BOTH into BLOCKED_REAUTHORIZATION.
+	model.select_single(t1)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var wood_task: WorkTask = board.get_active_task_for_source(t1)
+	assert_not_null(wood_task, "T01-B: Wood task active")
+	if wood_task == null:
+		await _teardown_fixture(view)
+		return
+
+	for override_idx: int in range(2):
+		if wood_task.is_blocked_reauthorization():
+			break
+		var w: Unit = wood_task.assigned_unit
+		if w != null:
+			selection.select_single(w)
+			cmd.command_at(PickResult.from_ground(Vector3(3.0 + float(override_idx) * 2.0, 0.0, 10.0), Vector3.UP))
+			await wait_process_frames(4)
+			await wait_physics_frames(2)
+	leader_a.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	leader_b.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	await wait_process_frames(3)
+
+	model.select_single(r1)
+	await _click_hud_button(view, hud.get_category_button(&"stone"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var stone_task: WorkTask = board.get_active_task_for_source(r1)
+	assert_not_null(stone_task, "T01-B: Stone task active")
+	if stone_task == null:
+		await _teardown_fixture(view)
+		return
+
+	for override_idx: int in range(2):
+		if stone_task.is_blocked_reauthorization():
+			break
+		var w: Unit = stone_task.assigned_unit
+		if w != null:
+			selection.select_single(w)
+			cmd.command_at(PickResult.from_ground(Vector3(-3.0 - float(override_idx) * 2.0, 0.0, 10.0), Vector3.UP))
+			await wait_process_frames(4)
+			await wait_physics_frames(2)
+
+	assert_true(wood_task.is_blocked_reauthorization(), "T01-B: Wood task legitimately blocked")
+	assert_true(stone_task.is_blocked_reauthorization(), "T01-B: Stone task legitimately blocked (selective-scope control)")
+	var orig_wood_id: int = wood_task.task_id
+	var orig_wood_group: int = wood_task.group_id
+	var orig_stone_id: int = stone_task.task_id
+	var orig_stone_exclusions: Dictionary = stone_task.excluded_unit_ids.duplicate(true)
+
+	# 3. Park LeaderA idle near camp and select ONLY t1 (leaving blocked r1 unselected and of another category).
+	leader_a.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	leader_b.cancel_current_order(UnitOrder.REASON_CANCELLED)
+	leader_a.global_position = Vector3(-2.5, 0.0, 2.5)
+	leader_b.global_position = Vector3(2.5, 0.0, 2.5)
+	model.select_single(t1)
+	await wait_process_frames(2)
+	await wait_physics_frames(1)
+
+	var wood_before_tx: int = inventory.get_physical_amount(&"wood")
+	var stone_before_tx: int = inventory.get_physical_amount(&"stone")
+	var t1_before_tx: int = t1.get_remaining_amount()
+	var r1_before_tx: int = r1.get_remaining_amount()
+	var tasks_count_before_tx: int = board.get_all_tasks().size()
+
+	var assigned_events: Array[Dictionary] = []
+	var on_assigned := func(tk: WorkTask, u: Unit, o: GatherResourceOrder) -> void:
+		assigned_events.append({"task": tk, "unit": u, "order": o})
+	dispatcher.task_assigned.connect(on_assigned)
+
+	var obs: Dictionary = {
+		"fired": false,
+		"region_active": false,
+		"authority_active_op": false,
+		"inventory_busy": false,
+		"dispatcher_busy": false,
+		"reauth_ok": false,
+		"reauth_count": 0,
+		"state_after_reauth": -1,
+		"blocked_reason_during_tx": "",
+		"assigned_during_tx": null,
+		"leader_a_order_during_tx": null,
+		"flush_queued_after_probe": true,
+		"assigned_count_during_tx": -1,
+		"inventory_changed_after_probe": false,
+	}
+
+	var on_inv_changed := func() -> void:
+		if bool(obs["fired"]):
+			obs["inventory_changed_after_probe"] = true
+	inventory.inventory_changed.connect(on_inv_changed)
+
+	var on_res_changed := func() -> void:
+		if bool(obs["fired"]):
+			return
+		obs["fired"] = true
+		obs["region_active"] = ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id)
+		var domains_raw: Variant = world.get_meta(ReservedWithdrawalCoordinator.DOMAIN_META, {})
+		if domains_raw is Dictionary:
+			var auth: ReservedWithdrawalCoordinator.RegionalAuthority = (domains_raw as Dictionary).get(region_id) as ReservedWithdrawalCoordinator.RegionalAuthority
+			if auth != null:
+				obs["authority_active_op"] = auth.has_active_operation()
+		obs["inventory_busy"] = inventory.is_transaction_busy()
+		obs["dispatcher_busy"] = bool(dispatcher.call("_is_economy_busy", t1))
+
+		# Invoke explicit administrative reauthorization while RegionalAuthority transaction is active.
+		var reauth_res: Dictionary = g_in.authorize_selected_category(&"wood")
+		obs["reauth_ok"] = bool(reauth_res.get("ok", false))
+		obs["reauth_count"] = (reauth_res.get("reauthorized_tasks", []) as Array).size()
+		obs["state_after_reauth"] = wood_task.state
+
+		# Declared focal guard probe: execute _flush_dispatch() reentrantly while RegionalAuthority is still locked.
+		dispatcher.call("_flush_dispatch")
+		obs["blocked_reason_during_tx"] = wood_task.last_reason
+		obs["assigned_during_tx"] = wood_task.assigned_unit
+		obs["leader_a_order_during_tx"] = leader_a.get_current_order()
+		obs["flush_queued_after_probe"] = dispatcher._flush_queued
+		obs["assigned_count_during_tx"] = assigned_events.size()
+	inventory.reservations_changed.connect(on_res_changed)
+
+	# 4. Command LeaderB onto real ConstructOrder so ReservedWithdrawalCoordinator runs an authentic withdrawal.
+	assert_true(cmd.command_units_to_site(site, [leader_b]), "T01-B: Real ConstructOrder issued to LeaderB")
+	Engine.time_scale = 3.0
+	for _i: int in range(1200):
+		if bool(obs["fired"]):
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+
+	if inventory.reservations_changed.is_connected(on_res_changed):
+		inventory.reservations_changed.disconnect(on_res_changed)
+
+	# Verify active regional transaction & focal economy_busy guard during the callback.
+	assert_true(bool(obs["fired"]), "T01-B: Authentic ReservedWithdrawalCoordinator callback fired")
+	assert_true(bool(obs["region_active"]), "T01-B: RegionalAuthority transaction active readonly == true")
+	assert_true(bool(obs["authority_active_op"]), "T01-B: RegionalAuthority.has_active_operation() == true")
+	assert_true(bool(obs["inventory_busy"]), "T01-B: SettlementInventory.is_transaction_busy() == true")
+	assert_true(bool(obs["dispatcher_busy"]), "T01-B: Dispatcher._is_economy_busy() == true during withdrawal")
+	assert_true(bool(obs["reauth_ok"]), "T01-B: Administrative reauthorization accepted cleanly")
+	assert_eq(int(obs["reauth_count"]), 1, "T01-B: Exactly 1 wood task reauthorized")
+	assert_eq(int(obs["state_after_reauth"]), WorkTask.State.PENDING_WORKERS, "T01-B: Task transitions administratively to PENDING_WORKERS")
+	assert_eq(String(obs["blocked_reason_during_tx"]), "economy_busy", "T01-B: Focal guard probe blocks dispatch with economy_busy")
+	assert_null(obs["assigned_during_tx"], "T01-B: Zero worker assigned during active regional transaction")
+	assert_null(obs["leader_a_order_during_tx"], "T01-B: Zero order issued to LeaderA during active transaction")
+	assert_false(bool(obs["flush_queued_after_probe"]), "T01-B: Probe cleared _flush_queued prior to inventory_changed")
+	assert_eq(int(obs["assigned_count_during_tx"]), 0, "T01-B: Zero task_assigned emitted during blocked window")
+	assert_true(bool(obs["inventory_changed_after_probe"]), "T01-B: Withdrawal naturally emitted inventory_changed after probe")
+
+	# 5. Spontaneous event-driven resumption (NO manual dispatcher.request_dispatch() call!).
+	await wait_process_frames(3)
+	await wait_physics_frames(1)
+	if inventory.inventory_changed.is_connected(on_inv_changed):
+		inventory.inventory_changed.disconnect(on_inv_changed)
+
+	assert_eq(assigned_events.size(), 1, "T01-B: Spontaneous inventory_changed resumed and assigned wood_task exactly once")
+	assert_eq(wood_task.task_id, orig_wood_id, "T01-B: Reauthorized task_id preserved")
+	assert_eq(wood_task.group_id, orig_wood_group, "T01-B: Reauthorized group_id preserved")
+	assert_eq(wood_task.assigned_unit, leader_a, "T01-B: Idle LeaderA picked up reauthorized wood_task")
+	assert_true(leader_a.get_current_order() is GatherResourceOrder, "T01-B: LeaderA executing GatherResourceOrder")
+	assert_true(leader_b.get_current_order() is ConstructOrder, "T01-B: LeaderB ConstructOrder remains sovereign")
+	assert_eq(board.get_all_tasks().size(), tasks_count_before_tx, "T01-B: Zero duplicate tasks created")
+
+	# Selective reauthorization check (§6.5): unrelated blocked stone_task stays untouched.
+	assert_eq(stone_task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "T01-B: Unselected stone task remains BLOCKED_REAUTHORIZATION")
+	assert_eq(stone_task.task_id, orig_stone_id, "T01-B: Unselected stone task_id intact")
+	assert_eq(stone_task.excluded_unit_ids, orig_stone_exclusions, "T01-B: Unselected stone exclusions intact")
+	assert_null(stone_task.assigned_unit, "T01-B: Unselected stone task has zero assigned worker")
+
+	# 6. Complete reauthorized wood task and verify exact conservation + provenance.
+	var site_req_wood: int = site.get_required_amount(&"wood")
+	var site_req_stone: int = site.get_required_amount(&"stone")
+	var site_completed: bool = false
+	site.site_completed.connect(func(_s: ConstructionSite, _b: BuildingInstance) -> void: site_completed = true)
+	Engine.time_scale = 3.0
+	for _i: int in range(3600):
+		if wood_task.state == WorkTask.State.COMPLETED:
+			break
+		await wait_physics_frames(1)
+	Engine.time_scale = 1.0
+	await wait_process_frames(2)
+
+	dispatcher.task_assigned.disconnect(on_assigned)
+	assert_eq(wood_task.state, WorkTask.State.COMPLETED, "T01-B: Reauthorized wood task completed physically")
+	assert_eq(t1.get_remaining_amount(), 0, "T01-B: Wood source depleted cleanly (-2 wood)")
+	assert_eq(r1.get_remaining_amount(), r1_before_tx, "T01-B: Unselected blocked rock completely untouched")
+	assert_eq(stone_task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "T01-B: Stone task still blocked after wood completion")
+	assert_true(leader_a.get_carry_load().validate_provenance(), "T01-B: LeaderA provenance valid")
+	assert_true(leader_b.get_carry_load().validate_provenance(), "T01-B: LeaderB provenance valid")
+
+	var delivered_wood: int = site_req_wood if site_completed else (site.get_total_received_amount(&"wood") if is_instance_valid(site) else 0)
+	var delivered_stone: int = site_req_stone if site_completed else (site.get_total_received_amount(&"stone") if is_instance_valid(site) else 0)
+	var wood_carried: int = leader_a.get_carry_load().get_amount(&"wood") + leader_b.get_carry_load().get_amount(&"wood")
+	var stone_carried: int = leader_a.get_carry_load().get_amount(&"stone") + leader_b.get_carry_load().get_amount(&"stone")
+	assert_eq(
+		inventory.get_physical_amount(&"wood") + wood_carried + delivered_wood,
+		wood_before_tx + t1_before_tx,
+		"T01-B: Exact wood conservation across reauthorized gather and concurrent construction"
+	)
+	assert_eq(
+		inventory.get_physical_amount(&"stone") + stone_carried + delivered_stone,
+		stone_before_tx,
+		"T01-B: Exact stone conservation across concurrent construction"
+	)
 
 	await _teardown_fixture(view)

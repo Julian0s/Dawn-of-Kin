@@ -2534,6 +2534,12 @@ func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admissio
 	var t1 := _find_source_by_id(main, &"wood_tree_01")
 	var t2 := _find_source_by_id(main, &"wood_tree_02")
 	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	var b1 := _find_source_by_id(main, &"food_bush_01")
+	var hud := main.get_community_selection_actions_hud()
+	var agi := main.get_input_controller() as AutonomousGatherInput
+	var model := main.get_source_selection_model()
+	var world := main.get_world_3d()
+	var region_id: StringName = main.get_construction_manager().get_region_id() if main.get_construction_manager() != null else &"default"
 
 	assert_false(main.get_economy_admission_reason().is_empty(), "R1.1-T04: Community economy admission must be blocked")
 	assert_eq(main.get_economy_admission_reason(), "load_unavailable_for_admission", "R1.1-T04: Exact admission failure reason")
@@ -2545,7 +2551,11 @@ func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admissio
 	assert_not_null(t1, "R1.1-T04: WoodTree01 present")
 	assert_not_null(t2, "R1.1-T04: WoodTree02 present")
 	assert_not_null(r1, "R1.1-T04: StoneRock01 present")
-	if board == null or dispatcher == null or feedback == null or inventory == null or leader_b == null or t1 == null or t2 == null or r1 == null:
+	assert_not_null(b1, "R1.1-T04: FoodBush01 present")
+	assert_not_null(hud, "R1.1-T04: CommunitySelectionActionsHud present")
+	assert_not_null(agi, "R1.1-T04: AutonomousGatherInput present")
+	assert_not_null(model, "R1.1-T04: SourceSelectionModel present")
+	if board == null or dispatcher == null or feedback == null or inventory == null or leader_b == null or t1 == null or t2 == null or r1 == null or b1 == null or hud == null or agi == null or model == null:
 		await _teardown_fixture(view)
 		return
 
@@ -2554,7 +2564,7 @@ func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admissio
 	assert_true(inventory.deposit(&"stone", 3), "R1.1-T04: Seed physical stone pile for storage invariance check")
 	await wait_process_frames(2)
 
-	var monitored_sources: Array[ResourceSource] = [t1, t2, r1]
+	var monitored_sources: Array[ResourceSource] = [t1, t2, r1, b1]
 	var snap0 := _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources)
 
 	# Confirm baseline atomic provenance invariants: neither LeaderA nor LeaderB enabled provenance on failed admission,
@@ -2582,13 +2592,53 @@ func test_r1_1_t04_full_provenance_and_storage_invariance_under_blocked_admissio
 	await wait_process_frames(2)
 	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-ShiftClick")
 
-	# Vector 3: Source Shift+drag box
+	# Vector 3: Source Shift+drag box (wood) + Shift+click stone & food so all 3 categories have valid selected sources
 	var p_t1 := _source_screen_point(view, t1)
 	var p_t2 := _source_screen_point(view, t2)
 	await _left_drag(view, p_t1, Vector2(p_t2.x - 24.0, p_t2.y + 24.0), true)
 	await wait_process_frames(2)
 	assert_eq(selection.get_selected_units(), [leader_b], "R1.1-T04-BoxDrag: Selection preserved")
 	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "R1.1-T04-SourceBoxDrag")
+
+	_focus_camera(main, Vector2(r1.global_position.x, r1.global_position.z))
+	await wait_process_frames(2)
+	await _left_click(view, _source_screen_point(view, r1), true)
+	_focus_camera(main, Vector2(b1.global_position.x, b1.global_position.z))
+	await wait_process_frames(2)
+	await _left_click(view, _source_screen_point(view, b1), true)
+	await wait_process_frames(2)
+
+	assert_true(model.get_count_for_resource(&"wood") >= 1, "D1-R1-T02: Valid wood source(s) selected before authorization test")
+	assert_true(model.get_count_for_resource(&"stone") >= 1, "D1-R1-T02: Valid stone source(s) selected before authorization test")
+	assert_true(model.get_count_for_resource(&"food") >= 1, "D1-R1-T02: Valid food source(s) selected before authorization test")
+	assert_eq(board.get_active_tasks().size(), 0, "D1-R1-T02: Zero tasks created by 3-category selection")
+	_assert_snapshots_invariant_r1_1(snap0, _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources), "D1-R1-T02-Selection3Cat")
+
+	# Vectors 3B, 3C, 3D (D1 R1 T02): Verify HUD buttons are disabled in STATE_ECONOMY_BLOCKED and exercise
+	# public authorize_selected_category() across wood, stone, and food as defense-in-depth invariance proof.
+	for res_id: StringName in [&"wood", &"stone", &"food"]:
+		var btn: Button = hud.get_category_button(res_id)
+		assert_not_null(btn, "D1-R1-T02-%s: Category HUD button present" % String(res_id))
+		if btn != null:
+			assert_true(btn.visible, "D1-R1-T02-%s: Category HUD button visible" % String(res_id))
+			assert_true(btn.disabled, "D1-R1-T02-%s: Category HUD button disabled under blocked admission" % String(res_id))
+		assert_eq(hud.get_category_visual_state(res_id), CommunitySelectionActionsHud.STATE_ECONOMY_BLOCKED, "D1-R1-T02-%s: HUD state == economy_blocked" % String(res_id))
+
+		var snap_before_auth := _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources)
+		var auth_res: Dictionary = agi.authorize_selected_category(res_id)
+		await wait_process_frames(2)
+
+		assert_false(bool(auth_res.get("ok", true)), "D1-R1-T02-%s: Authorization refused under blocked admission" % String(res_id))
+		assert_eq(String(auth_res.get("reason", "")), "economy_blocked", "D1-R1-T02-%s: Refusal reason is economy_blocked (never no_selected_sources)" % String(res_id))
+		assert_eq(board.get_active_tasks().size(), 0, "D1-R1-T02-%s: Zero active tasks after refused authorization" % String(res_id))
+		assert_eq(board.get_all_tasks().size(), 0, "D1-R1-T02-%s: Zero task history records after refused authorization" % String(res_id))
+		assert_false(ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id), "D1-R1-T02-%s: Regional authority lock not mutated" % String(res_id))
+		assert_eq(main.get_economy_admission_reason(), "load_unavailable_for_admission", "D1-R1-T02-%s: Admission guard preserved" % String(res_id))
+		for u: Unit in main.get_units():
+			assert_null(u.get_current_order(), "D1-R1-T02-%s: Zero orders dispatched after refused authorization" % String(res_id))
+		var snap_after_auth := _snapshot_economic_invariants_r1_1(main, leader_a, leader_b, monitored_sources)
+		_assert_snapshots_invariant_r1_1(snap_before_auth, snap_after_auth, "D1-R1-T02-RefusedAuth-%s-Delta" % String(res_id))
+		_assert_snapshots_invariant_r1_1(snap0, snap_after_auth, "D1-R1-T02-RefusedAuth-%s-Baseline" % String(res_id))
 
 	# Vector 4: Direct register_gather_group -> dispatcher must issue zero orders and mutate zero storage/provenance
 	board.register_gather_group([t1, t2])
