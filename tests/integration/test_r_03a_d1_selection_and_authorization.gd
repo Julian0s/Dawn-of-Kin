@@ -961,6 +961,12 @@ func test_d1_12_hud_layout_geometry_720p_and_1080p_zero_overlap() -> void:
 
 
 func test_d1_13_four_visual_ring_states_and_zero_orphan_rings_on_teardown() -> void:
+	## R-03A D1 R2 (Decision V2 / H-V03):
+	## Validates the 4 owner-approved visual states (selection ring vs work-activity symbol):
+	## 1. Available: no ring, no symbol.
+	## 2. Selected: selection ring only, no symbol.
+	## 3. Selected + Authorized: selection ring + work-activity symbol.
+	## 4. Authorized (unselected): no ring, work-activity symbol preserved.
 	var view := await _fixture()
 	var main := view.get_child(0) as MainScene
 	var model := main.get_source_selection_model()
@@ -972,35 +978,37 @@ func test_d1_13_four_visual_ring_states_and_zero_orphan_rings_on_teardown() -> v
 		await _teardown_fixture(view)
 		return
 
-	# State 1: Available (unselected, no task) -> 0 rings.
+	# State 1: Available (unselected, no task) -> 0 rings, 0 work symbols.
 	assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 0, "State 1: no selection ring")
-	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 0, "State 1: no task ring")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 0, "State 1: no work symbol")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 0, "State 1: legacy double-ring absent")
 
-	# State 2: Selected (not authorized) -> outer selection ring only.
+	# State 2: Selected (not authorized) -> selection ring only, no work symbol.
 	model.select_single(t1)
 	await wait_process_frames(2)
 	assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 1, "State 2: selection ring attached")
-	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 0, "State 2: still 0 task rings")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 0, "State 2: still 0 work symbols")
 
-	# State 3: Selected + Authorized -> BOTH concentric rings simultaneously.
+	# State 3: Selected + Authorized -> selection ring + work symbol simultaneously.
 	await _click_hud_button(view, hud.get_category_button(&"wood"))
 	await wait_process_frames(3)
 	assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 1, "State 3: selection ring kept")
-	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 1, "State 3: task ring attached alongside selection ring")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "State 3: work-activity symbol attached alongside selection ring")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 0, "State 3: legacy inner task ring no longer created")
 
-	# State 4: Deselected + Authorized -> task ring remains, selection ring removed.
+	# State 4: Deselected + Authorized -> work symbol remains, selection ring removed.
 	model.clear()
 	await wait_process_frames(2)
 	assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 0, "State 4: selection ring removed on deselect")
-	assert_eq(_count_rings_on_source(t1, "AutoGatherTaskRing_"), 1, "State 4: task ring preserved after deselect")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "State 4: work-activity symbol preserved after deselect")
 
-	# Teardown hygiene: zero orphan rings anywhere on map.
+	# Teardown hygiene: zero orphan rings or work symbols anywhere on map.
 	model.select_single(t1)
 	await wait_process_frames(1)
 	g_in.teardown_community_work()
 	await wait_process_frames(2)
 	assert_eq(_count_all_rings(main, "SourceSelectionRing_"), 0, "Zero orphan selection rings after teardown")
-	assert_eq(_count_all_rings(main, "AutoGatherTaskRing_"), 0, "Zero orphan task rings after teardown")
+	assert_eq(_count_all_rings(main, "AutoGatherWorkMarker_"), 0, "Zero orphan work symbols after teardown")
 
 	await _teardown_fixture(view)
 
@@ -1367,3 +1375,449 @@ func test_d1_15_t01b_reauthorization_during_regional_tx_and_selective_scope() ->
 	)
 
 	await _teardown_fixture(view)
+
+
+func _left_click_with_drift(view: SubViewport, start_pos: Vector2, drift: Vector2, with_motion: bool = true) -> void:
+	var end_pos: Vector2 = start_pos + drift
+	await _push_motion(view, start_pos, false)
+	await _push_left_button(view, start_pos, true, false)
+	if with_motion and drift.length_squared() > 0.01:
+		await _push_motion(view, start_pos.lerp(end_pos, 0.5), false)
+		await _push_motion(view, end_pos, false)
+	await _push_left_button(view, end_pos, false, false)
+	await wait_process_frames(1)
+
+
+func test_r2_hf01_01_single_multi_and_repeated_ground_deselect_with_natural_drift() -> void:
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var input_ctrl := main.get_input_controller() as AutonomousGatherInput
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var t3 := _find_source_by_id(main, &"wood_tree_03")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	var b1 := _find_source_by_id(main, &"food_bush_01")
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(t3)
+	assert_not_null(r1)
+	assert_not_null(b1)
+	assert_not_null(input_ctrl)
+	if t1 == null or t2 == null or t3 == null or r1 == null or b1 == null or input_ctrl == null:
+		await _teardown_fixture(view)
+		return
+
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+
+	var free_ground_world_pts: Array[Vector3] = [
+		Vector3(0.0, 0.0, -2.0),
+		Vector3(-5.0, 0.0, 4.5),
+		Vector3(4.5, 0.0, -2.5),
+		Vector3(3.5, 0.0, 4.5),
+		Vector3(-5.5, 0.0, -2.5),
+	]
+
+	# §11.1 Basic single-source deselection (exact click + natural micro-drift > 6px threshold).
+	for drift: Vector2 in [Vector2.ZERO, Vector2(4.0, 1.0), Vector2(8.0, 1.5), Vector2(14.0, -3.0)]:
+		model.select_single(t1)
+		await wait_process_frames(2)
+		assert_eq(model.get_selected_count(), 1, "H-F01 single setup")
+		assert_true(hud.is_panel_visible(), "H-F01 single HUD visible")
+		assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 1, "H-F01 single ring visible")
+
+		var pt: Vector2 = _world_screen_point(view, free_ground_world_pts[0])
+		assert_true(input_ctrl.pick_at_screen_pos(pt).is_ground(), "H-F01 target is free ground")
+		await _left_click_with_drift(view, pt, drift, true)
+		await wait_process_frames(2)
+
+		assert_true(model.is_empty(), "H-F01 single: free-ground click (drift=%s) must clear selection" % str(drift))
+		assert_false(hud.is_panel_visible(), "H-F01 single: HUD must hide after free-ground click (drift=%s)" % str(drift))
+		assert_eq(_count_all_rings(main, "SourceSelectionRing_"), 0, "H-F01 single: zero orphan selection rings (drift=%s)" % str(drift))
+
+	# §11.2 Multi-source deselection: multiple trees, wood+stone, and all 3 categories.
+	var sets_to_test: Array[Array] = [
+		[t1, t2, t3],
+		[t1, t2, r1],
+		[t1, r1, b1],
+	]
+	var drifts_for_sets: Array[Vector2] = [
+		Vector2(9.5, 2.0),
+		Vector2(-11.0, 3.0),
+		Vector2(18.0, 6.0),
+	]
+	for idx: int in range(sets_to_test.size()):
+		var typed_set: Array[ResourceSource] = []
+		for item: Variant in sets_to_test[idx]:
+			typed_set.append(item as ResourceSource)
+		model.clear()
+		model.add_sources(typed_set)
+		await wait_process_frames(2)
+		assert_eq(model.get_selected_count(), typed_set.size(), "H-F01 multi setup #%d" % idx)
+		var g_pt: Vector2 = _world_screen_point(view, free_ground_world_pts[idx + 1])
+		assert_true(input_ctrl.pick_at_screen_pos(g_pt).is_ground(), "H-F01 multi #%d: target is free ground" % idx)
+		await _left_click_with_drift(view, g_pt, drifts_for_sets[idx], true)
+		await wait_process_frames(2)
+		assert_true(model.is_empty(), "H-F01 multi #%d: single click on free ground clears entire group" % idx)
+		assert_false(hud.is_panel_visible(), "H-F01 multi #%d: HUD hidden" % idx)
+		assert_eq(_count_all_rings(main, "SourceSelectionRing_"), 0, "H-F01 multi #%d: zero orphan rings" % idx)
+
+	# §11.3 Repeated cycles across distinct positions and drift profiles (including fast flick without intermediate motion).
+	var cycle_drifts: Array[Vector2] = [
+		Vector2(0.0, 0.0),
+		Vector2(7.0, 0.0),
+		Vector2(-8.5, 2.0),
+		Vector2(3.5, -2.5),
+		Vector2(12.0, 5.0),
+		Vector2(28.0, 18.0),
+	]
+	for c_idx: int in range(cycle_drifts.size()):
+		model.add_sources([t1, r1])
+		await wait_process_frames(1)
+		var world_pt: Vector3 = free_ground_world_pts[c_idx % free_ground_world_pts.size()]
+		var screen_pt: Vector2 = _world_screen_point(view, world_pt)
+		var use_motion: bool = (c_idx % 2 == 0)
+		await _left_click_with_drift(view, screen_pt, cycle_drifts[c_idx], use_motion)
+		await wait_process_frames(1)
+		assert_true(model.is_empty(), "H-F01 cycle #%d (drift=%s, motion=%s): deselected on first try" % [c_idx, str(cycle_drifts[c_idx]), str(use_motion)])
+		assert_false(hud.is_panel_visible(), "H-F01 cycle #%d: HUD hidden" % c_idx)
+
+	await _teardown_fixture(view)
+
+
+func test_r2_hf01_02_ground_deselect_preserves_authorized_work_and_economy() -> void:
+	var view := await _fixture(Vector2i(1280, 720))
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var inv := main.get_settlement_inventory()
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	assert_not_null(t1)
+	if t1 == null:
+		await _teardown_fixture(view)
+		return
+
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+
+	var wood_stock_before: int = inv.get_physical_amount(&"wood")
+	model.select_single(t1)
+	await wait_process_frames(2)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var task: WorkTask = board.get_active_task_for_source(t1)
+	assert_not_null(task, "H-F01-02: Task authorized via HUD")
+	if task == null:
+		await _teardown_fixture(view)
+		return
+	var orig_task_id: int = task.task_id
+	var assigned_before: Unit = task.assigned_unit
+	assert_not_null(assigned_before, "H-F01-02: Worker dispatched to authorized task")
+
+	# Click once on free ground with natural 9px micro-drift -> selection clears, authorized work persists!
+	var g_pt: Vector2 = _world_screen_point(view, Vector3(0.0, 0.0, -2.0))
+	await _left_click_with_drift(view, g_pt, Vector2(9.0, 2.0), true)
+	await wait_process_frames(2)
+
+	assert_true(model.is_empty(), "H-F01-02: Free-ground click clears source selection")
+	assert_false(hud.is_panel_visible(), "H-F01-02: HUD hides after clearing selection")
+	assert_eq(_count_rings_on_source(t1, "SourceSelectionRing_"), 0, "H-F01-02: Selection ring removed")
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "H-F01-02: Work symbol preserved after terrain deselect")
+	assert_eq(board.get_active_tasks().size(), 1, "H-F01-02: Authorized task NOT cancelled by terrain deselect")
+	assert_eq(board.get_active_task_for_source(t1).task_id, orig_task_id, "H-F01-02: Same task_id preserved")
+	assert_eq(task.assigned_unit, assigned_before, "H-F01-02: Worker continues working undisturbed")
+	assert_eq(inv.get_physical_amount(&"wood"), wood_stock_before, "H-F01-02: Zero spurious stock mutation on deselect")
+
+	await _teardown_fixture(view)
+
+
+func test_r2_hf01_03_input_protection_boundaries_and_legitimate_drags() -> void:
+	var view := await _fixture(Vector2i(1280, 720))
+	var main := view.get_child(0) as MainScene
+	var model := main.get_source_selection_model()
+	var selection := main.get_selection_manager()
+	var hud := main.get_community_selection_actions_hud()
+	var input_ctrl := main.get_input_controller() as AutonomousGatherInput
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	assert_not_null(leader_a)
+	assert_not_null(t1)
+	assert_not_null(r1)
+	if leader_a == null or t1 == null or r1 == null:
+		await _teardown_fixture(view)
+		return
+
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+
+	# 1. Sub-threshold movement (3.5px) over a source still registers as a valid click (not drag).
+	_focus_camera(main, Vector2(t1.global_position.x, t1.global_position.z), 22.0)
+	await wait_process_frames(2)
+	var t1_pt: Vector2 = _source_screen_point(view, t1)
+	await _left_click_with_drift(view, t1_pt, Vector2(3.5, 0.0), true)
+	await wait_process_frames(2)
+	assert_eq(model.get_selected_sources(), [t1], "H-F01-03: Sub-threshold click on source still selects it")
+
+	# 2. Legitimate unshifted RTS unit box drag capturing LeaderA selects LeaderA and preserves coexistence.
+	_focus_camera(main, Vector2(0.0, 0.0), 36.0)
+	await wait_process_frames(2)
+	var u_pt: Vector2 = _unit_screen_point(view, leader_a)
+	await _left_drag(view, u_pt - Vector2(40.0, 40.0), u_pt + Vector2(40.0, 40.0), false, false, false)
+	await wait_process_frames(2)
+	assert_true(selection.is_selected(leader_a), "H-F01-03: Legitimate unshifted drag selects LeaderA")
+	assert_true(model.is_selected(t1), "H-F01-03: Unit box drag capturing unit preserves source selection coexistence")
+
+	# 3. Clicking on an OBSTACLE (WallWest) is differentiated from free ground (§5.5).
+	var wall_pt: Vector2 = _world_screen_point(view, Vector3(-8.0, 1.25, -6.0))
+	assert_true(input_ctrl.pick_at_screen_pos(wall_pt).is_obstacle(), "H-F01-03: Target is obstacle")
+	await _left_click(view, wall_pt, false)
+	await wait_process_frames(2)
+	assert_true(model.is_selected(t1), "H-F01-03: Direct click on obstacle does not indiscriminately clear sources")
+
+	# 4. Empty Shift+drag on free ground still preserves source selection.
+	var empty_pt: Vector2 = _world_screen_point(view, Vector3(0.0, 0.0, -2.0))
+	await _left_drag(view, empty_pt, empty_pt + Vector2(55.0, 35.0), true, true, true)
+	await wait_process_frames(2)
+	assert_true(model.is_selected(t1), "H-F01-03: Empty Shift+drag preserves source selection")
+
+	# 5. Click on HUD button does not leak to world, while click outside HUD in transparent area clears selection cleanly.
+	selection.select_single(leader_a)
+	model.add_sources([t1, r1])
+	await wait_process_frames(2)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(2)
+	assert_eq(selection.get_selected_units(), [leader_a], "H-F01-03: HUD click never leaks to world")
+
+	var outside_hud_pt: Vector2 = _world_screen_point(view, Vector3(-5.0, 0.0, 4.5))
+	assert_true(input_ctrl.pick_at_screen_pos(outside_hud_pt).is_ground(), "H-F01-03: outside HUD point is free ground")
+	await _left_click_with_drift(view, outside_hud_pt, Vector2(8.0, -2.0), true)
+	await wait_process_frames(2)
+	assert_true(model.is_empty(), "H-F01-03: Click in transparent world region clears selection")
+
+	# 6. Esc leaves zero residual state.
+	model.select_single(r1)
+	await wait_process_frames(1)
+	await _press_escape(view)
+	await wait_process_frames(1)
+	assert_true(model.is_empty(), "H-F01-03: Esc clears selection cleanly")
+	assert_false(input_ctrl.is_drag_gesture_active(), "H-F01-03: Zero residual drag state after Esc")
+	assert_eq(input_ctrl.get_active_drag_mode(), AutonomousGatherInput.DragMode.NONE, "H-F01-03: DragMode NONE after Esc")
+
+	await _teardown_fixture(view)
+
+
+func _find_work_marker(src: ResourceSource) -> Sprite3D:
+	for child: Node in src.get_children():
+		if child is Sprite3D and String(child.name).begins_with("AutoGatherWorkMarker_") and not child.is_queued_for_deletion():
+			return child as Sprite3D
+	return null
+
+
+func _has_any_collider_descendant(node: Node) -> bool:
+	if node is CollisionObject3D:
+		return true
+	for child: Node in node.get_children():
+		if _has_any_collider_descendant(child):
+			return true
+	return false
+
+
+func test_r2_hv01_d2_2_basalt_stone_hud_materiality_polygons_and_states() -> void:
+	var view := await _fixture(Vector2i(1920, 1080))
+	var main := view.get_child(0) as MainScene
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var selection := main.get_selection_manager()
+	var leader_a := _find_unit_by_id(main, &"leader_a")
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	var b1 := _find_source_by_id(main, &"food_bush_01")
+	assert_not_null(leader_a)
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(r1)
+	assert_not_null(b1)
+	if leader_a == null or t1 == null or t2 == null or r1 == null or b1 == null:
+		await _teardown_fixture(view)
+		return
+
+	# Verify D2.2 atlas reuse ("slab_cmd_basalt"), D2PolygonalSlab surfaces, and zero polling.
+	assert_true(hud.is_atlas_loaded(), "H-V01: D2AtlasLibrary loaded cleanly")
+	assert_eq(hud.get_atlas_region_key(), "slab_cmd_basalt", "H-V01: Reuses canonical slab_cmd_basalt region")
+	assert_false(hud.is_processing(), "H-V01: Zero _process polling")
+	assert_false(hud.is_physics_processing(), "H-V01: Zero _physics_process polling")
+	assert_false(hud.has_stop_button(), "H-V01: No Parar button in D1 R2")
+	assert_false(hud.is_panel_visible(), "H-V01: Hidden with 0 categories")
+
+	for res_id: StringName in [&"wood", &"stone", &"food"]:
+		var slab: D2PolygonalSlab = hud.get_category_slab(res_id)
+		assert_not_null(slab, "H-V01: D2PolygonalSlab exists for %s" % String(res_id))
+		if slab != null:
+			assert_true(slab.texture is AtlasTexture, "H-V01: Slab uses AtlasTexture from homologated D2.2 atlas")
+			assert_eq(slab.get_scaled_polygon().size(), 4, "H-V01: Slab uses canonical 4-vertex beveled basalt polygon")
+			assert_true(slab.contains_local_point(slab.size * 0.5), "H-V01: Solid basalt center intercepts input")
+			assert_false(slab.contains_local_point(Vector2(1.0, 1.0)), "H-V01: Transparent shadow margin passes input through")
+
+	# 1 -> 2 -> 3 categories visibility and count progression.
+	model.select_single(t1)
+	await wait_process_frames(2)
+	assert_true(hud.is_panel_visible(), "H-V01: Visible with 1 category")
+	assert_eq(hud.get_visible_category_ids(), [&"wood"])
+	assert_eq(hud.get_category_count_text(&"wood"), "1")
+	assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_AVAILABLE)
+
+	model.add_sources([t2, r1])
+	await wait_process_frames(2)
+	assert_eq(hud.get_visible_category_ids(), [&"wood", &"stone"])
+	assert_eq(hud.get_category_count_text(&"wood"), "2")
+	assert_eq(hud.get_category_count_text(&"stone"), "1")
+
+	model.add_sources([b1])
+	await wait_process_frames(2)
+	assert_eq(hud.get_visible_category_ids(), [&"wood", &"stone", &"food"])
+
+	# Partial vs Authorized state transition on basalt slabs.
+	var board := main.get_community_work_board()
+	board.register_gather_task(t1)
+	await wait_process_frames(2)
+	assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_PARTIAL, "H-V01: 1/2 wood authorized -> partial state")
+	assert_eq(hud.get_category_visual_state(&"stone"), CommunitySelectionActionsHud.STATE_AVAILABLE, "H-V01: stone stays available")
+
+	# Click wood basalt slab to authorize remaining tree (anti-click-through preserves unit selection).
+	selection.select_single(leader_a)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(2)
+	assert_eq(hud.get_category_visual_state(&"wood"), CommunitySelectionActionsHud.STATE_AUTHORIZED, "H-V01: 2/2 wood authorized -> authorized state")
+	assert_eq(selection.get_selected_units(), [leader_a], "H-V01: Anti-click-through on solid basalt slab preserves unit selection")
+
+	await _teardown_fixture(view)
+
+
+func test_r2_hv03_work_marker_lifecycle_pending_blocked_depletion_removal_and_picker() -> void:
+	## R-03A D1 R2 (§12.2 + §8.6):
+	## Validates work-activity symbol across PENDING_WORKERS, IN_PROGRESS, BLOCKED_REAUTHORIZATION,
+	## reauthorization, depletion, source removal, WorldPicker non-interference, and MainScene reinstantiation.
+	var view := await _fixture(Vector2i(1280, 720))
+	var main := view.get_child(0) as MainScene
+	var board := main.get_community_work_board()
+	var model := main.get_source_selection_model()
+	var hud := main.get_community_selection_actions_hud()
+	var cmd := main.get_command_controller()
+	var selection := main.get_selection_manager()
+	var input_ctrl := main.get_input_controller() as AutonomousGatherInput
+	var t1 := _find_source_by_id(main, &"wood_tree_01")
+	var t2 := _find_source_by_id(main, &"wood_tree_02")
+	var r1 := _find_source_by_id(main, &"stone_rock_01")
+	var b1 := _find_source_by_id(main, &"food_bush_01")
+	assert_not_null(t1)
+	assert_not_null(t2)
+	assert_not_null(r1)
+	assert_not_null(b1)
+	if t1 == null or t2 == null or r1 == null or b1 == null:
+		await _teardown_fixture(view)
+		return
+
+	# Authorize 3 distinct categories (wood, stone, food): with only 2 leaders, at least 1 task stays PENDING_WORKERS!
+	model.add_sources([t1, r1, b1])
+	await wait_process_frames(2)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await _click_hud_button(view, hud.get_category_button(&"stone"))
+	await _click_hud_button(view, hud.get_category_button(&"food"))
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+
+	var task_w := board.get_active_task_for_source(t1)
+	var task_s := board.get_active_task_for_source(r1)
+	var task_f := board.get_active_task_for_source(b1)
+	assert_not_null(task_w)
+	assert_not_null(task_s)
+	assert_not_null(task_f)
+
+	# All 3 sources MUST display their respective work-activity symbols (including PENDING_WORKERS without worker!).
+	var any_pending: bool = (
+		(task_w != null and task_w.state == WorkTask.State.PENDING_WORKERS)
+		or (task_s != null and task_s.state == WorkTask.State.PENDING_WORKERS)
+		or (task_f != null and task_f.state == WorkTask.State.PENDING_WORKERS)
+	)
+	assert_true(any_pending, "H-V03: At least 1 authorized task is in PENDING_WORKERS waiting for worker")
+
+	var m_w := _find_work_marker(t1)
+	var m_s := _find_work_marker(r1)
+	var m_f := _find_work_marker(b1)
+	assert_not_null(m_w, "H-V03: Wood work symbol visible")
+	assert_not_null(m_s, "H-V03: Stone work symbol visible")
+	assert_not_null(m_f, "H-V03: Food work symbol visible (persists in PENDING_WORKERS)")
+	if m_w != null and m_s != null and m_f != null:
+		assert_eq(m_w.get_meta(&"work_marker_resource"), &"wood")
+		assert_eq(m_s.get_meta(&"work_marker_resource"), &"stone")
+		assert_eq(m_f.get_meta(&"work_marker_resource"), &"food")
+		assert_eq(String(m_w.get_meta(&"work_marker_state")), "active")
+		assert_false(_has_any_collider_descendant(m_w), "H-V03: Work marker has zero CollisionObject3D")
+		assert_false(_has_any_collider_descendant(m_s), "H-V03: Stone marker has zero CollisionObject3D")
+		assert_false(_has_any_collider_descendant(m_f), "H-V03: Food marker has zero CollisionObject3D")
+		assert_eq(m_w.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "H-V03: Marker casts zero shadows")
+
+	# Repeated authorization does not duplicate marker.
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(2)
+	assert_eq(_count_rings_on_source(t1, "AutoGatherWorkMarker_"), 1, "H-V03: Repeated auth creates 0 duplicate markers")
+
+	# WorldPicker still picks each source cleanly with markers attached.
+	for src: ResourceSource in [t1, r1, b1]:
+		_focus_camera(main, Vector2(src.global_position.x, src.global_position.z), 22.0)
+		await wait_process_frames(1)
+		var pk: PickResult = input_ctrl.pick_at_screen_pos(_source_screen_point(view, src))
+		assert_true(pk.is_resource_source() and pk.resource_source == src, "H-V03: WorldPicker unaffected by work marker on %s" % String(src.source_id))
+
+	# Drive t1 task into BLOCKED_REAUTHORIZATION and verify marker switches to "blocked" state via signal, then back on reauth.
+	if task_w != null:
+		for override_idx: int in range(2):
+			if task_w.is_blocked_reauthorization():
+				break
+			var w: Unit = task_w.assigned_unit
+			if w != null:
+				selection.select_single(w)
+				cmd.command_at(PickResult.from_ground(Vector3(3.0 + float(override_idx) * 2.0, 0.0, 12.0), Vector3.UP))
+				await wait_process_frames(4)
+				await wait_physics_frames(2)
+		if task_w.is_blocked_reauthorization():
+			assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "blocked", "H-V03: Blocked task switches marker to blocked treatment")
+			model.select_single(t1)
+			await wait_process_frames(1)
+			await _click_hud_button(view, hud.get_category_button(&"wood"))
+			await wait_process_frames(3)
+			assert_eq(String(_find_work_marker(t1).get_meta(&"work_marker_state")), "active", "H-V03: Reauthorization restores active work marker")
+
+	# Depletion closes task and removes work marker cleanly.
+	while not r1.is_depleted():
+		r1.extract(r1.max_extract_per_operation)
+	await wait_process_frames(2)
+	assert_eq(_count_rings_on_source(r1, "AutoGatherWorkMarker_"), 0, "H-V03: Depletion removes work marker")
+
+	# Source removal from tree closes task and leaves zero orphan markers.
+	model.select_single(t2)
+	await _click_hud_button(view, hud.get_category_button(&"wood"))
+	await wait_process_frames(2)
+	var t2_task: WorkTask = board.get_active_task_for_source(t2)
+	assert_not_null(t2_task, "H-V03: t2 task created prior to removal")
+	assert_eq(_count_rings_on_source(t2, "AutoGatherWorkMarker_"), 1, "H-V03: t2 marker attached prior to removal")
+	t2.get_parent().remove_child(t2)
+	t2.queue_free()
+	await wait_process_frames(2)
+	assert_false(t2_task.is_active(), "H-V03: Source removal closes task cleanly")
+
+	await _teardown_fixture(view)
+
+	# Reinstantiation of MainScene starts cleanly with 0 residual markers or rings.
+	var view2 := await _fixture(Vector2i(1280, 720))
+	var main2 := view2.get_child(0) as MainScene
+	assert_eq(_count_all_rings(main2, "SourceSelectionRing_"), 0, "H-V03: Clean selection rings on reinstantiated MainScene")
+	assert_eq(_count_all_rings(main2, "AutoGatherWorkMarker_"), 0, "H-V03: Clean work markers on reinstantiated MainScene")
+	await _teardown_fixture(view2)

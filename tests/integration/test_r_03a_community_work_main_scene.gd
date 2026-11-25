@@ -184,7 +184,7 @@ func _count_nodes_of_script(root: Node, script_path: String) -> int:
 func _count_highlight_children(source: ResourceSource) -> int:
 	var count: int = 0
 	for child: Node in source.get_children():
-		if child is MeshInstance3D and String(child.name).begins_with("AutoGatherTaskRing_"):
+		if child is Sprite3D and String(child.name).begins_with("AutoGatherWorkMarker_") and not child.is_queued_for_deletion():
 			count += 1
 	return count
 
