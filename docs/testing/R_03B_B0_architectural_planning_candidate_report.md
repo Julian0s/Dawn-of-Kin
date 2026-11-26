@@ -1,17 +1,19 @@
-# Dawn of Kin — Relatório de Entrega da Candidata Documental `R-03B B0`
+# Dawn of Kin — Relatório de Entrega da Candidata Documental `R-03B B0` (Revisada por `B0-R1`)
 ## Planejamento Arquitetural da Casa Fundadora e `ControlMode`
 
-> **Status Obrigatório:** **`CANDIDATA DOCUMENTAL AGUARDANDO AUDITORIA INDEPENDENTE`** · **`B0 NÃO HOMOLOGADO`** · **`R-03B NÃO IMPLEMENTADA`** · **`B1 NÃO AUTORIZADA`**
+> **Status Obrigatório:** **`CANDIDATA DOCUMENTAL ORIGINAL (e502490) REVISADA POR B0-R1 — AGUARDANDO AUDITORIA INDEPENDENTE`** · **`B0-R1 NÃO HOMOLOGADO`** · **`R-03B NÃO IMPLEMENTADA`** · **`B1–B4 BLOQUEADAS`**
 >
 > **Data:** `26/11/2026`
 >
-> **Nota de Transparência:** Este relatório registra exclusivamente a execução da etapa de planejamento arquitetural (`B0`). **Não representa resultados de testes executáveis de uma implementação inexistente.**
+> **Rastreabilidade de Revisão:** Este relatório preserva a rastreabilidade da candidata original `B0` publicada no SHA `e5024909fbb17cd5266d30e0452e92cc095d5923` e foi atualizado em `B0-R1` para incorporar as sete decisões definitivas do proprietário (`B0-Q01`–`B0-Q07`) e corrigir integralmente os cinco achados da auditoria independente (`B0-A01`–`B0-A05`). O detalhamento focal da revisão encontra-se em [R_03B_B0_R1_architectural_reconciliation_candidate_report.md](R_03B_B0_R1_architectural_reconciliation_candidate_report.md).
+>
+> **Nota de Transparência:** Este relatório registra exclusivamente a etapa de planejamento e reconciliação arquitetural (`B0` / `B0-R1`). **Não representa resultados de testes executáveis de uma implementação inexistente.**
 
 ---
 
 ## 1. Escopo Executado
 
-Foi realizada a auditoria documental, arquitetural e de código real da base homologada pós-`R-03A` (`develop @ 94c718024359dc7ff8360949313969b3ceaf9776`), produzindo o plano arquitetural completo em [R_03B_B0_founding_house_control_mode_PLAN.md](../architecture/R_03B_B0_founding_house_control_mode_PLAN.md) (33 seções) e este relatório de entrega, sob isolamento documental em worktree dedicado (`C:\Projetos\Dawn_of_Kin_wt_r_03b`, branch `feat/r-03b-founding-house-control-mode`).
+Foi realizada a auditoria documental, arquitetural e de código real da base homologada pós-`R-03A` (`develop @ 94c718024359dc7ff8360949313969b3ceaf9776`), produzindo originalmente a candidata `B0` (`e5024909fbb17cd5266d30e0452e92cc095d5923`) e, subsequentemente, a revisão documental **`B0-R1`** em [R_03B_B0_founding_house_control_mode_PLAN.md](../architecture/R_03B_B0_founding_house_control_mode_PLAN.md) (33 seções reconciliadas), neste relatório atualizado e no relatório focal [R_03B_B0_R1_architectural_reconciliation_candidate_report.md](R_03B_B0_R1_architectural_reconciliation_candidate_report.md), sob isolamento documental no worktree `C:\Projetos\Dawn_of_Kin_wt_r_03b` (branch `feat/r-03b-founding-house-control-mode`).
 
 ---
 
@@ -57,104 +59,99 @@ Foi realizada a auditoria documental, arquitetural e de código real da base hom
 - `src/ui/selected_unit_panel.gd`, `src/ui/hud_formatter.gd`, `src/ui/d2/d2_simulation_pause_controller.gd`, `src/ui/d2/components/d2_founder_steles_view.gd`, `src/ui/d2/components/d2_lineage_blade_view.gd`
 
 ### Testes Inspecionados (Somente Leitura)
+- `tests/framework/regional_conservation_audit.gd`
 - `tests/unit/test_selection_manager.gd`
-- `tests/integration/test_commands.gd`
-- `tests/integration/test_r_03a_community_work_main_scene.gd`
-- `tests/integration/test_r_03a_d2_r1_adversarial_cancellation.gd`
-- `tests/integration/test_r_03a_d3_2_tree_gather_orders.gd`
-- `tests/integration/test_r_03a_d4_r2_algorithmic_equivalence.gd`
-- `tests/integration/test_t2_worker_cycle.gd`
-- `tests/integration/test_t3_3_ux_flow.gd`
-- `tests/integration/test_ui_1_1b_hitboxes_and_pause.gd`
-- `tests/integration/test_ui_1_2_selection_and_lineage.gd`
-- Varredura de referências em `tests/` (identificando 5 arquivos com `CharacterDefinition.new()`, 5 arquivos usando `Worker3`/`Worker4` com `CommandController` e 43 arquivos chamando `Unit.issue_order()` diretamente).
+- `tests/integration/test_commands.gd`, `test_r_03a_community_work_main_scene.gd`, `test_r_03a_d1_selection_and_authorization.gd`, `test_r_03a_d2_selective_work_cancellation.gd`, `test_r_03a_d2_r1_adversarial_cancellation.gd`, `test_r_03a_d3_2_tree_gather_orders.gd`, `test_r_03a_d4_r2_algorithmic_equivalence.gd`, `test_rux_2a_auto_resources.gd`, `test_rux_2b_multi_source_selection.gd`, `test_t2_worker_cycle.gd`, `test_t3_3_ux_flow.gd`, `test_t3_3_construction_logistics.gd`, `test_t3_6_2_c3_5_gather_order_integration.gd`, `test_t3_6_2_c4_12_rts_provenance.gd`, `test_ui_1_1b_hitboxes_and_pause.gd`, `test_ui_1_2_selection_and_lineage.gd`
+- `tests/visual/t3_3_ux_repro.gd`
+- Varredura integral de `src/` (exatamente 4 chamadas de `issue_order` e 2 de `cancel_current_order`) e de `tests/` (`43` arquivos com chamadas `unit.issue_order()`, `36` operando sobre `LeaderA`/`LeaderB`, `3` usando `CharacterDefinition.new()`, `4` envolvendo `Worker3`/`Worker4` e `0` chamando `issue_order(RecoveryOrder)` ou `issue_order(null)` diretamente).
 
 ---
 
-## 4. Descobertas Relevantes
+## 4. Descobertas Relevantes (Incluindo Achados Reconciliados em `B0-R1`)
 
-1. **Ausência de origem de ordem em `Unit` e `UnitOrder`:** atualmente nem `Unit` nem `UnitOrder` registram `PERSONAL` vs `COMMUNITY` vs `SYSTEM_RECOVERY`; `CommunityTaskDispatcher` infere propriedade externamente em `WorkTask` e reutiliza `CommandController.command_units_to_gather()`, que precisará separar o caminho comunitário do pessoal para impedir que moradores comuns recebam ordens pessoais e impedir bloqueio indevido no despacho comunitário.
-2. **Janela síncrona crítica em `Unit.issue_order()` (`src/units/unit.gd:250–275`):** ao substituir uma ordem comunitária, `previous_order.cancel()` e `order_finished.emit()` executam antes de `order.start()`. O plano exige comprometer `ControlMode = PERSONAL_ACTIVE` na `issued_revision` **antes** do cancelamento da ordem anterior (com rollback limpo se `start()` falhar), eliminando qualquer janela de sequestro comunitário.
-3. **Impacto real de `TemporaryTestWorkersController` (`Worker3`/`Worker4`):** 5 suítes legadas (`test_t3_3_ux_flow.gd`, `test_t3_3_construction_logistics.gd`, `test_t3_6_2_c3_5_gather_order_integration.gd`, `test_t3_6_2_c4_12_rts_provenance.gd`, `tests/visual/t3_3_ux_repro.gd`) comandam `Worker3`/`Worker4` diretamente via `CommandController`, originando a deliberação explícita **`B0-Q03`**.
-4. **Acoplamento nominal isolado em `D2FounderStelesView`:** apenas `src/ui/d2/components/d2_founder_steles_view.gd:22–23,651–669` referencia `leader_a`/`leader_b` no diretório `src/`.
-5. **Explicação forense de `CLOSEOUT-DOC-02` (`34.026 → 34.029`):** comprovado nos logs históricos que toda a diferença de `+3` asserções ocorreu em laços `while` por quadro de física em `tests/integration/test_t2_worker_cycle.gd` (`test_01` `+1`, `test_08` `+2`), sem alteração executável.
-6. **Erratas `CLOSEOUT-DOC-01` e `CLOSEOUT-DOC-03`:** registradas transparentemente na Seção 31 do plano (`Discovered=95 == ExecutedUnique=95` para 95 suítes / 724 testes; `D2-P01` é cancelamento em lote de 6 árvores mantendo pedra/alimento ativos).
+1. **Barreira de autoridade e entradas de ordens (`B0-A02`):** em `src/`, há exatamente 4 chamadas de `issue_order()` (`command_controller.gd:174,273,359` e `cancellation_recovery_dispatcher.gd:111`). Para impedir qualquer contorno via chamada direta a `Unit` ou falsificação de origem, a validação `UnitControlPermissions` passa a ser obrigatória **no ponto final de instalação em `Unit`**, com entradas explícitas separadas (`issue_personal_order`/`issue_order`, `issue_community_order`, `issue_recovery_order`) e **zero bypass genérico**.
+2. **Recuperação econômica durante construção legada (`B0-A03`):** `CancellationRecoveryDispatcher._assign()` (`src/units/cancellation_recovery_dispatcher.gd:85–122`) admite legitimamente substituir uma `ConstructOrder` ativa associada ao mesmo `record.site_id` quando `site.get_site_state() == SiteState.CANCELLED`. A máquina de estados agora representa explicitamente essa transição **`T1b`** (e `T1c` para recuperação explícita em espera), mantendo `entry.manual` e protegendo todas as ordens pessoais ativas.
+3. **Reentrância e atomicidade das transições (`B0-A04`):** `Unit.issue_order()` (`src/units/unit.gd:247–288`) possui fronteiras síncronas em `previous_order.cancel()`, `order_finished.emit()`, `order.start()` e `_set_state()`. O plano reconciliado especifica protocolo atômico de 4 estágios (reserva interna silenciosa + guarda de `cancel()` bloqueado por lock + publicação única de `control_mode_changed` após estabilização + revalidação `_order_revision == issued_revision` em toda fronteira), cobrindo 11 casos de borda sem prometer rollback irreal de ordem já encerrada.
+4. **Permissões etárias das crianças (`B0-A01`):** corrigida a contradição presente no resumo da candidata original `B0`: `BABY` não é selecionável nem comandável; **`CHILD` pode realizar atividades leves e seguras (ex.: coleta de frutos) e, quando membro da Casa Fundadora, pode receber ordens pessoais compatíveis com essas restrições** (`MOVE`, `GATHER_FOOD`, `DELIVER_TO_CAMP`), mantendo proibidos corte de árvores, mineração, construção pesada e combate (`GDD v1.3` §§3.3–3.4, `DEC-04`).
+5. **Interface discreta sem cronômetro regressivo (`B0-A05` / `B0-Q07 A`):** removida qualquer menção a contagem regressiva ou atualização contínua na HUD. O `Timer` controla apenas a lógica interna; a HUD exibe somente rótulos discretos orientados a eventos (`Trabalho comunitário`, `Ordem pessoal`, `Aguardando retorno`, `Morador — somente leitura`) e feedback breve de rejeição.
+6. **Impacto real das decisões `B0-Q03 B` e `B0-Q05 B` sobre testes históricos:** inventariado com distinção entre suítes automatizadas e ferramenta visual (`tests/visual/t3_3_ux_repro.gd`), confirmando que `test_t3_6_2_c4_12_rts_provenance.gd` e `test_r_03a_d3_2_tree_gather_orders.gd` (`test_i07`) permanecem 100% preservados sem alteração, enquanto os testes afetados por `Q03 B` (em `B1`) e `Q05 B` (em `B3`) têm estratégia rastreável sem enfraquecimento de asserções.
+7. **Ressalvas `CLOSEOUT-DOC-01`/`02`/`03` preservadas:** explicação forense da diferença de `+3` asserções (`34.026 → 34.029` em laços `while` de `tests/integration/test_t2_worker_cycle.gd`) mantida intacta na Seção 31 do plano.
 
 ---
 
-## 5. Arquitetura Recomendada
+## 5. Arquitetura Reconciliada
 
-- **Metadados mínimos em `CharacterDefinition`:** `HouseAffiliation { COMMUNITY, FOUNDING_HOUSE }` (default `COMMUNITY`), `FoundingHouseOrigin { NONE, ORIGINAL_FOUNDER, DIRECT_DESCENDANT, EXTERNAL_SPOUSE }` (default `NONE`) e `AgeStage { BABY, CHILD, YOUTH, ADULT }` (default `ADULT`), com validação cruzada em `is_valid()` e separação estrita entre pertencimento (`D-04`) e proteção contra morte (`DEC-07`, exclusiva de `ORIGINAL_FOUNDER`).
-- **Autoridade de permissões centralizada (`UnitControlPermissions`, `RefCounted` puro):** separa seleção visual, inspeção, comando pessoal por modalidade, trabalho comunitário por `WorkTask.Kind` e gancho futuro de equipe manual (`R-03C`).
-- **Fonte única do `ControlMode` (`Unit` + `UnitControlState`, `RefCounted`):** 4 estados (`COMMUNITY_FREE`, `COMMUNITY_WORKING`, `PERSONAL_ACTIVE`, `PERSONAL_POST_MOVE_WAIT`), sem `PERSONAL_HOLD` permanente, protegidos por `_order_revision` e `_wait_token_id` monotônicos e 3 origens explícitas (`COMMUNITY`, `PERSONAL`, `SYSTEM_RECOVERY`).
-- **Temporização pausável `D-05`:** `Timer` one-shot criado de forma lazy na própria `Unit` (`PROCESS_MODE_PAUSABLE`, `ignore_time_scale = false`), zero polling, custo zero em moradores comuns, compatível com `D2SimulationPauseController` e coalescido no `CommunityTaskDispatcher` via `_flush_queued`.
+- **Metadados mínimos em `CharacterDefinition`:** `HouseAffiliation { COMMUNITY, FOUNDING_HOUSE }` (default `COMMUNITY`), `FoundingHouseOrigin { NONE, ORIGINAL_FOUNDER, DIRECT_DESCENDANT, EXTERNAL_SPOUSE }` (default `NONE`) e `AgeStage { BABY, CHILD, YOUTH, ADULT }` (default `ADULT`), com validação cruzada em `is_valid()` e `Worker3`/`Worker4` classificados como `COMMUNITY`/`NONE`/`ADULT` (`B0-Q03 B`).
+- **Barreira dupla de permissões (`UnitControlPermissions` em `SelectionManager`, `CommandController`, `CommunityTaskDispatcher` e `Unit`):** separa seleção visual (`B0-Q01 A`), inspeção somente leitura, filtragem pré-planejamento em seleção mista (`B0-Q02 A`), controle pessoal por modalidade e idade (`B0-A01`), trabalho comunitário por `WorkTask.Kind` e gancho futuro `R-03C`, com entradas explícitas `issue_personal_order`/`issue_order`, `issue_community_order` e `issue_recovery_order` (`B0-A02`).
+- **`ControlMode` + `OrderOrigin` na `Unit` (`UnitControlState`, `RefCounted`):** 4 estados (`COMMUNITY_FREE`, `COMMUNITY_WORKING`, `PERSONAL_ACTIVE`, `PERSONAL_POST_MOVE_WAIT`) combinados a `active_origin` (`NONE`, `COMMUNITY`, `PERSONAL`, `SYSTEM_RECOVERY`), incluindo transição legítima `T1b` (`B0-A03`) e protocolo atômico de 4 estágios contra reentrância (`B0-A04`).
+- **Temporização pausável `D-05` e retorno à mesma tarefa (`B0-Q04 A`, `B0-Q05 B`, `B0-Q06 A`):** `Timer` one-shot lazy com **conexão única** na `Unit` (`PROCESS_MODE_PAUSABLE`, `ignore_time_scale = false`), disparado exclusivamente após `MoveOrder` pessoal `SUCCEEDED`, permitindo retorno inclusive à mesma tarefa ainda em `PENDING_WORKERS` (sem jamais reativar `CANCELLED` ou desbloquear `BLOCKED_REAUTHORIZATION`), com calibração experimental `3 s / 8 s / 15 s` em `B4`.
+- **Interface transitória mínima (`B0-Q07 A` / `B0-A05`):** rótulos discretos orientados a eventos no `SelectedUnitPanel`/`HudFormatter` e feedback breve em `AutonomousGatherFeedback`, sem cronômetro regressivo, sem polling e mantendo `use_d2_2_hud = false`.
 
 ---
 
 ## 6. Alternativas Rejeitadas e Justificativas
 
-- **Rejeitada:** `PERSONAL_HOLD` permanente da `RUX-0` com botão manual `"Liberar para comunidade"` — contradiz diretamente `D-05` (retorno automático configurável).
-- **Rejeitada:** Dicionário central de `ControlMode` no `CommunityTaskDispatcher` — cria estado duplicado, quebra isolamento de testes unitários de `Unit` e falha quando não há dispatcher.
-- **Rejeitada:** Polling por frame em `_physics_process` para contagem regressiva `D-05` — viola `§19` e desperdiça CPU por unidade ociosa na Intel UHD 620.
-- **Rejeitada:** `Timer` eagerly instanciado em `unit.tscn` para todo habitante — adiciona nós desnecessários para centenas de moradores comuns que nunca entram em `PERSONAL_POST_MOVE_WAIT`.
-- **Rejeitada:** Autoload global de controle/tempo — proibido pelas diretrizes do projeto (`MainScene` sem autoloads).
-- **Rejeitada:** Consolidar `B2+B3` em um único incremento — mistura risco crítico de reentrância de autoridade de ordens (`B2`) com temporização/pausa/calibração `D-05` (`B3`).
+- **Rejeitada:** `PERSONAL_HOLD` permanente da `RUX-0` com botão manual — substituída por `D-05`.
+- **Rejeitada:** Concentrar permissões apenas em `CommandController` deixando `Unit.issue_order()` desprotegido ou com flag de bypass genérico — rejeitada por `B0-A02`.
+- **Rejeitada:** Publicar `control_mode_changed` antes de concluir `previous_order.cancel()`/`order.start()` ou prometer rollback de ordem comunitária já encerrada — rejeitada por `B0-A04`.
+- **Rejeitada:** Criar um 5º estado artificial em `ControlMode` para `SYSTEM_RECOVERY` — 4 estados + `OrderOrigin` cobrem `T1a`/`T1b`/`T1c` sem inflar a máquina (`B0-A03`).
+- **Rejeitada:** Cronômetro regressivo ou atualização contínua na HUD — explicitamente rejeitada por `B0-Q07 A` e `B0-A05`.
+- **Rejeitada:** Polling por frame em `_physics_process`, `Timer` eagerly instanciado em todo morador ou autoload global.
 
 ---
 
-## 7. Decisões Abertas Encaminhadas ao Proprietário
+## 7. Decisões do Proprietário (Encerradas em `26/11/2026`) e Pendência Remanescente
 
-Documentadas em detalhe (10 campos cada) na Seção 30 do plano:
-- **`B0-Q01`:** Seleção visual e inspeção somente leitura de moradores comuns (`COMMUNITY`).
-- **`B0-Q02`:** Comportamento em seleção mista (Fundador + Morador comum).
-- **`B0-Q03`:** Classificação de `Worker3`/`Worker4` (`TemporaryTestWorkersController`) na `MainScene` durante `P-REC-1`.
-- **`B0-Q04`:** Comportamento de `D-05` em `MoveOrder` que termina por falha de navegação ou cancelamento.
-- **`B0-Q05`:** Elegibilidade da mesma tarefa comunitária interrompida (`excluded_unit_ids`) após expirar `D-05`.
-- **`B0-Q06`:** Faixa experimental de calibração de `D-05` e confirmação de congelamento sob pausa.
-- **`B0-Q07`:** Indicação visual mínima de `ControlMode` na HUD transitória (`use_d2_2_hud = false`).
+As sete decisões **`B0-Q01`–`B0-Q07`** foram formalmente aprovadas pelo proprietário em `26/11/2026` (sem observações adicionais) e incorporadas transversalmente ao plano:
+- `B0-Q01 = Alt. A` · `B0-Q02 = Alt. A` · **`B0-Q03 = Alt. B`** · `B0-Q04 = Alt. A` · **`B0-Q05 = Alt. B`** · `B0-Q06 = Alt. A` · `B0-Q07 = Alt. A`.
+
+**Única definição de produto legitimamente em aberto (por força da própria `B0-Q06 A`):**
+- Escolha da duração padrão definitiva de `D-05` após a calibração experimental de `3 s`, `8 s` e `15 s` no aceite humano futuro (`B4`).
 
 ---
 
-## 8. Divisão Recomendada da Implementação
+## 8. Divisão Recomendada da Implementação (`B0`–`B4` Reconciliada)
 
-Mantida a divisão em 5 incrementos sequenciais com parada obrigatória para auditoria em cada um:
-- **`B0`** (atual): Planejamento arquitetural.
-- **`B1`**: Metadados mínimos da Casa Fundadora, `AgeStage` (`DEC-04`) e `UnitControlPermissions`.
-- **`B2`**: `UnitControlState` (`ControlMode`), `OrderOrigin`, commit atômico em `Unit`/`CommandController`/`Dispatcher` e preservação `D2`/`D3`/`D0-A04`/`P-REC-1`.
-- **`B3`**: `PERSONAL_POST_MOVE_WAIT`, temporizador lazy pausável `D-05`, reconciliação `HD3-06` e indicação transitória mínima.
-- **`B4`**: Integração final na `MainScene`, regressão integral (`95+` suítes), benchmarks CA UHD 620 (`<= 16,7 ms`) e protocolo humano `HB-01`–`HB-08`.
+Mantidos 5 incrementos sequenciais com ajuste de sequenciamento em `B1` para evitar qualquer estado intermediário inválido:
+- **`B0` / `B0-R1`** (atual): Planejamento e reconciliação arquitetural.
+- **`B1`**: Metadados mínimos, `UnitControlPermissions` (`B0-A01`), `OrderOrigin` + entradas explícitas separadas (`issue_personal_order`/`issue_order`, `issue_community_order`, `issue_recovery_order` — `B0-A02`), separação de `dispatch_community_gather()`, filtro de seleção mista (`B0-Q02 A`), `SelectionManager` (`B0-Q01 A`), `Worker3`/`Worker4` = `COMMUNITY` (`B0-Q03 B`) + reconciliação dos testes `Q03 B` no mesmo incremento.
+- **`B2`**: `UnitControlState` (`COMMUNITY_FREE`, `COMMUNITY_WORKING`, `PERSONAL_ACTIVE`), protocolo atômico de 4 estágios (`B0-A04`), transição legítima `T1b` de recuperação (`B0-A03`) e conservação `D0-A04`.
+- **`B3`**: `PERSONAL_POST_MOVE_WAIT`, `Timer` lazy pausável com conexão única (`B0-Q06 A`), gatilho `MoveOrder` `SUCCEEDED` (`B0-Q04 A`), retorno à mesma tarefa + classificação de 4 categorias em `_evaluate_unassigned_task()` + reconciliação dos testes `Q05 B`, e rótulos discretos sem cronômetro regressivo (`B0-Q07 A` / `B0-A05`).
+- **`B4`**: Integração final na `MainScene`, regressão integral (`95+` suítes), benchmarks CA UHD 620 (`<= 16,7 ms`), calibração `3 s`/`8 s`/`15 s` e protocolo humano `HB-01`–`HB-08`.
 
 ---
 
 ## 9. Riscos Principais
 
-- Reentrância síncrona em `Unit.issue_order()` entre cancelamento da ordem comunitária e início da ordem pessoal (`R-B0-01`).
-- Compatibilidade com as 5 suítes históricas que comandam `Worker3`/`Worker4` (`R-B0-02`) e 43 suítes que chamam `Unit.issue_order()` diretamente (`R-B0-03`).
-- Timers ou callbacks obsoletos corrompendo ordens pessoais subsequentes (`R-B0-04`).
-- Falso `BLOCKED_REAUTHORIZATION` em tarefas aguardando término de `PERSONAL_POST_MOVE_WAIT` (`R-B0-05`).
-- Interferência sobre locks transacionais econômicos (`R-B0-06`).
+- Reentrância síncrona em `Unit.issue_order()` e `control_mode_changed` (`R-B0-01`, mitigado por `B0-A04`).
+- Contorno de permissões ou falsificação de origem (`R-B0-02`, mitigado por `B0-A02`).
+- Quebra de recuperação automática de `ConstructOrder` cancelada (`R-B0-03`, mitigado por `B0-A03`).
+- Regressão em testes legados `Q03 B` e `Q05 B` (`R-B0-04`, mitigado por reconciliação rastreável em `B1` e `B3`).
+- Callbacks obsoletos ou conexões acumuladas no `Timer` `D-05` (`R-B0-05`, mitigado por conexão única + `(token, rev)`).
+- Falso `BLOCKED_REAUTHORIZATION` ou desbloqueio indevido (`R-B0-06`, mitigado por classificação de 4 categorias em `_evaluate_unassigned_task()`).
 
 ---
 
 ## 10. Confirmação de Ausência de Alterações Executáveis e Integridade Git
 
-- **Arquivos criados/modificados na candidata:** exclusivamente os 2 documentos Markdown autorizados:
+- **Arquivos criados/modificados na cadeia documental (`develop @ 94c7180` → `B0-R1`):** exclusivamente os 3 documentos Markdown autorizados:
   1. `docs/architecture/R_03B_B0_founding_house_control_mode_PLAN.md`
   2. `docs/testing/R_03B_B0_architectural_planning_candidate_report.md`
-- **Zero alterações** em `src/`, `tests/`, `data/`, `levels/`, `assets/`, `tools/`, `project.godot`, `AGENTS.md`, `docs/Dawn_of_Kin_GDD.md`, `docs/ROADMAP_MESTRE.md`, `README.md`, `docs/KNOWN_ISSUES.md` ou relatórios históricos.
-- **Integridade Git:** branch `feat/r-03b-founding-house-control-mode` derivada de `develop @ 94c718024359dc7ff8360949313969b3ceaf9776`; `develop` intacta em `94c718024359dc7ff8360949313969b3ceaf9776`; `main` intacta em `25e0a20f1d6a2f10a9e059afe69759fbe263db4a`; tags `t1-complete`, `t2-complete`, `t3-3-complete` preservadas; `C:\Projetos\Dawn of Kin\project.godot` preservado byte a byte (`SHA-256 = AEEFDA2810DA5C4EDFA9BF5F2A47A5841F8597238C8DAB4C2E202FAF70307613`).
-- **Verificações documentais da entrega:** existência de todos os arquivos e símbolos citados, conformidade estrutural das 33 seções do plano, ausência de diff executável (`NON_DOC_DIFF_COUNT=0`), validação de whitespace/higiene (`git diff --cached --check`) antes do commit e geração/verificação do manifesto externo `MANIFEST_SHA256.txt` em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\evidencias\R-03B\B0\` na publicação final da candidata.
+  3. `docs/testing/R_03B_B0_R1_architectural_reconciliation_candidate_report.md`
+- **Zero alterações** em `src/`, `tests/`, `data/`, `levels/`, `assets/`, `tools/`, `project.godot`, `AGENTS.md`, `docs/Dawn_of_Kin_GDD.md`, `docs/ROADMAP_MESTRE.md`, `README.md`, `docs/KNOWN_ISSUES.md` ou relatórios históricos da `R-03A`.
+- **Integridade Git:** branch `feat/r-03b-founding-house-control-mode` derivada de `develop @ 94c718024359dc7ff8360949313969b3ceaf9776` (passando por `B0 @ e5024909fbb17cd5266d30e0452e92cc095d5923`); `develop`, `main`, tags e `C:\Projetos\Dawn of Kin\project.godot` (`SHA-256 = AEEFDA2810DA5C4EDFA9BF5F2A47A5841F8597238C8DAB4C2E202FAF70307613`) integralmente preservados.
+- **Verificações documentais da entrega:** existência de todos os arquivos e símbolos citados, conformidade transversal das 33 seções e dos 12 itens (`B0-Q01`–`B0-Q07` + `B0-A01`–`B0-A05`), ausência de diff executável (`NON_DOC_DIFF_COUNT=0`), `git diff --cached --check` antes do commit e geração/verificação do manifesto externo em `C:\Projetos\Backups\Dawn_of_Kin_Archive_Local\evidencias\R-03B\B0-R1\` (preservando intacto o manifesto original `B0`).
 
 ---
 
 ## 11. Limitações da Análise
 
-- Conforme autorizado para `B0`, nenhum teste automatizado da Godot, benchmark ou teste humano foi executado (os números `95/95`, `724/724`, `34.026`/`34.029` citados referem-se estritamente aos registros históricos homologados da `R-03A`).
-- A definição exata da duração do intervalo `D-05` e os 7 pontos `B0-Q01`–`B0-Q07` aguardam deliberação expressa do proprietário.
+- Conforme autorizado para `B0` e `B0-R1`, nenhum teste automatizado da Godot, benchmark ou teste humano foi executado (os números `95/95`, `724/724`, `34.026`/`34.029` citados referem-se estritamente aos registros históricos homologados da `R-03A`).
+- A duração definitiva de `D-05` (entre `3 s`, `8 s`, `15 s` ou ajuste fino) permanece aberta para calibração empírica em `B4` conforme `B0-Q06 A`.
 
 ---
 
 ## 12. Estado da Próxima Etapa
 
-- **`R-03B B0`:** candidata documental pronta para **auditoria independente do ChatGPT** (`NÃO HOMOLOGADA`).
-- **`R-03B B1` e posteriores:** **`NÃO AUTORIZADAS / BLOQUEADAS`** até auditoria independente, deliberação do proprietário sobre `B0-Q01`–`B0-Q07` e autorização expressa de `B1` em etapa posterior.
+- **`R-03B B0-R1`:** candidata documental reconciliada pronta para **auditoria independente do ChatGPT** (`NÃO HOMOLOGADA`).
+- **`R-03B B1`, `B2`, `B3`, `B4` e posteriores:** **`NÃO AUTORIZADAS / BLOQUEADAS`** até conclusão da auditoria independente sobre `B0-R1`, homologação expressa do plano arquitetural e autorização específica de `B1` em etapa posterior.
