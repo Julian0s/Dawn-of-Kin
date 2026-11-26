@@ -416,18 +416,25 @@ func begin_tree_cut(unit: Unit, order: UnitOrder, revision: int, authorization: 
 	if not _can_accept_tree_cut() or authorization == null:
 		return false
 	var cutter := TreeCutter.new(unit, order, revision, authorization)
-	if not _is_tree_cutter_current(cutter):
+	if not _can_register_tree_cutter(cutter):
 		return false
-	_prune_tree_cutters()
-	_prune_tree_cut_authorizations()
 	var authorization_id: int = authorization.get_instance_id()
-	if _tree_cut_authorizations.has(authorization_id) and _tree_cut_authorizations[authorization_id].revoked:
-		return false
-	var unit_id: int = unit.get_instance_id()
-	if _tree_cutters.has(unit_id) or _tree_cutters.size() >= mini(2, max_simultaneous_workers):
-		return false
-	_tree_cut_authorizations[authorization_id] = {"token": weakref(authorization), "revoked": false}
-	_tree_cutters[unit_id] = cutter
+	if (
+		_tree_harvest_stage == TreeHarvestStage.CHOPPING
+		and _tree_cutters.is_empty()
+		and not _has_live_tree_cut_contribution()
+	):
+		_reset_tree_cut_progress()
+		_refresh_tree_cut_processing()
+		_publish_tree_stage()
+		# A stage observer may revoke this authorization or change the order or slots.
+		if not _can_register_tree_cutter(cutter):
+			return false
+	if not _tree_cut_authorizations.has(authorization_id):
+		_tree_cut_authorizations[authorization_id] = {
+			"token": weakref(authorization), "revoked": false, "contributed": false,
+		}
+	_tree_cutters[unit.get_instance_id()] = cutter
 	_refresh_tree_cut_processing()
 	return true
 
@@ -454,7 +461,9 @@ func cancel_tree_cut_authorization(authorization: RefCounted) -> bool:
 	_prune_tree_cut_authorizations()
 	if not _tree_cut_authorizations.has(authorization_id):
 		# Cancellation can precede the first contribution in a synchronous callback.
-		_tree_cut_authorizations[authorization_id] = {"token": weakref(authorization), "revoked": true}
+		_tree_cut_authorizations[authorization_id] = {
+			"token": weakref(authorization), "revoked": true, "contributed": false,
+		}
 		return true
 	if _tree_cut_authorizations[authorization_id].revoked:
 		return false
@@ -466,12 +475,24 @@ func cancel_tree_cut_authorization(authorization: RefCounted) -> bool:
 	_prune_tree_cutters()
 	var reset: bool = _tree_cutters.is_empty() and _tree_harvest_stage == TreeHarvestStage.CHOPPING
 	if reset:
-		_tree_cut_progress_sec = 0.0
-		_tree_harvest_stage = TreeHarvestStage.STANDING
+		_reset_tree_cut_progress()
 	_refresh_tree_cut_processing()
 	if reset:
 		_publish_tree_stage()
 	return true
+
+
+func _can_register_tree_cutter(cutter: TreeCutter) -> bool:
+	if not _can_accept_tree_cut() or not _is_tree_cutter_current(cutter):
+		return false
+	_prune_tree_cutters()
+	_prune_tree_cut_authorizations()
+	var authorization: Dictionary = _tree_cut_authorizations.get(cutter.authorization.get_instance_id(), {})
+	return (
+		not authorization.get("revoked", false)
+		and not _tree_cutters.has(cutter.unit.get_instance_id())
+		and _tree_cutters.size() < mini(2, max_simultaneous_workers)
+	)
 
 
 func _can_accept_tree_cut() -> bool:
@@ -517,6 +538,23 @@ func _prune_tree_cut_authorizations() -> void:
 			_tree_cut_authorizations.erase(authorization_id)
 
 
+## Called after pruning expired tokens. Only a contributor to this cut can
+## support its frozen progress. The owner must revoke tokens it still retains.
+func _has_live_tree_cut_contribution() -> bool:
+	for authorization: Dictionary in _tree_cut_authorizations.values():
+		if authorization.contributed and not authorization.revoked:
+			return true
+	return false
+
+
+func _reset_tree_cut_progress() -> void:
+	_tree_cut_progress_sec = 0.0
+	_tree_harvest_stage = TreeHarvestStage.STANDING
+	# Keep token identities and revocations without carrying contributions forward.
+	for authorization: Dictionary in _tree_cut_authorizations.values():
+		authorization.contributed = false
+
+
 func _refresh_tree_cut_processing() -> void:
 	var active: bool = _tree_cut_in_scene and (
 		_tree_harvest_stage == TreeHarvestStage.FELLING or not _tree_cutters.is_empty()
@@ -529,7 +567,10 @@ func _refresh_tree_cut_processing() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not _tree_cut_in_scene or not can_process() or is_queued_for_deletion() or _advancing_tree_cut:
+	if (
+		not _tree_cut_in_scene or not can_process() or is_queued_for_deletion()
+		or _advancing_tree_cut or _publishing_tree_stage
+	):
 		return
 	if not is_finite(delta) or delta <= 0.0:
 		return
@@ -553,6 +594,8 @@ func _advance_tree_harvest(delta: float) -> void:
 		else:
 			_prune_tree_cutters()
 			if not _tree_cutters.is_empty():
+				for cutter: TreeCutter in _tree_cutters.values():
+					_tree_cut_authorizations[cutter.authorization.get_instance_id()].contributed = true
 				var rate: float = two_cutter_multiplier if _tree_cutters.size() >= 2 else 1.0
 				_tree_cut_progress_sec = minf(_tree_cut_progress_sec + delta * rate, chop_duration_sec)
 				if _tree_cut_progress_sec + 0.000001 >= chop_duration_sec:

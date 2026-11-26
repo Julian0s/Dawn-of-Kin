@@ -433,3 +433,136 @@ func test_12_reentrant_depletion_publishes_stages_in_commit_order() -> void:
 	source.call(&"_physics_process", 0.5)
 	assert_eq(observed, [Stage.CHOPPING, Stage.FELLING, Stage.FALLEN, Stage.DEPLETED])
 	assert_eq(source.get_remaining_amount(), 0)
+
+
+
+func test_13_expired_frozen_authorization_cannot_be_inherited() -> void:
+	var source := _tree()
+	var worker := _worker(source)
+	var auth_a := RefCounted.new()
+	var weak_a: WeakRef = weakref(auth_a)
+	var revision: Variant = source.get(&"_transaction_revision")
+	assert_true(_begin(source, worker, auth_a))
+	source.call(&"_physics_process", 1.0)
+	assert_true(_end(source, worker, auth_a))
+	assert_near(_progress(source), 1.0)
+	assert_eq(_stage(source), Stage.CHOPPING)
+	assert_false(source.is_physics_processing())
+	auth_a = null
+	assert_null(weak_a.get_ref(), "A must really expire before B joins")
+
+	var auth_b := RefCounted.new()
+	assert_true(_begin(source, worker, auth_b))
+	assert_eq(_stage(source), Stage.STANDING)
+	assert_near(_progress(source), 0.0, 0.001, "Independent B must not inherit expired A's second")
+	source.call(&"_physics_process", 1.5)
+	assert_eq(_stage(source), Stage.CHOPPING)
+	assert_near(_progress(source), 1.5)
+	assert_eq(source.get_remaining_amount(), 8)
+	assert_eq(source.get(&"_transaction_revision"), revision)
+	assert_true((source.get(&"_provenance_receipts") as Dictionary).is_empty())
+
+
+func test_14_live_contributors_support_frozen_progress_independently() -> void:
+	var source := _tree()
+	var worker := _worker(source)
+	var auth_a := RefCounted.new()
+	var auth_b := RefCounted.new()
+	assert_true(_begin(source, worker, auth_a))
+	source.call(&"_physics_process", 1.0)
+	assert_true(_end(source, worker, auth_a))
+	assert_true(_begin(source, worker, auth_b))
+	assert_near(_progress(source), 1.0)
+	source.call(&"_physics_process", 0.25)
+	assert_true(_end(source, worker, auth_b))
+	var weak_a: WeakRef = weakref(auth_a)
+	auth_a = null
+	assert_null(weak_a.get_ref())
+	assert_true(_begin(source, worker, auth_b))
+	assert_near(_progress(source), 1.25)
+	source.call(&"_physics_process", 0.25)
+	assert_near(_progress(source), 1.5)
+
+
+func test_15_live_historical_and_revoked_records_do_not_support_current_cut() -> void:
+	var source := _tree()
+	var worker := _worker(source)
+	var historical := RefCounted.new()
+	var never_contributed := RefCounted.new()
+	var revoked := RefCounted.new()
+	assert_true(_begin(source, worker, historical))
+	source.call(&"_physics_process", 0.5)
+	assert_true(_end(source, worker, historical))
+	assert_true(_begin(source, worker, revoked))
+	source.call(&"_physics_process", 0.25)
+	assert_true(_cancel(source, revoked))
+	assert_eq(_stage(source), Stage.STANDING)
+	assert_false(_begin(source, worker, revoked))
+	assert_true(_begin(source, worker, never_contributed))
+	assert_true(_end(source, worker, never_contributed))
+
+	var active := RefCounted.new()
+	assert_true(_begin(source, worker, active))
+	source.call(&"_physics_process", 1.0)
+	assert_true(_end(source, worker, active))
+	var weak_active: WeakRef = weakref(active)
+	active = null
+	assert_null(weak_active.get_ref())
+	assert_true(_begin(source, worker, RefCounted.new()))
+	assert_eq(_stage(source), Stage.STANDING)
+	assert_near(_progress(source), 0.0)
+
+
+func test_16_expiration_during_and_after_irreversible_fall() -> void:
+	for expire_while_falling: bool in [true, false]:
+		var source := _tree()
+		var worker := _worker(source)
+		var authorization := RefCounted.new()
+		var weak_authorization: WeakRef = weakref(authorization)
+		var revision: Variant = source.get(&"_transaction_revision")
+		assert_true(_begin(source, worker, authorization))
+		source.call(&"_physics_process", 2.5)
+		assert_eq(_stage(source), Stage.FELLING)
+		if expire_while_falling:
+			authorization = null
+			assert_null(weak_authorization.get_ref())
+			assert_true(source.is_physics_processing())
+		source.call(&"_physics_process", 0.5)
+		assert_eq(_stage(source), Stage.FALLEN)
+		if not expire_while_falling:
+			authorization = null
+			assert_null(weak_authorization.get_ref())
+		assert_false(_begin(source, worker, RefCounted.new()))
+		assert_eq(_stage(source), Stage.FALLEN)
+		assert_eq(source.get_remaining_amount(), 8)
+		assert_eq(source.get(&"_transaction_revision"), revision)
+		assert_true(source.can_extract())
+
+
+func test_17_reentrant_reconciliation_honors_callback_revocation() -> void:
+	var source := _tree()
+	var worker := _worker(source)
+	var abandoned := RefCounted.new()
+	assert_true(_begin(source, worker, abandoned))
+	source.call(&"_physics_process", 1.0)
+	assert_true(_end(source, worker, abandoned))
+	var weak_abandoned: WeakRef = weakref(abandoned)
+	abandoned = null
+	assert_null(weak_abandoned.get_ref())
+
+	var auth_b := RefCounted.new()
+	var auth_c := RefCounted.new()
+	var observed: Array[int] = []
+	source.connect(&"tree_harvest_stage_changed", func(tree: ResourceSource, stage: int) -> void:
+		observed.append(stage)
+		if stage == Stage.STANDING:
+			assert_true(_cancel(tree, auth_b))
+			assert_true(_begin(tree, worker, auth_c))
+			tree.call(&"_physics_process", 0.75))
+	assert_false(_begin(source, worker, auth_b))
+	assert_eq(observed, [Stage.STANDING])
+	assert_near(_progress(source), 0.0)
+	assert_false(_begin(source, worker, auth_b))
+	source.call(&"_physics_process", 1.0)
+	assert_near(_progress(source), 1.0)
+	assert_eq(observed, [Stage.STANDING, Stage.CHOPPING])
