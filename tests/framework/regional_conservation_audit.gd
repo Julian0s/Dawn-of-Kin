@@ -77,8 +77,11 @@ static func capture(
 			var bound_region: StringName = gpm.get_bound_withdrawal_region()
 			if bound_world != null and (bound_world != world or bound_region != region_id):
 				anomalies.append("storage_bound_to_other_domain:%s" % String(bound_region))
-			if is_instance_valid(gpm._piles_root) and gpm._piles_root.is_inside_tree() and gpm._piles_root.get_world_3d() != world:
-				anomalies.append("storage_piles_root_world_mismatch")
+			if is_instance_valid(gpm._piles_root) and gpm._piles_root.is_inside_tree():
+				if gpm._piles_root.get_world_3d() != world:
+					anomalies.append("storage_piles_root_world_mismatch")
+				elif _resolve_node_region_readonly(gpm._piles_root) != region_id:
+					anomalies.append("storage_piles_root_region_mismatch:%s" % String(_resolve_node_region_readonly(gpm._piles_root)))
 		elif storage is InMemoryStorageSource:
 			if (storage as InMemoryStorageSource).is_locked():
 				storage_busy = true
@@ -457,12 +460,44 @@ static func verify_conservation(
 		return _fail_result("before_snapshot_anomaly", d, expected_entries, expected_exits, before.get("anomalies", []))
 	if not bool(after.get("ok", false)):
 		return _fail_result("after_snapshot_anomaly", d, expected_entries, expected_exits, after.get("anomalies", []))
+
+	# Require explicit transactional stability evidence on both snapshots (D3.3-A01-A).
+	var has_b_stable: bool = before.has("stable_boundary") and (before.get("stable_boundary") is bool)
+	var has_a_stable: bool = after.has("stable_boundary") and (after.get("stable_boundary") is bool)
+	if not has_b_stable and not has_a_stable:
+		return _fail_result("missing_initial_and_final_stability_evidence", d, expected_entries, expected_exits, [])
+	if not has_b_stable:
+		return _fail_result("missing_initial_stability_evidence", d, expected_entries, expected_exits, [])
+	if not has_a_stable:
+		return _fail_result("missing_final_stability_evidence", d, expected_entries, expected_exits, [])
+	var b_stable: bool = bool(before.get("stable_boundary", false))
+	var a_stable: bool = bool(after.get("stable_boundary", false))
+	if not b_stable and not a_stable:
+		return _fail_result("unstable_initial_and_final_snapshots", d, expected_entries, expected_exits, [])
+	if not b_stable:
+		return _fail_result("unstable_initial_snapshot", d, expected_entries, expected_exits, [])
+	if not a_stable:
+		return _fail_result("unstable_final_snapshot", d, expected_entries, expected_exits, [])
+
 	if (
 		int(b_dom.get("world_instance_id", 0)) != int(a_dom.get("world_instance_id", 0))
 		or StringName(b_dom.get("region_id", &"")) != StringName(a_dom.get("region_id", &""))
 		or StringName(b_dom.get("resource_id", &"")) != StringName(a_dom.get("resource_id", &""))
 	):
 		return _fail_result("domain_identity_mismatch", d, expected_entries, expected_exits, [])
+
+	# Require complete and continuous storage identity across snapshots (D3.3-A01-B).
+	# Note: in Godot 4, valid 64-bit Object.get_instance_id() values can have bit 63 set (signed < 0);
+	# 0 is the only valid sentinel for a storage-less domain.
+	var has_b_stor: bool = b_dom.has("storage_instance_id") and (b_dom.get("storage_instance_id") is int)
+	var has_a_stor: bool = a_dom.has("storage_instance_id") and (a_dom.get("storage_instance_id") is int)
+	if not has_b_stor or not has_a_stor:
+		return _fail_result("missing_storage_identity", d, expected_entries, expected_exits, [])
+	var b_stor_id: int = int(b_dom.get("storage_instance_id", 0))
+	var a_stor_id: int = int(a_dom.get("storage_instance_id", 0))
+	if b_stor_id != a_stor_id:
+		return _fail_result("storage_identity_mismatch", d, expected_entries, expected_exits, [])
+
 	if int(d["decay_delta"]) < 0 or int(d["demolition_delta"]) < 0 or int(d["losses_delta"]) < 0:
 		return _fail_result("negative_loss_delta", d, expected_entries, expected_exits, [])
 

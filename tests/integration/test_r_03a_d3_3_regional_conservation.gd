@@ -1090,3 +1090,229 @@ func test_c12_adversarial_accounting_detection() -> void:
 	assert_true((s_shared["anomalies"] as Array).any(func(a: String) -> bool: return a.begins_with("shared_carry_load_instance:")))
 	unit_dup.get_parent().remove_child(unit_dup)
 	unit_dup.free()
+
+
+## D3.3-R1 (R1-A) — Adversarial validation of transactional stability guards.
+func test_r1_a_transactional_stability_guards() -> void:
+	var main := await _main_fixture(true)
+	var inv := main.get_settlement_inventory()
+	var gpm := main.get_ground_pile_manager()
+	var unit := main.get_units()[0]
+	var load := unit.get_carry_load()
+	assert_true(inv.deposit(&"wood", 6))
+
+	var s_stable_0 := _snap_main(main, &"wood")
+	assert_true(bool(s_stable_0.get("ok", false)))
+	assert_true(bool(s_stable_0.get("stable_boundary", false)), "Baseline capture must be stable")
+
+	# Real busy condition 1: GroundPileManager batch active.
+	gpm.begin_batch()
+	var s_busy_batch := _snap_main(main, &"wood")
+	gpm.end_batch()
+	assert_true(bool(s_busy_batch.get("ok", false)), "Diagnostic capture during batch still succeeds")
+	assert_false(bool(s_busy_batch.get("stable_boundary", true)), "capture() must mark active batch as unstable")
+	assert_eq(int(s_busy_batch["total_physical"]), int(s_stable_0["total_physical"]))
+
+	# Real busy condition 2: UnitCarryLoad provenance lock active.
+	load._provenance_busy = true
+	var s_busy_carry := _snap_main(main, &"wood")
+	load._provenance_busy = false
+	assert_true(bool(s_busy_carry.get("ok", false)), "Diagnostic capture during carry lock still succeeds")
+	assert_false(bool(s_busy_carry.get("stable_boundary", true)), "capture() must mark busy carry load as unstable")
+	assert_eq(int(s_busy_carry["total_physical"]), int(s_stable_0["total_physical"]))
+
+	var s_stable_1 := _snap_main(main, &"wood")
+	assert_true(bool(s_stable_1.get("ok", false)) and bool(s_stable_1.get("stable_boundary", false)))
+
+	# 1. Stable -> Stable: accepted.
+	var c_ok := RegionalConservationAudit.verify_conservation(s_stable_0, s_stable_1)
+	assert_true(bool(c_ok.get("ok", false)), "Stable->Stable must pass: %s" % str(c_ok))
+
+	# 2. Unstable -> Stable: rejected with initial instability reason.
+	var c_init_unstable := RegionalConservationAudit.verify_conservation(s_busy_batch, s_stable_1)
+	assert_false(bool(c_init_unstable.get("ok", true)), "Unstable->Stable must be rejected")
+	assert_eq(String(c_init_unstable.get("reason", "")), "unstable_initial_snapshot")
+
+	# 3. Stable -> Unstable: rejected with final instability reason.
+	var c_final_unstable := RegionalConservationAudit.verify_conservation(s_stable_0, s_busy_batch)
+	assert_false(bool(c_final_unstable.get("ok", true)), "Stable->Unstable must be rejected")
+	assert_eq(String(c_final_unstable.get("reason", "")), "unstable_final_snapshot")
+
+	# 4. Unstable -> Unstable: rejected.
+	var c_both_unstable := RegionalConservationAudit.verify_conservation(s_busy_batch, s_busy_carry)
+	assert_false(bool(c_both_unstable.get("ok", true)), "Unstable->Unstable must be rejected")
+	assert_eq(String(c_both_unstable.get("reason", "")), "unstable_initial_and_final_snapshots")
+
+	# 5. Missing stability field on initial snapshot (synthetic copy): rejected.
+	var s_missing_init := s_stable_0.duplicate(true)
+	s_missing_init.erase("stable_boundary")
+	var c_missing_init := RegionalConservationAudit.verify_conservation(s_missing_init, s_stable_1)
+	assert_false(bool(c_missing_init.get("ok", true)), "Missing initial stable_boundary must be rejected")
+	assert_eq(String(c_missing_init.get("reason", "")), "missing_initial_stability_evidence")
+
+	# 6. Missing stability field on final snapshot (synthetic copy): rejected.
+	var s_missing_final := s_stable_1.duplicate(true)
+	s_missing_final.erase("stable_boundary")
+	var c_missing_final := RegionalConservationAudit.verify_conservation(s_stable_0, s_missing_final)
+	assert_false(bool(c_missing_final.get("ok", true)), "Missing final stable_boundary must be rejected")
+	assert_eq(String(c_missing_final.get("reason", "")), "missing_final_stability_evidence")
+
+
+## D3.3-R1 (R1-B) — Adversarial validation of storage instance identity and continuity.
+func test_r1_b_storage_identity_continuity_and_domain() -> void:
+	var view1 := SubViewport.new()
+	view1.own_world_3d = true
+	add_test_child(view1)
+	var dom1 := _create_isolated_domain(view1, &"r1b_region", Vector3.ZERO, 10, 4)
+	var w1: World3D = dom1["world"] as World3D
+	var inv1: SettlementInventory = dom1["inventory"] as SettlementInventory
+	var gpm1: GroundPileManager = dom1["gpm"] as GroundPileManager
+	var time1: SimulatedWorldTimeProvider = dom1["time"] as SimulatedWorldTimeProvider
+	var host1: Node3D = dom1["host"] as Node3D
+
+	# 1. Valid same storage instance.
+	var s1_a := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"wood", inv1)
+	var s1_b := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"wood", inv1)
+	assert_true(bool(s1_a.get("ok", false)) and bool(s1_b.get("ok", false)))
+	var c_same := RegionalConservationAudit.verify_conservation(s1_a, s1_b)
+	assert_true(bool(c_same.get("ok", false)), "Same storage instance must pass: %s" % str(c_same))
+
+	# 2. Different storage instances in the SAME (world, region_id, resource_id) with identical physical total (10):
+	#    must be rejected by verify_conservation() as storage_identity_mismatch!
+	var view_swap := SubViewport.new()
+	view_swap.own_world_3d = true
+	add_test_child(view_swap)
+	var host_swap := Node3D.new()
+	host_swap.set_meta(&"region_id", &"r1b_swap")
+	view_swap.add_child(host_swap)
+	var w_swap := host_swap.get_world_3d()
+	var zone_swap := CampStorageZone.new()
+	zone_swap.zone_id = &"camp_r1b_swap"
+	zone_swap.position = Vector3(-6.0, 0.0, -6.0)
+	zone_swap.zone_bounds_half_extents = Vector2(6.0, 6.0)
+	zone_swap.set_meta(&"region_id", &"r1b_swap")
+	host_swap.add_child(zone_swap)
+	var piles_swap := Node3D.new()
+	piles_swap.set_meta(&"region_id", &"r1b_swap")
+	host_swap.add_child(piles_swap)
+	var defs_swap: Dictionary = {
+		&"wood": WOOD_DEF.duplicate(),
+		&"stone": STONE_DEF.duplicate(),
+		&"food": FOOD_DEF.duplicate(),
+	}
+	var time_a := SimulatedWorldTimeProvider.new(0.0)
+	var gpm_a := GroundPileManager.new(defs_swap, zone_swap, piles_swap, time_a)
+	var inv_a := SettlementInventory.new(gpm_a)
+	assert_true(inv_a.deposit(&"wood", 10))
+	var s_swap_a := RegionalConservationAudit.capture(get_tree(), w_swap, &"r1b_swap", &"wood", inv_a)
+	assert_true(bool(s_swap_a.get("ok", false)), "Initial swap storage capture ok: %s" % str(s_swap_a.get("anomalies", [])))
+
+	# Replace storage instance in the exact same (world, region_id) with identical physical wood (10).
+	gpm_a.cleanup()
+	await wait_physics_frames(1)
+	var time_b := SimulatedWorldTimeProvider.new(0.0)
+	var gpm_b := GroundPileManager.new(defs_swap, zone_swap, piles_swap, time_b)
+	_extra_managers.append(gpm_b)
+	var inv_b := SettlementInventory.new(gpm_b)
+	assert_true(inv_b.deposit(&"wood", 10))
+	var s_swap_b := RegionalConservationAudit.capture(get_tree(), w_swap, &"r1b_swap", &"wood", inv_b)
+	assert_true(bool(s_swap_b.get("ok", false)), "Replacement swap storage capture ok: %s" % str(s_swap_b.get("anomalies", [])))
+	assert_ne(int(s_swap_a["domain"]["storage_instance_id"]), int(s_swap_b["domain"]["storage_instance_id"]))
+	assert_eq(int(s_swap_a["total_physical"]), int(s_swap_b["total_physical"]))
+	var c_diff_stor := RegionalConservationAudit.verify_conservation(s_swap_a, s_swap_b)
+	assert_false(bool(c_diff_stor.get("ok", true)), "Different storage instances must be rejected")
+	assert_eq(String(c_diff_stor.get("reason", "")), "storage_identity_mismatch")
+
+	# 3. Storage belonging to another domain:
+	#    (a) distinct World3D -> capture() flags storage_piles_root_world_mismatch
+	#    (b) distinct region_id in same World3D -> capture() flags storage_piles_root_region_mismatch
+	var view2 := SubViewport.new()
+	view2.own_world_3d = true
+	add_test_child(view2)
+	var dom2 := _create_isolated_domain(view2, &"r1b_region", Vector3.ZERO, 10, 4)
+	var s_cross_world := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"wood", dom2["inventory"] as SettlementInventory)
+	assert_false(bool(s_cross_world.get("ok", true)), "Cross-world storage must fail capture")
+
+	var dom_other_reg := _create_isolated_domain(view1, &"r1b_other_region", Vector3(50.0, 0.0, 0.0), 10, 4)
+	var s_cross_reg := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"wood", dom_other_reg["inventory"] as SettlementInventory)
+	assert_false(bool(s_cross_reg.get("ok", true)), "Cross-region storage in same World3D must fail capture")
+
+	# 4. Missing or invalid storage_instance_id (synthetic): rejected.
+	var s_missing_sid := s1_a.duplicate(true)
+	(s_missing_sid["domain"] as Dictionary).erase("storage_instance_id")
+	var c_missing_sid := RegionalConservationAudit.verify_conservation(s_missing_sid, s1_b)
+	assert_false(bool(c_missing_sid.get("ok", true)), "Missing storage_instance_id must be rejected")
+	assert_eq(String(c_missing_sid.get("reason", "")), "missing_storage_identity")
+
+	var s_bad_sid := s1_a.duplicate(true)
+	(s_bad_sid["domain"] as Dictionary)["storage_instance_id"] = null
+	var c_bad_sid := RegionalConservationAudit.verify_conservation(s1_a, s_bad_sid)
+	assert_false(bool(c_bad_sid.get("ok", true)), "Null storage_instance_id must be rejected")
+	assert_eq(String(c_bad_sid.get("reason", "")), "missing_storage_identity")
+
+	# 5. Domain legitimately without storage (storage_instance_id == 0 in both snapshots): accepted,
+	#    while asymmetric (0 vs non-zero) is rejected.
+	var view_nostor := SubViewport.new()
+	view_nostor.own_world_3d = true
+	add_test_child(view_nostor)
+	var host_ns := Node3D.new()
+	host_ns.set_meta(&"region_id", &"r1b_nostor")
+	view_nostor.add_child(host_ns)
+	var tree_ns := ResourceSource.new()
+	tree_ns.set_meta(&"region_id", &"r1b_nostor")
+	host_ns.add_child(tree_ns)
+	tree_ns.configure(&"ns_tree", WOOD_DEF.duplicate(), 6, 2, 2)
+	tree_ns.set(&"_tree_harvest_stage", FALLEN)
+	var unit_ns := UNIT_SCENE.instantiate() as Unit
+	unit_ns.definition = LEADER_A_DEF.duplicate() as CharacterDefinition
+	unit_ns.definition.character_id = &"ns_worker"
+	unit_ns.set_meta(&"region_id", &"r1b_nostor")
+	host_ns.add_child(unit_ns)
+	assert_true(unit_ns.get_carry_load().enable_provenance(unit_ns.definition.character_id))
+	var w_ns := host_ns.get_world_3d()
+	var s_ns_0 := RegionalConservationAudit.capture(get_tree(), w_ns, &"r1b_nostor", &"wood", null)
+	assert_true(bool(s_ns_0.get("ok", false)) and int(s_ns_0["domain"]["storage_instance_id"]) == 0)
+	assert_eq(tree_ns.transfer_to_carry_load_with_provenance(unit_ns.get_carry_load(), &"ns_op", &"ns_lot", 2).get("extracted", 0), 2)
+	var s_ns_1 := RegionalConservationAudit.capture(get_tree(), w_ns, &"r1b_nostor", &"wood", null)
+	var c_ns := RegionalConservationAudit.verify_conservation(s_ns_0, s_ns_1)
+	assert_true(bool(c_ns.get("ok", false)), "Storage-less domain must conserve validly: %s" % str(c_ns))
+
+	var s_asym_zero := s1_a.duplicate(true)
+	(s_asym_zero["domain"] as Dictionary)["storage_instance_id"] = 0
+	var c_asym := RegionalConservationAudit.verify_conservation(s_asym_zero, s1_b)
+	assert_false(bool(c_asym.get("ok", true)), "Asymmetric 0 vs non-zero storage_instance_id must be rejected")
+	assert_eq(String(c_asym.get("reason", "")), "storage_identity_mismatch")
+
+	# 6. Decay counter continuity when storage is replaced:
+	#    gpm1 decays 3 food (10 -> 7, total_decayed = 3); gpm_b in w_swap decays 3 food independently
+	#    -> even with matching totals/decay counts, verify_conservation MUST reject via storage_identity_mismatch,
+	#    and a fresh storage without prior decay (total_decayed = 0) would otherwise break loss continuity.
+	assert_true(inv1.deposit(&"food", 10))
+	var sf_before := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"food", inv1)
+	time1.advance(315.0)
+	gpm1.step_decay()
+	var sf_after := RegionalConservationAudit.capture(get_tree(), w1, &"r1b_region", &"food", inv1)
+	assert_eq(int(sf_after["losses"]["decay_losses"]), 3)
+	assert_true(bool(RegionalConservationAudit.verify_conservation(sf_before, sf_after).get("ok", false)))
+
+	assert_true(inv_b.deposit(&"food", 10))
+	var sf_b0 := RegionalConservationAudit.capture(get_tree(), w_swap, &"r1b_swap", &"food", inv_b)
+	time_b.advance(315.0)
+	gpm_b.step_decay()
+	var sf_b1 := RegionalConservationAudit.capture(get_tree(), w_swap, &"r1b_swap", &"food", inv_b)
+	assert_eq(int(sf_b1["losses"]["decay_losses"]), 3)
+
+	# Swapping gpm_b -> gpm_c (0 decay) in the same (w_swap, r1b_swap) domain demonstrates loss counter discontinuity.
+	gpm_b.cleanup()
+	await wait_physics_frames(1)
+	var time_c := SimulatedWorldTimeProvider.new(0.0)
+	var gpm_c := GroundPileManager.new(defs_swap, zone_swap, piles_swap, time_c)
+	_extra_managers.append(gpm_c)
+	var inv_c := SettlementInventory.new(gpm_c)
+	assert_true(inv_c.deposit(&"food", 7))
+	var sf_c := RegionalConservationAudit.capture(get_tree(), w_swap, &"r1b_swap", &"food", inv_c)
+	assert_eq(int(sf_c["losses"]["decay_losses"]), 0)
+	assert_eq(int(sf_c["total_physical"]), int(sf_b1["total_physical"]))
+	var c_decay_swapped := RegionalConservationAudit.verify_conservation(sf_b1, sf_c)
+	assert_false(bool(c_decay_swapped.get("ok", true)), "Swapped storage with reset decay counter must be rejected")
+	assert_eq(String(c_decay_swapped.get("reason", "")), "storage_identity_mismatch")
