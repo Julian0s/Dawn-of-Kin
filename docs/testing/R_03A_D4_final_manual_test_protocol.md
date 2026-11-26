@@ -1,17 +1,17 @@
 # Dawn of Kin — Protocolo Atualizado de Testes Humanos Finais (`R-03A D4` / `D4-R1` / `D4-R2` · `M1`–`M8`)
 
-**Candidata:** `feat/r-03a-community-work-main-scene` (`C:\Projetos\Dawn_of_Kin_wt_r_03a`)  
+**Candidata homologada:** `feat/r-03a-community-work-main-scene`  
 **SHAs anteriores na branch:** `D4` (`94744eca16e9eea60b03033f82a318f8e7825dc2`) · `D4-R1` (`b088620dbd7042a926f3bcd0c2357c48131c0821`)  
-**SHA final da `D4-R2` esperado na ponta da branch candidata:** confirmado por `git rev-parse HEAD` na entrega `D4-R2` e registrado em `evidencias\R-03A\D4\D4-R2\09_git_final\git_final.txt` *(não editar cenas, código ou flags para executar este roteiro)*.  
-**Status obrigatório:** **`AGUARDANDO EXECUÇÃO PELO PROPRIETÁRIO`** · **`NENHUM CENÁRIO M1–M8 APROVADO`**
+**SHA técnico definitivamente homologado (`D4-R2`):** `7c77e49d491f70c1867254f1a76a023050815431` *(confirmado por `git rev-parse HEAD` na entrega `D4-R2` e registrado em `evidencias\R-03A\D4\D4-R2\09_git_final\git_final.txt`; cenários executados sem alterações pós-D4-R2)*.  
+**Status obrigatório:** **`HOMOLOGADO DEFINITIVAMENTE PELO PROPRIETÁRIO EM 26/11/2026`** · **`8/8 CENÁRIOS M1–M8 APROVADOS (INCLUINDO M7-A E M7-B)`**
 
 > [!NOTE]
-> Este roteiro substitui integralmente o protocolo pré-D1/D2/D3 e reflete os contratos atualmente homologados (`D1`: seleção independente + autorização por categoria na HUD; `D2`: selo mineral `×`/`×N` de cancelamento seletivo; `D3`: corte progressivo de árvores de `2,5 s`, `1,5×` com 2 cortadores, queda irreversível de `0,50 s`, extração apenas pós-`FALLEN`; `P-REC-1`: construção legada ativa; `use_d2_2_hud = false`).  
-> Os **21 testes humanos anteriores** (`13` da `D2` + `8` da `D3.2`) permanecem preservados e não precisam ser repetidos separadamente.
+> Este roteiro substitui integralmente o protocolo pré-D1/D2/D3 e reflete os contratos homologados na `R-03A` (`D1`: seleção independente + autorização por categoria na HUD; `D2`: selo mineral `×`/`×N` de cancelamento seletivo; `D3`: corte progressivo de árvores de `2,5 s`, `1,5×` com 2 cortadores, queda irreversível de `0,50 s`, extração apenas pós-`FALLEN`; `P-REC-1`: construção legada ativa; `use_provenance_economy = true`; `automatic_cancellation_recovery = true`; `use_d2_2_hud = false`).  
+> Os **21 testes humanos anteriores** (`13` da `D2`/`D2-R1` + `8` `HD3-01`–`HD3-08` da `D3.2`) e os **5 retestes `RH-R3-01`–`RH-R3-05`** (`D1-R3`) permanecem preservados na cadeia de homologação da `R-03A`.
 
 ---
 
-## 1. Comandos PowerShell Obrigatórios (Worktree Candidato)
+## 1. Comandos PowerShell Obrigatórios (Worktree Candidato na Execução D4-R2)
 
 ### 1.1 Conferir a candidata antes de abrir o jogo
 ```powershell
@@ -19,7 +19,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 git rev-parse HEAD
 git status --short
 ```
-*(O status do worktree deve estar limpo, em `feat/r-03a-community-work-main-scene`, no SHA final da candidata `D4-R1` registrado em `16_git_final/git_final.txt`.)*
+*(O status do worktree na execução dos testes humanos esteve limpo, em `feat/r-03a-community-work-main-scene`, no SHA técnico final da candidata `D4-R2`: `7c77e49d491f70c1867254f1a76a023050815431`.)*
 
 ### 1.2 Abrir em `1280×720`
 ```powershell
@@ -51,7 +51,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Alta (Bloqueante visual/boot).
 - **Evidência recomendada:** Confirmação em `720p` e `1080p` (ou print se houver desvio).
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -69,7 +69,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Crítica (`D1`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL` e anotação de fluidez do clique.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -87,7 +87,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Alta (`D1` / `R1-F02`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL`.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -103,7 +103,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Crítica (`D1` / `D3.2`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL`.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -119,7 +119,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Crítica (`D0-A03` / `D3`).
 - **Evidência recomendada:** Confirmação visual do ciclo completo.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -137,7 +137,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Crítica (`D1` / `D2` / `D3`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL` e anotação sobre `HD3-06`.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -155,7 +155,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Alta (`P-REC-1` / `D1`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL`.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
 
 ---
 
@@ -171,4 +171,13 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 - **Criticidade:** Alta (`D0-A04` / `D4`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL` + saída limpa do console.
 - **Observações:** `______________________________________________________________`
-- **Resultado:** `[ ] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO`
+- **Resultado:** `[x] PASS` · `[ ] FAIL` · `[ ] NÃO TESTADO` *(aprovado pelo proprietário em `26/11/2026` no SHA `7c77e49d491f70c1867254f1a76a023050815431`)*
+
+---
+
+## 3. Consolidação Formal dos Resultados Humanos (`26/11/2026`)
+
+- **SHA técnico verificado na execução:** `7c77e49d491f70c1867254f1a76a023050815431` (`feat/r-03a-community-work-main-scene`).
+- **Resultado consolidado `M1`–`M8`:** **`8/8 PASS`** (`M7-A` e `M7-B` executados e aprovados de forma consolidada em `M7`).
+- **Histórico preservado da `R-03A`:** `5/5` retestes humanos `RH-R3-01`–`RH-R3-05` (`D1-R3` @ `9964a06`) + `13` testes humanos (`D2`/`D2-R1` @ `7c53187`) + `8` testes humanos `HD3-01`–`HD3-08` (`D3.2` @ `a0bf3ae`, com observação `HD3-06` mantida para `R-03B`), totalizando **`21` testes humanos intermediários + `5` retestes + `8` cenários finais `M1`–`M8` aprovados**.
+- **Limitação conhecida aceita exclusivamente para a `R-03A`:** `D2-P01: 6_TREES_KEEPING_STONE_FOOD_ACTIVE` em `1080p` CA (`p95 = 19,879 ms`; `720p` CA `16,445 ms`), registrada em [docs/KNOWN_ISSUES.md](../KNOWN_ISSUES.md) §6 como não bloqueante sem relaxamento do orçamento nominal de `16,7 ms` do projeto.

@@ -73,3 +73,16 @@ Registro objetivo de limitações medidas e observações técnicas dos marcos *
 ## 5. Limites visuais provisórios aceitos até T2.6
 
 - Assets geométricos provisórios para pilhas no chão (`GroundResourcePile`) e fontes (`wood_tree`, `stone_rock`, `food_bush`), feedback corporal simples durante coleta e ausência de efeitos sonoros permanecem intencionalmente fora do escopo T2 conforme [Dawn_of_Kin_GDD.md](Dawn_of_Kin_GDD.md) e aceite da etapa T2.4.3.
+
+---
+
+## 6. Limitação conhecida não bloqueante aceita exclusivamente para R-03A (D2-P01 / D4-R2 em 1080p)
+
+- **Identificação do caso:** `D2-P01: 6_TREES_KEEPING_STONE_FOOD_ACTIVE` (medição de estresse sintético em lote máximo de autorização simultânea na `R-03A`, mantendo pedra e alimento ativos).
+- **Origem e validação:** Medido na entrega **`R-03A D4-R2`** (`feat/r-03a-community-work-main-scene` @ `7c77e49d491f70c1867254f1a76a023050815431`, relatório [docs/testing/R_03A_D4_R2_algorithmic_equivalence_audit_report.md](docs/testing/R_03A_D4_R2_algorithmic_equivalence_audit_report.md)), em condições de tomada **CA** no hardware de referência:
+  - `1280×720` (CA): `p95 = 16,445 ms` *(abaixo de `16,7 ms`)*.
+  - `1920×1080` (CA): **`p95 = 19,879 ms`** *(acima da meta nominal de `16,7 ms` em `1080p` CA)*.
+  - Cenário de estresse `P04` (mesma rodada `D4-R2`, CA): `12,516 ms` (`720p`) e `14,122 ms` (`1080p`), ambos dentro de `16,7 ms`.
+- **Avaliação de experiência real:** Os `8/8` testes humanos finais (`M1`–`M8`, aprovados em `26/11/2026`, incluindo `M8` de uso contínuo e percepção de fluidez em `720p` e `1080p`) não apresentaram degradação bloqueante perceptível durante o jogo real.
+- **Decisão formal e escopo restrito:** Em `26/11/2026`, o proprietário homologou definitivamente a **`R-03A`** e **aceitou explicitamente o valor residual `p95 = 19,879 ms` em `1080p` CA no caso sintético `D2-P01: 6_TREES_KEEPING_STONE_FOOD_ACTIVE` como limitação conhecida não bloqueante exclusiva para o encerramento da `R-03A`**.
+- **Regra de orçamento preservada:** Esta exceção não relaxa nem modifica o orçamento nominal de desempenho do projeto (`p95 <= 16,7 ms` em `1920×1080`, tomada CA, Intel UHD Graphics 620) para etapas subsequentes (`R-03B` em diante), devendo o ponto `D2-P01` ser preservado em registro para eventual otimização futura caso necessário.
