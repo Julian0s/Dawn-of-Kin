@@ -2,7 +2,7 @@ class_name ResourceSource
 extends Node3D
 ## Gatherable natural resource node (tree, rock, bush) with finite stock,
 ## deterministic depletion state, and worker slot reservation hooks for T2.3+.
-## Contains no per-frame _process/_physics_process logic and no resource regeneration.
+## Tree harvest advances only while cutting or falling. Sources never regenerate.
 
 const GROUP_RESOURCE_SOURCES: StringName = &"resource_sources"
 
@@ -11,6 +11,29 @@ enum TreeVisualState {
 	FELLING,
 	FALLEN,
 }
+
+enum TreeHarvestStage {
+	STANDING,
+	CHOPPING,
+	FELLING,
+	FALLEN,
+	DEPLETED,
+}
+
+class TreeCutter:
+	var unit: Unit
+	var order: UnitOrder
+	var revision: int
+	var authorization: RefCounted
+
+	func _init(p_unit: Unit, p_order: UnitOrder, p_revision: int, p_authorization: RefCounted) -> void:
+		unit = p_unit
+		order = p_order
+		revision = p_revision
+		authorization = p_authorization
+
+
+signal tree_harvest_stage_changed(source: ResourceSource, stage: TreeHarvestStage)
 
 signal amount_changed(source: ResourceSource, remaining_amount: int, delta: int)
 signal depleted(source: ResourceSource)
@@ -43,6 +66,8 @@ signal worker_slot_released(source: ResourceSource)
 @export var interaction_radius: float = 1.6
 @export var gather_operation_duration_sec: float = 2.5
 @export var gather_prepare_duration_sec: float = 0.35
+@export_range(0.01, 60.0, 0.01, "or_greater") var chop_duration_sec: float = 2.5
+@export_range(1.0, 2.0, 0.01) var two_cutter_multiplier: float = 1.5
 @export var felling_duration_sec: float = 0.50
 @export var show_discoverability_badge: bool = true:
 	set(value):
@@ -62,7 +87,16 @@ var _reserved_worker_ids: Array[int] = []
 var _available_base_transform: Transform3D = Transform3D.IDENTITY
 var _has_available_base_transform: bool = false
 var _feedback_tween: Tween = null
-var _tree_visual_state: TreeVisualState = TreeVisualState.STANDING
+var _tree_harvest_stage: TreeHarvestStage = TreeHarvestStage.STANDING
+var _tree_cut_progress_sec: float = 0.0
+var _tree_felling_elapsed_sec: float = 0.0
+var _tree_felling_total_sec: float = 0.0
+var _tree_cutters: Dictionary = {}
+var _tree_cut_authorizations: Dictionary = {}
+var _tree_cut_in_scene: bool = false
+var _advancing_tree_cut: bool = false
+var _publishing_tree_stage: bool = false
+var _pending_tree_stages: Array[TreeHarvestStage] = []
 var _felling_tween: Tween = null
 var _has_felling_rest_pose: bool = false
 var _felling_pivot_rest: Transform3D = Transform3D.IDENTITY
@@ -75,9 +109,14 @@ func _init() -> void:
 	_remaining_amount = initial_amount
 
 
+func _enter_tree() -> void:
+	_tree_cut_in_scene = true
+	_refresh_tree_cut_processing()
+
+
 func _ready() -> void:
 	set_process(false)
-	set_physics_process(false)
+	_refresh_tree_cut_processing()
 	add_to_group(GROUP_RESOURCE_SOURCES)
 
 	var solid_body: StaticBody3D = get_node_or_null("SolidBody") as StaticBody3D
@@ -98,10 +137,17 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	_kill_feedback_tween()
+	_tree_cut_in_scene = false
+	_pending_tree_stages.clear()
+	_tree_cutters.clear()
+	for authorization: Dictionary in _tree_cut_authorizations.values():
+		authorization.revoked = true
+	if _tree_harvest_stage == TreeHarvestStage.CHOPPING:
+		_tree_harvest_stage = TreeHarvestStage.STANDING
+		_tree_cut_progress_sec = 0.0
+	_refresh_tree_cut_processing()
 	_reset_feedback_visuals()
 	_kill_felling_tween()
-	_reset_felling_visuals()
 
 
 func configure(
@@ -111,7 +157,7 @@ func configure(
 	p_max_extract_per_operation: int = 1,
 	p_max_simultaneous_workers: int = 2
 ) -> void:
-	if _is_transferring:
+	if _is_transferring or _advancing_tree_cut or _publishing_tree_stage:
 		return
 	_transaction_revision += 1
 	source_id = p_source_id
@@ -123,6 +169,13 @@ func configure(
 	initial_amount = p_initial_amount
 	_remaining_amount = maxi(0, p_initial_amount)
 	_reserved_worker_ids.clear()
+	_tree_cutters.clear()
+	_tree_cut_authorizations.clear()
+	_tree_harvest_stage = TreeHarvestStage.STANDING
+	_tree_cut_progress_sec = 0.0
+	_tree_felling_elapsed_sec = 0.0
+	_tree_felling_total_sec = 0.0
+	_refresh_tree_cut_processing()
 	_reset_feedback_visuals()
 	_reset_felling_visuals()
 	_sync_visuals()
@@ -142,6 +195,10 @@ func is_valid() -> bool:
 		and is_finite(gather_prepare_duration_sec)
 		and felling_duration_sec > 0.0
 		and is_finite(felling_duration_sec)
+		and (get_category() != ResourceDefinition.Category.WOOD or (
+			chop_duration_sec > 0.0 and is_finite(chop_duration_sec)
+			and two_cutter_multiplier >= 1.0 and two_cutter_multiplier <= 2.0
+		))
 		and _remaining_amount >= 0
 		and _remaining_amount <= initial_amount
 	)
@@ -184,11 +241,18 @@ func is_available() -> bool:
 
 
 func can_extract(requested_amount: int = 1) -> bool:
-	return requested_amount > 0 and is_available()
+	return requested_amount > 0 and _is_new_extraction_allowed()
+
+
+func _is_new_extraction_allowed() -> bool:
+	return is_available() and (
+		get_category() != ResourceDefinition.Category.WOOD
+		or (_tree_cut_in_scene and not is_queued_for_deletion() and _tree_harvest_stage == TreeHarvestStage.FALLEN)
+	)
 
 
 func extract(requested_amount: int) -> int:
-	if _is_transferring or requested_amount <= 0 or not is_available():
+	if _is_transferring or not can_extract(requested_amount):
 		return 0
 
 	var capped_request: int = mini(requested_amount, max_extract_per_operation)
@@ -200,7 +264,7 @@ func extract(requested_amount: int) -> int:
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
 	_transaction_revision += 1
 	var became_depleted: bool = (_remaining_amount == 0)
-	_trigger_tree_felling_if_needed(became_depleted)
+	_mark_tree_depleted(became_depleted)
 	_sync_visuals()
 	if not became_depleted:
 		_trigger_gather_feedback()
@@ -209,7 +273,7 @@ func extract(requested_amount: int) -> int:
 	_is_transferring = true
 	amount_changed.emit(self, _remaining_amount, -extracted)
 	if became_depleted:
-		depleted.emit(self)
+		_emit_depleted()
 	_is_transferring = false
 
 	return extracted
@@ -218,7 +282,7 @@ func extract(requested_amount: int) -> int:
 func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -1) -> int:
 	## Atomically transfers up to min(requested_amount, max_extract_per_operation, carry capacity)
 	## directly from this source to carry_load without double-drain or reentrant loss.
-	if _is_transferring or carry_load == null or not is_available():
+	if _is_transferring or carry_load == null or not _is_new_extraction_allowed():
 		return 0
 	if requested_amount == 0:
 		return 0
@@ -244,7 +308,7 @@ func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -
 	_remaining_amount = maxi(0, _remaining_amount - extracted)
 	_transaction_revision += 1
 	var became_depleted: bool = (_remaining_amount == 0)
-	_trigger_tree_felling_if_needed(became_depleted)
+	_mark_tree_depleted(became_depleted)
 	_sync_visuals()
 	if not became_depleted:
 		_trigger_gather_feedback()
@@ -254,7 +318,7 @@ func transfer_to_carry_load(carry_load: UnitCarryLoad, requested_amount: int = -
 	carry_load.end_batch(false)
 	amount_changed.emit(self, _remaining_amount, -extracted)
 	if became_depleted:
-		depleted.emit(self)
+		_emit_depleted()
 	_is_transferring = false
 
 	return extracted
@@ -280,12 +344,17 @@ func release_worker(worker: Node) -> void:
 	var wid: int = worker.get_instance_id()
 	if _reserved_worker_ids.has(wid):
 		_reserved_worker_ids.erase(wid)
+		if _tree_cutters.erase(wid):
+			_refresh_tree_cut_processing()
 		worker_slot_released.emit(self)
 
 
 func clear_worker_reservations() -> void:
 	var had_reservations: bool = not _reserved_worker_ids.is_empty()
 	_reserved_worker_ids.clear()
+	if not _tree_cutters.is_empty():
+		_tree_cutters.clear()
+		_refresh_tree_cut_processing()
 	if had_reservations:
 		worker_slot_released.emit(self)
 
@@ -312,19 +381,218 @@ func get_active_worker_count() -> int:
 
 
 func get_tree_visual_state() -> TreeVisualState:
-	return _tree_visual_state
+	match _tree_harvest_stage:
+		TreeHarvestStage.FELLING:
+			return TreeVisualState.FELLING
+		TreeHarvestStage.FALLEN, TreeHarvestStage.DEPLETED:
+			return TreeVisualState.FALLEN
+	return TreeVisualState.STANDING
 
 
 func is_standing() -> bool:
-	return get_category() == ResourceDefinition.Category.WOOD and _tree_visual_state == TreeVisualState.STANDING and _remaining_amount > 0
+	return get_category() == ResourceDefinition.Category.WOOD and get_tree_visual_state() == TreeVisualState.STANDING and _remaining_amount > 0
 
 
 func is_felling() -> bool:
-	return get_category() == ResourceDefinition.Category.WOOD and _tree_visual_state == TreeVisualState.FELLING and _remaining_amount > 0
+	return get_category() == ResourceDefinition.Category.WOOD and _tree_harvest_stage == TreeHarvestStage.FELLING
 
 
 func is_fallen() -> bool:
-	return get_category() == ResourceDefinition.Category.WOOD and _tree_visual_state == TreeVisualState.FALLEN
+	return get_category() == ResourceDefinition.Category.WOOD and get_tree_visual_state() == TreeVisualState.FALLEN
+
+
+func get_tree_harvest_stage() -> TreeHarvestStage:
+	return _tree_harvest_stage
+
+
+## Measured in seconds of work by one cutter. Two cutters share the same clock.
+func get_tree_cut_progress_sec() -> float:
+	return _tree_cut_progress_sec
+
+
+## The order calls this after preparation. Its caller owns the authorization token
+## and keeps it across temporary interruptions. Each new authorization uses a new token.
+func begin_tree_cut(unit: Unit, order: UnitOrder, revision: int, authorization: RefCounted) -> bool:
+	if not _can_accept_tree_cut() or authorization == null:
+		return false
+	var cutter := TreeCutter.new(unit, order, revision, authorization)
+	if not _is_tree_cutter_current(cutter):
+		return false
+	_prune_tree_cutters()
+	_prune_tree_cut_authorizations()
+	var authorization_id: int = authorization.get_instance_id()
+	if _tree_cut_authorizations.has(authorization_id) and _tree_cut_authorizations[authorization_id].revoked:
+		return false
+	var unit_id: int = unit.get_instance_id()
+	if _tree_cutters.has(unit_id) or _tree_cutters.size() >= mini(2, max_simultaneous_workers):
+		return false
+	_tree_cut_authorizations[authorization_id] = {"token": weakref(authorization), "revoked": false}
+	_tree_cutters[unit_id] = cutter
+	_refresh_tree_cut_processing()
+	return true
+
+
+## Releases participation while keeping the authorization and progress available.
+func end_tree_cut(unit: Unit, order: UnitOrder, revision: int, authorization: RefCounted) -> bool:
+	if not is_instance_valid(unit):
+		return false
+	var unit_id: int = unit.get_instance_id()
+	var cutter: TreeCutter = _tree_cutters.get(unit_id) as TreeCutter
+	if cutter == null or cutter.order != order or cutter.revision != revision or cutter.authorization != authorization:
+		return false
+	_tree_cutters.erase(unit_id)
+	_refresh_tree_cut_processing()
+	return true
+
+
+## Called by the authorization owner after definitive cancellation, even when the
+## order has already detached. Independent participants may keep cutting.
+func cancel_tree_cut_authorization(authorization: RefCounted) -> bool:
+	if not _is_tree_before_felling() or authorization == null:
+		return false
+	var authorization_id: int = authorization.get_instance_id()
+	_prune_tree_cut_authorizations()
+	if not _tree_cut_authorizations.has(authorization_id):
+		# Cancellation can precede the first contribution in a synchronous callback.
+		_tree_cut_authorizations[authorization_id] = {"token": weakref(authorization), "revoked": true}
+		return true
+	if _tree_cut_authorizations[authorization_id].revoked:
+		return false
+	_tree_cut_authorizations[authorization_id].revoked = true
+	for unit_id: int in _tree_cutters.keys():
+		var cutter: TreeCutter = _tree_cutters[unit_id] as TreeCutter
+		if cutter.authorization == authorization:
+			_tree_cutters.erase(unit_id)
+	_prune_tree_cutters()
+	var reset: bool = _tree_cutters.is_empty() and _tree_harvest_stage == TreeHarvestStage.CHOPPING
+	if reset:
+		_tree_cut_progress_sec = 0.0
+		_tree_harvest_stage = TreeHarvestStage.STANDING
+	_refresh_tree_cut_processing()
+	if reset:
+		_publish_tree_stage()
+	return true
+
+
+func _can_accept_tree_cut() -> bool:
+	return _is_tree_before_felling() and is_available()
+
+
+func _is_tree_before_felling() -> bool:
+	return (
+		_tree_cut_in_scene and not is_queued_for_deletion()
+		and get_category() == ResourceDefinition.Category.WOOD
+		and (_tree_harvest_stage == TreeHarvestStage.STANDING or _tree_harvest_stage == TreeHarvestStage.CHOPPING)
+	)
+
+
+func _is_tree_cutter_current(cutter: TreeCutter) -> bool:
+	var unit: Unit = cutter.unit
+	if not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return false
+	if cutter.order == null or cutter.order.status != UnitOrder.Status.RUNNING:
+		return false
+	if unit.get_current_order() != cutter.order or unit.get_order_revision() != cutter.revision:
+		return false
+	if unit.get_world_3d() != get_world_3d() or not _reserved_worker_ids.has(unit.get_instance_id()):
+		return false
+	var offset: Vector3 = unit.global_position - global_position
+	if not offset.is_finite():
+		return false
+	var distance: float = Vector2(offset.x, offset.z).length()
+	var solid_radius: float = get_solid_radius()
+	var min_safe: float = solid_radius + WorldNavigation.DEFAULT_AGENT_RADIUS - 0.05 if solid_radius > 0.0 else 0.0
+	return distance >= min_safe and distance <= get_interaction_radius() + 0.05
+
+
+func _prune_tree_cutters() -> void:
+	for unit_id: int in _tree_cutters.keys():
+		if not _is_tree_cutter_current(_tree_cutters[unit_id] as TreeCutter):
+			_tree_cutters.erase(unit_id)
+
+
+func _prune_tree_cut_authorizations() -> void:
+	for authorization_id: int in _tree_cut_authorizations.keys():
+		if _tree_cut_authorizations[authorization_id].token.get_ref() == null:
+			_tree_cut_authorizations.erase(authorization_id)
+
+
+func _refresh_tree_cut_processing() -> void:
+	var active: bool = _tree_cut_in_scene and (
+		_tree_harvest_stage == TreeHarvestStage.FELLING or not _tree_cutters.is_empty()
+	)
+	if active:
+		process_mode = Node.PROCESS_MODE_PAUSABLE
+		# Unit orders update at the default priority before the source samples them.
+		process_physics_priority = 1
+	set_physics_process(active)
+
+
+func _physics_process(delta: float) -> void:
+	if not _tree_cut_in_scene or not can_process() or is_queued_for_deletion() or _advancing_tree_cut:
+		return
+	if not is_finite(delta) or delta <= 0.0:
+		return
+	_advancing_tree_cut = true
+	_advance_tree_harvest(delta)
+	_advancing_tree_cut = false
+
+
+func _advance_tree_harvest(delta: float) -> void:
+	var previous := _tree_harvest_stage
+	if previous == TreeHarvestStage.FELLING:
+		var before: float = _tree_felling_elapsed_sec
+		_tree_felling_elapsed_sec = minf(before + delta, _tree_felling_total_sec)
+		if _tree_felling_elapsed_sec + 0.000001 >= _tree_felling_total_sec:
+			_tree_felling_elapsed_sec = _tree_felling_total_sec
+			_tree_harvest_stage = TreeHarvestStage.FALLEN
+		_advance_felling_visual(before)
+	else:
+		if not _can_accept_tree_cut():
+			_tree_cutters.clear()
+		else:
+			_prune_tree_cutters()
+			if not _tree_cutters.is_empty():
+				var rate: float = two_cutter_multiplier if _tree_cutters.size() >= 2 else 1.0
+				_tree_cut_progress_sec = minf(_tree_cut_progress_sec + delta * rate, chop_duration_sec)
+				if _tree_cut_progress_sec + 0.000001 >= chop_duration_sec:
+					_tree_cut_progress_sec = chop_duration_sec
+					_tree_felling_total_sec = felling_duration_sec
+					_tree_felling_elapsed_sec = 0.0
+					_tree_harvest_stage = TreeHarvestStage.FELLING
+					_tree_cutters.clear()
+					_start_felling_visual()
+				else:
+					_tree_harvest_stage = TreeHarvestStage.CHOPPING
+	_refresh_tree_cut_processing()
+	if previous != _tree_harvest_stage:
+		_publish_tree_stage()
+
+
+## A callback can commit a later stage. Publish it only after all observers of
+## the earlier transition have been called, in commit order.
+func _publish_tree_stage() -> void:
+	if not _tree_cut_in_scene or is_queued_for_deletion():
+		return
+	_pending_tree_stages.append(_tree_harvest_stage)
+	if _publishing_tree_stage:
+		return
+	_publishing_tree_stage = true
+	while not _pending_tree_stages.is_empty():
+		var stage: TreeHarvestStage = _pending_tree_stages.pop_front()
+		tree_harvest_stage_changed.emit(self, stage)
+	_publishing_tree_stage = false
+
+
+func _mark_tree_depleted(became_depleted: bool) -> void:
+	if became_depleted and get_category() == ResourceDefinition.Category.WOOD:
+		_tree_harvest_stage = TreeHarvestStage.DEPLETED
+
+
+func _emit_depleted() -> void:
+	if get_category() == ResourceDefinition.Category.WOOD:
+		_publish_tree_stage()
+	depleted.emit(self)
 
 
 func get_total_fruit_count() -> int:
@@ -496,7 +764,6 @@ func _kill_felling_tween() -> void:
 
 func _reset_felling_visuals() -> void:
 	_kill_felling_tween()
-	_tree_visual_state = TreeVisualState.STANDING
 	if _has_felling_rest_pose:
 		var pivot: Node3D = get_node_or_null("AvailableVisual/FellingPivot") as Node3D
 		if pivot != null:
@@ -511,31 +778,15 @@ func _reset_felling_visuals() -> void:
 			label_node.position = _badge_label_rest_pos
 
 
-func _on_felling_tween_finished() -> void:
-	_felling_tween = null
-	_tree_visual_state = TreeVisualState.FALLEN
-
-
-func _trigger_tree_felling_if_needed(became_depleted: bool) -> void:
-	if get_category() != ResourceDefinition.Category.WOOD:
-		return
-	if _tree_visual_state != TreeVisualState.STANDING:
-		return
-	if became_depleted:
-		_kill_felling_tween()
-		_tree_visual_state = TreeVisualState.FALLEN
-		return
-
+## The Tween is manually advanced by the same simulation clock as the tree.
+func _start_felling_visual() -> void:
 	var pivot: Node3D = get_node_or_null("AvailableVisual/FellingPivot") as Node3D
 	if pivot == null or not is_inside_tree():
-		_tree_visual_state = TreeVisualState.FALLEN
 		return
-
 	_cache_felling_rest_pose()
-	_kill_felling_tween()
-	_tree_visual_state = TreeVisualState.FELLING
+	_reset_felling_visuals()
 
-	var total_sec: float = maxf(felling_duration_sec, 0.05)
+	var total_sec: float = _tree_felling_total_sec
 	var drop_sec: float = total_sec * 0.74
 	var settle_sec: float = total_sec * 0.26
 
@@ -543,12 +794,8 @@ func _trigger_tree_felling_if_needed(became_depleted: bool) -> void:
 	var fallen_tf := Transform3D(Basis.from_euler(Vector3(0.0, 0.0, -1.525)), Vector3(-0.55, 0.23, 0.0))
 
 	var tween: Tween = create_tween()
-	if tween == null:
-		pivot.transform = fallen_tf
-		_tree_visual_state = TreeVisualState.FALLEN
-		return
-
 	_felling_tween = tween
+	tween.pause()
 	tween.set_parallel(true)
 	tween.tween_property(pivot, "transform", mid_tf, drop_sec).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	var canopy_main: Node3D = pivot.get_node_or_null("CanopyMesh") as Node3D
@@ -571,7 +818,15 @@ func _trigger_tree_felling_if_needed(became_depleted: bool) -> void:
 		tween.tween_property(label_node, "position", fallen_label_pos, drop_sec).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 	tween.chain().tween_property(pivot, "transform", fallen_tf, settle_sec).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.chain().tween_callback(Callable(self, "_on_felling_tween_finished"))
+
+func _advance_felling_visual(previous_elapsed: float) -> void:
+	if _felling_tween == null or not _felling_tween.is_valid():
+		_start_felling_visual()
+		previous_elapsed = 0.0
+	if _felling_tween != null:
+		_felling_tween.custom_step(_tree_felling_elapsed_sec - previous_elapsed)
+		if _tree_harvest_stage == TreeHarvestStage.FALLEN:
+			_kill_felling_tween()
 
 
 func _sync_bush_fruits(show_available: bool) -> void:
@@ -643,9 +898,11 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 		if old.load.get_ref() != carry_load or old.lot != StringName(lot_id) or old.requested != requested_amount or old.source != source_id or definition == null or old.resource != definition.resource_id or old.weight != definition.unit_weight:
 			return {"ok": false, "reason": "operation_conflict", "extracted": 0}
 		return {"ok": true, "reason": "", "replayed": true, "extracted": 0, "committed_amount": old.amount}
+	if get_category() == ResourceDefinition.Category.WOOD and is_available() and _tree_harvest_stage != TreeHarvestStage.FALLEN:
+		return {"ok": false, "reason": "tree_not_felled", "extracted": 0}
 	_is_transferring = true
 	carry_load._provenance_busy = true
-	if not is_available() or carry_load._provenance == null or not carry_load.validate_provenance():
+	if not _is_new_extraction_allowed() or carry_load._provenance == null or not carry_load.validate_provenance():
 		carry_load._provenance_busy = false
 		_is_transferring = false
 		return {"ok": false, "reason": "unavailable", "extracted": 0}
@@ -674,7 +931,7 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 		carry_load._provenance_busy = false
 		_is_transferring = false
 		return {"ok": false, "reason": "invalid_plan", "extracted": 0}
-	if not _before_provenance_transfer_commit() or _transaction_revision != source_revision or _remaining_amount != remaining_before or definition != source_definition or definition.resource_id != source_resource or definition.unit_weight != source_weight or not is_available():
+	if not _before_provenance_transfer_commit() or _transaction_revision != source_revision or _remaining_amount != remaining_before or definition != source_definition or definition.resource_id != source_resource or definition.unit_weight != source_weight or not _is_new_extraction_allowed():
 		carry_load._provenance_busy = false
 		_is_transferring = false
 		return {"ok": false, "reason": "stale_or_aborted", "extracted": 0}
@@ -691,7 +948,7 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 	_transaction_revision += 1
 	_provenance_receipts[op] = {"load": weakref(carry_load), "source": source_id, "resource": definition.resource_id, "weight": definition.unit_weight, "lot": StringName(lot_id), "requested": requested_amount, "amount": amount}
 	var became_depleted: bool = _remaining_amount == 0
-	_trigger_tree_felling_if_needed(became_depleted)
+	_mark_tree_depleted(became_depleted)
 	_sync_visuals()
 	if not became_depleted:
 		_trigger_gather_feedback()
@@ -701,7 +958,7 @@ func transfer_to_carry_load_with_provenance(carry_load: UnitCarryLoad, operation
 	carry_load._emit_load_changed()
 	amount_changed.emit(self, _remaining_amount, -amount)
 	if became_depleted:
-		depleted.emit(self)
+		_emit_depleted()
 	carry_load._coordinator_transaction_locked = false
 	carry_load._provenance_busy = false
 	_is_transferring = false
