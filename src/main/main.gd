@@ -183,6 +183,8 @@ func _setup_placement(world_nav: WorldNavigation) -> void:
 		_placement_test_overlay.use_context_inspector()
 		if use_d2_2_hud:
 			_placement_test_overlay.set_placement_status_banner_suppressed(true)
+		if _autonomous_gather_feedback != null and is_instance_valid(_autonomous_gather_feedback):
+			_autonomous_gather_feedback.bind_top_avoidance_target(_placement_test_overlay.get_status_banner_control())
 	if _placement_controller != null and not use_d2_2_hud:
 		var construction_hud := ConstructionHud.new()
 		construction_hud.name = "ConstructionHud"

@@ -85,6 +85,7 @@ static func compute_source_approach_slot(
 	var best_fallback_dist: float = INF
 
 	for ring_radius: float in candidate_radii:
+		var separated_hit_step: int = -1
 		for step: int in range(SOURCE_ANGLE_SAMPLES):
 			var half_step: int = int(floor(float(step + 1) * 0.5))
 			var offset_idx: int = half_step * (1 if (step % 2) == 1 else -1) if step > 0 else 0
@@ -118,9 +119,18 @@ static func compute_source_approach_slot(
 				if travel_dist < best_separated_dist:
 					best_separated_dist = travel_dist
 					best_separated = resolved
+				if separated_hit_step < 0:
+					separated_hit_step = step
 			elif travel_dist < best_fallback_dist:
 				best_fallback_dist = travel_dist
 				best_fallback = resolved
+
+			# Once a valid separated slot is found nearest the unit approach angle, compare only
+			# its immediate symmetric neighbors on the same ring instead of scanning all 48 slots.
+			if separated_hit_step >= 0 and (step - separated_hit_step) >= 2:
+				break
+		if best_separated.is_finite():
+			break
 
 	if best_separated.is_finite():
 		return {"valid": true, "position": best_separated, "reason": ""}

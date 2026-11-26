@@ -1,8 +1,8 @@
-# Dawn of Kin — Protocolo Atualizado de Testes Humanos Finais (`R-03A D4` · `M1`–`M8`)
+# Dawn of Kin — Protocolo Atualizado de Testes Humanos Finais (`R-03A D4` / `D4-R1` · `M1`–`M8`)
 
 **Candidata:** `feat/r-03a-community-work-main-scene` (`C:\Projetos\Dawn_of_Kin_wt_r_03a`)  
-**SHA técnico validado:** `e7d72e41a31861d41747d7d82239b7963626f497` (`D3.3-R1`) · **Base documental (`D3.4`):** `53306255c7cae5591c5eaea1ad4b1627d5486e22`  
-**SHA documental final esperado na ponta da branch candidata:** confirmado por `git rev-parse HEAD` na entrega D4 e registrado em `evidencias\R-03A\D4\09_git_final\git_final.txt` *(não editar cenas, código ou flags para executar este roteiro)*.  
+**SHA base anterior (`D4`):** `94744eca16e9eea60b03033f82a318f8e7825dc2`  
+**SHA documental final da `D4-R1` esperado na ponta da branch candidata:** confirmado por `git rev-parse HEAD` na entrega `D4-R1` e registrado em `evidencias\R-03A\D4\D4-R1\16_git_final\git_final.txt` *(não editar cenas, código ou flags para executar este roteiro)*.  
 **Status obrigatório:** **`AGUARDANDO EXECUÇÃO PELO PROPRIETÁRIO`** · **`NENHUM CENÁRIO M1–M8 APROVADO`**
 
 > [!NOTE]
@@ -19,7 +19,7 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 git rev-parse HEAD
 git status --short
 ```
-*(O status do worktree deve estar limpo, em `feat/r-03a-community-work-main-scene`, no SHA documental final informado na entrega D4.)*
+*(O status do worktree deve estar limpo, em `feat/r-03a-community-work-main-scene`, no SHA final da candidata `D4-R1` registrado em `16_git_final/git_final.txt`.)*
 
 ### 1.2 Abrir em `1280×720`
 ```powershell
@@ -141,16 +141,17 @@ Set-Location "C:\Projetos\Dawn_of_Kin_wt_r_03a"
 
 ---
 
-### `M7` — Coexistência com construção legada (`P-REC-1`) e interfaces
-- **Objetivo:** Confirmar convivência entre HUD contextual, `TemporaryPlacementBar` (`[Construir]`), posicionamento de canteiro e controles RTS sem click-through.
-- **Pré-condição:** Estoque com recursos entregues no passo `M5` (ou suficientes para um canteiro) e ao menos uma fonte selecionada (HUD contextual visível).
+### `M7` — Coexistência com construção legada (`P-REC-1`), banners superiores (`D4-A01`) e interfaces
+- **Objetivo:** Confirmar convivência entre HUD contextual, `TemporaryPlacementBar` (`[Construir]`), banners transitórios superiores (`AutonomousGatherFeedback` e `PlacementStatusBanner` — correção `D4-A01`), posicionamento de canteiro e controles RTS sem click-through.
+- **Pré-condição:** Estoque com recursos entregues no passo `M5` (ou suficientes para um canteiro) e ao menos uma fonte selecionada (HUD contextual visível). Em `720p` e `1080p`, testar em tomada `CA`.
 - **Passos:**
-  1. Clicar no botão `[Construir]` (canto inferior direito) e entrar no modo de posicionamento de `Abrigo Básico`.
-  2. Posicionar o canteiro em área válida fora do acampamento/fontes (confirmar clique esquerdo).
-  3. Alternar entre clique nos botões da HUD contextual e da interface de construção sem mover unidades acidentalmente atrás dos painéis.
-  4. Selecionar um trabalhador e enviá-lo ao canteiro para construir enquanto outra tarefa comunitária de coleta está autorizada.
-- **Resultado esperado:** Sem click-through ao clicar nos painéis/botões/selo `×`; canteiro legado criado normalmente com reserva em pilhas e entrega/construção funcionais em coexistência com coleta comunitária. *(Nota conhecida `D4 V13`: se um aviso transitório de conclusão de coleta aparecer no topo-central exatamente ao entrar no modo de posicionamento, os dois banners temporários de topo podem se sobrepor brevemente até o toast expirar.)*
-- **Sinais de reprovação:** Cliques na HUD atravessarem para o chão; sobreposição de painéis persistentes em `720p`; incapacidade de cancelar posicionamento ou falha no fluxo de construção legada.
+  1. Clicar no botão `[Construir]` (canto inferior direito) e entrar no modo de posicionamento de `Abrigo Básico` **logo após** surgir um feedback de trabalho comunitário no topo-central (ex.: autorização/conclusão).
+  2. Com o banner de posicionamento aberto no topo (`PlacementStatusBanner`), provocar novo feedback comunitário no topo (ex.: autorizar/cancelar categoria) e depois **fechar/cancelar** o posicionamento (`Esc`/botão direito).
+  3. Posicionar o canteiro em área válida fora do acampamento/fontes (confirmar clique esquerdo).
+  4. Alternar entre clique nos botões da HUD contextual e da interface de construção sem mover unidades acidentalmente atrás dos painéis.
+  5. Selecionar um trabalhador e enviá-lo ao canteiro para construir enquanto outra tarefa comunitária de coleta está autorizada.
+- **Resultado esperado:** Sem click-through ao clicar nos painéis/botões/selo `×`; **em `D4-A01`, os banners superiores `PlacementStatusBanner` e `AutonomousGatherFeedback` nunca se sobrepõem** (o aviso comunitário desloca-se automaticamente `8 px` abaixo do banner de posicionamento enquanto este estiver visível, retorna suavemente a `offset_top = 14 px` ao cancelar/fechar o posicionamento, e não colide com `DebugOverlay` `[F3]` nem `Acampamento`); canteiro legado criado normalmente com reserva em pilhas e entrega/construção funcionais em coexistência com coleta comunitária.
+- **Sinais de reprovação:** Sobreposição entre aviso comunitário e banner de posicionamento no topo-central em `720p` ou `1080p`; cliques na HUD atravessarem para o chão; sobreposição de painéis persistentes em `720p`; incapacidade de cancelar posicionamento ou falha no fluxo de construção legada.
 - **Criticidade:** Alta (`P-REC-1` / `D1`).
 - **Evidência recomendada:** Registro `PASS`/`FAIL`.
 - **Observações:** `______________________________________________________________`

@@ -108,6 +108,10 @@ func configure_community_work(
 		_board.task_closed.connect(_on_task_closed)
 	if not _dispatcher.task_feedback.is_connected(_on_dispatcher_feedback):
 		_dispatcher.task_feedback.connect(_on_dispatcher_feedback)
+	if not _dispatcher.dispatch_batch_started.is_connected(_on_dispatcher_batch_started):
+		_dispatcher.dispatch_batch_started.connect(_on_dispatcher_batch_started)
+	if not _dispatcher.dispatch_batch_finished.is_connected(_on_dispatcher_batch_finished):
+		_dispatcher.dispatch_batch_finished.connect(_on_dispatcher_batch_finished)
 	if _actions_hud != null and is_instance_valid(_actions_hud):
 		if not _actions_hud.category_authorize_requested.is_connected(_on_hud_category_authorize_requested):
 			_actions_hud.category_authorize_requested.connect(_on_hud_category_authorize_requested)
@@ -188,6 +192,10 @@ func authorize_selected_category(resource_id: StringName) -> Dictionary:
 		else:
 			existing_tasks.append(active_task)
 
+	var batched_hud: CommunitySelectionActionsHud = _actions_hud if (_actions_hud != null and is_instance_valid(_actions_hud)) else null
+	if batched_hud != null:
+		batched_hud.begin_batch_refresh()
+
 	var created_tasks: Array[WorkTask] = []
 	var group_id: int = 0
 	if not new_sources.is_empty():
@@ -203,6 +211,9 @@ func authorize_selected_category(resource_id: StringName) -> Dictionary:
 		var reauth_res: Dictionary = _board.reauthorize_gather_task(blocked)
 		if bool(reauth_res.get("ok", false)):
 			reauthorized_tasks.append(blocked)
+
+	if batched_hud != null and is_instance_valid(batched_hud):
+		batched_hud.end_batch_refresh()
 
 	var changed_total: int = created_tasks.size() + reauthorized_tasks.size()
 	if changed_total == 0 and not existing_tasks.is_empty():
@@ -331,6 +342,10 @@ func _disconnect_signals() -> void:
 	if _dispatcher != null and is_instance_valid(_dispatcher):
 		if _dispatcher.task_feedback.is_connected(_on_dispatcher_feedback):
 			_dispatcher.task_feedback.disconnect(_on_dispatcher_feedback)
+		if _dispatcher.dispatch_batch_started.is_connected(_on_dispatcher_batch_started):
+			_dispatcher.dispatch_batch_started.disconnect(_on_dispatcher_batch_started)
+		if _dispatcher.dispatch_batch_finished.is_connected(_on_dispatcher_batch_finished):
+			_dispatcher.dispatch_batch_finished.disconnect(_on_dispatcher_batch_finished)
 	if _actions_hud != null and is_instance_valid(_actions_hud):
 		if _actions_hud.category_authorize_requested.is_connected(_on_hud_category_authorize_requested):
 			_actions_hud.category_authorize_requested.disconnect(_on_hud_category_authorize_requested)
@@ -493,6 +508,16 @@ func _on_task_closed(task: WorkTask) -> void:
 
 func _on_dispatcher_feedback(message: String) -> void:
 	_show_feedback(message)
+
+
+func _on_dispatcher_batch_started() -> void:
+	if _actions_hud != null and is_instance_valid(_actions_hud):
+		_actions_hud.begin_batch_refresh()
+
+
+func _on_dispatcher_batch_finished() -> void:
+	if _actions_hud != null and is_instance_valid(_actions_hud):
+		_actions_hud.end_batch_refresh()
 
 
 func _show_feedback(message: String) -> void:

@@ -128,6 +128,17 @@ func is_placement_status_banner_suppressed() -> bool:
 	return _suppress_placement_status_banner
 
 
+func get_status_banner_control() -> Control:
+	_build_ui()
+	return _status_panel
+
+
+func get_status_banner_global_rect() -> Rect2:
+	if _status_panel == null or not is_instance_valid(_status_panel) or not _status_panel.is_visible_in_tree():
+		return Rect2()
+	return _status_panel.get_global_rect()
+
+
 func configure(
 	placement_controller: PlacementController,
 	shelter_definition: BuildingDefinition,

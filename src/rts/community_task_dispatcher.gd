@@ -8,6 +8,8 @@ signal task_assigned(task: WorkTask, unit: Unit, order: GatherResourceOrder)
 signal task_waiting(task: WorkTask, reason: String)
 signal task_blocked(task: WorkTask, reason: String)
 signal task_feedback(message: String)
+signal dispatch_batch_started()
+signal dispatch_batch_finished()
 
 var _board: CommunityWorkBoard = null
 var _command_controller: CommandController = null
@@ -434,6 +436,7 @@ func _flush_dispatch() -> void:
 		return
 
 	_dispatching = true
+	dispatch_batch_started.emit()
 
 	# Pass 1: validate active tasks (preserve valid running tasks, never silently unblock BLOCKED_REAUTHORIZATION, close unusable sources).
 	var pending_tasks: Array[WorkTask] = []
@@ -470,6 +473,7 @@ func _flush_dispatch() -> void:
 	for group_tasks: Array in ordered_groups:
 		_dispatch_group_tasks(group_tasks)
 
+	dispatch_batch_finished.emit()
 	_dispatching = false
 
 	if _flush_queued and is_inside_tree():
@@ -496,6 +500,8 @@ func _partition_pending_tasks_by_group_fifo(pending_tasks: Array[WorkTask]) -> A
 func _dispatch_group_tasks(group_tasks: Array) -> void:
 	# Repeatedly pair the closest available (unit, pending task) inside the group so
 	# multiple workers naturally spread across distinct sources with zero starvation.
+	# Ranks eligible (task, unit) pairs by Euclidean distance before querying navigation
+	# so each assigned worker validates only the nearest reachable slot instead of O(W*N).
 	var remaining: Array[WorkTask] = []
 	for item: Variant in group_tasks:
 		if item is WorkTask:
@@ -504,44 +510,93 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 				remaining.append(t)
 
 	while not remaining.is_empty():
-		var best_task: WorkTask = null
-		var best_unit: Unit = null
-		var best_dist_sq: float = INF
-		var evaluated_any_pair: bool = false
+		if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
+			break
+
+		var candidate_pairs: Array[Dictionary] = []
+		var raw_units: Array[Unit] = _collect_active_scene_units()
+		var unit_base_eligible: Dictionary = {}
+		var unit_labels: Dictionary = {}
+		var usable_tasks: Array[WorkTask] = []
 
 		for task: WorkTask in remaining:
 			if not task.is_active() or task.state != WorkTask.State.PENDING_WORKERS:
 				continue
-			if not task.is_source_usable():
+			if not task.is_source_usable() or _is_economy_busy(task.source):
 				continue
-			if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
-				continue
-			if _is_economy_busy(task.source):
-				continue
+			usable_tasks.append(task)
 
-			var candidates: Array[Unit] = _collect_sorted_candidates(task.source.global_position)
-			for unit: Unit in candidates:
+		if usable_tasks.is_empty() or raw_units.is_empty():
+			break
+
+		for unit: Unit in raw_units:
+			var uid: int = unit.get_instance_id()
+			unit_labels[uid] = String(unit.get_character_id())
+			var sample_task: WorkTask = usable_tasks[0]
+			var unit_reason: String = _check_unit_base_eligibility(unit, sample_task.source.get_world_3d())
+			unit_base_eligible[uid] = unit_reason.is_empty()
+
+		for t_idx: int in range(usable_tasks.size()):
+			var task: WorkTask = usable_tasks[t_idx]
+			for unit: Unit in raw_units:
+				var uid: int = unit.get_instance_id()
+				if not bool(unit_base_eligible.get(uid, false)):
+					continue
 				if not _check_pre_nav_eligibility(unit, task).is_empty():
 					continue
-				var dist_sq: float = unit.global_position.distance_squared_to(task.source.global_position)
-				if dist_sq >= best_dist_sq and best_task != null:
-					break
-				var occupied: Array[Vector3] = GatherSlotPlanner.collect_other_unit_positions(unit, true)
-				var slot: Dictionary = GatherSlotPlanner.compute_source_approach_slot(
-					unit.global_position,
-					task.source,
-					_world_nav,
-					occupied
-				)
-				if bool(slot.get("valid", false)):
-					evaluated_any_pair = true
-					if dist_sq < best_dist_sq or best_task == null:
-						best_dist_sq = dist_sq
-						best_task = task
-						best_unit = unit
-					break
+				candidate_pairs.append({
+					"dist_sq": unit.global_position.distance_squared_to(task.source.global_position),
+					"task_idx": t_idx,
+					"unit_name": String(unit_labels.get(uid, "")),
+					"unit_id": uid,
+					"task": task,
+					"unit": unit,
+				})
 
-		if not evaluated_any_pair or best_task == null or best_unit == null:
+		if candidate_pairs.is_empty():
+			break
+
+		candidate_pairs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var da: float = float(a["dist_sq"])
+			var db: float = float(b["dist_sq"])
+			if not is_equal_approx(da, db):
+				return da < db
+			var ta: int = int(a["task_idx"])
+			var tb: int = int(b["task_idx"])
+			if ta != tb:
+				return ta < tb
+			var na: String = String(a["unit_name"])
+			var nb: String = String(b["unit_name"])
+			if na != nb:
+				return na < nb
+			return int(a["unit_id"]) < int(b["unit_id"])
+		)
+
+		var best_task: WorkTask = null
+		var best_unit: Unit = null
+		var occupied_cache: Dictionary = {}
+		for pair: Dictionary in candidate_pairs:
+			var task: WorkTask = pair["task"] as WorkTask
+			var unit: Unit = pair["unit"] as Unit
+			var uid: int = int(pair["unit_id"])
+			var occupied: Array[Vector3]
+			if occupied_cache.has(uid):
+				occupied = occupied_cache[uid] as Array[Vector3]
+			else:
+				occupied = GatherSlotPlanner.collect_other_unit_positions(unit, true)
+				occupied_cache[uid] = occupied
+			var slot: Dictionary = GatherSlotPlanner.compute_source_approach_slot(
+				unit.global_position,
+				task.source,
+				_world_nav,
+				occupied
+			)
+			if bool(slot.get("valid", false)):
+				best_task = task
+				best_unit = unit
+				break
+
+		if best_task == null or best_unit == null:
 			break
 
 		var dispatched: bool = _try_dispatch_unit_to_task(best_task, best_unit)
@@ -554,6 +609,49 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 	for task: WorkTask in remaining:
 		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.assigned_unit == null:
 			_evaluate_unassigned_task(task)
+
+
+func _collect_active_scene_units() -> Array[Unit]:
+	var units: Array[Unit] = []
+	if _units_root == null or not is_instance_valid(_units_root):
+		return units
+	for child: Node in _units_root.get_children():
+		if child is Unit:
+			var unit: Unit = child as Unit
+			if is_instance_valid(unit) and unit.is_inside_tree() and not unit.is_queued_for_deletion():
+				units.append(unit)
+	return units
+
+
+func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String:
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return "invalid_unit"
+	if unit.get_current_order() != null and unit.get_current_order().is_active():
+		return "busy"
+	if unit.get_state() != Unit.State.IDLE:
+		return "not_idle"
+	if unit._is_reserved_withdrawal_locked():
+		return "transaction_locked"
+	var carry_load: UnitCarryLoad = unit.get_carry_load()
+	if carry_load == null:
+		return "invalid_carry_load"
+	if carry_load.is_transaction_busy():
+		return "transaction_locked"
+	if _use_provenance:
+		if not carry_load.is_provenance_enabled() or not carry_load.validate_provenance():
+			return "unreconciled_cargo"
+		if _has_non_free_provenance_lots(carry_load):
+			return "reserved_or_recovery_cargo"
+		if unit.get_meta(&"region_id", &"") != _region_id:
+			return "unit_not_admitted"
+		if expected_world == null or unit.get_world_3d() != expected_world:
+			return "world_mismatch"
+		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+			expected_world, _region_id, unit, carry_load, get_tree()
+		)
+		if not bool(id_check.get("ok", false)):
+			return String(id_check.get("reason", "ambiguous_unit_identity"))
+	return ""
 
 
 func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
@@ -738,37 +836,17 @@ func _check_pre_nav_eligibility(unit: Unit, task: WorkTask) -> String:
 		return "invalid_unit"
 	if task.excluded_unit_ids.has(unit.get_instance_id()):
 		return "manually_overridden"
-	if unit.get_current_order() != null and unit.get_current_order().is_active():
-		return "busy"
-	if unit.get_state() != Unit.State.IDLE:
-		return "not_idle"
-	if unit._is_reserved_withdrawal_locked():
-		return "transaction_locked"
+	var expected_world: World3D = task.source.get_world_3d() if task.source != null else null
+	var base_reason: String = _check_unit_base_eligibility(unit, expected_world)
+	if not base_reason.is_empty():
+		return base_reason
 
 	var carry_load: UnitCarryLoad = unit.get_carry_load()
 	var def: ResourceDefinition = task.source.get_definition()
-	if carry_load == null or def == null or not def.is_valid():
+	if def == null or not def.is_valid():
 		return "invalid_carry_load"
-	if carry_load.is_transaction_busy():
-		return "transaction_locked"
 	if carry_load.get_effective_capacity() < def.unit_weight:
 		return "insufficient_carry_capacity"
-
-	if _use_provenance:
-		if not carry_load.is_provenance_enabled() or not carry_load.validate_provenance():
-			return "unreconciled_cargo"
-		if _has_non_free_provenance_lots(carry_load):
-			return "reserved_or_recovery_cargo"
-		if unit.get_meta(&"region_id", &"") != _region_id:
-			return "unit_not_admitted"
-		var world: World3D = task.source.get_world_3d()
-		if world == null or unit.get_world_3d() != world:
-			return "world_mismatch"
-		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
-			world, _region_id, unit, carry_load, get_tree()
-		)
-		if not bool(id_check.get("ok", false)):
-			return String(id_check.get("reason", "ambiguous_unit_identity"))
 
 	if not task.source.has_worker_slot(unit):
 		return "no_worker_slot"

@@ -559,7 +559,16 @@ func refresh() -> void:
 			_panel.visible = false
 		return
 
-	var counts: Dictionary = _selection_model.get_counts_by_resource()
+	var selected_sources: Array[ResourceSource] = _selection_model.get_selected_sources()
+	var grouped_sources: Dictionary = {}
+	for src: ResourceSource in selected_sources:
+		var src_res_id: StringName = src.get_resource_id()
+		if not grouped_sources.has(src_res_id):
+			var arr: Array[ResourceSource] = []
+			grouped_sources[src_res_id] = arr
+		(grouped_sources[src_res_id] as Array[ResourceSource]).append(src)
+
+	var empty_sources: Array[ResourceSource] = []
 	var visible_ids: Array[StringName] = []
 	for res_id: StringName in CATEGORY_ORDER:
 		var slot: Control = _category_slots.get(res_id) as Control
@@ -569,7 +578,8 @@ func refresh() -> void:
 		var count_lbl: Label = _category_count_labels.get(res_id) as Label
 		if slot == null or btn == null or cancel_btn == null or icon_rect == null or count_lbl == null:
 			continue
-		var count: int = int(counts.get(res_id, 0))
+		var cat_sources: Array[ResourceSource] = grouped_sources.get(res_id, empty_sources) as Array[ResourceSource]
+		var count: int = cat_sources.size()
 		if count <= 0:
 			if slot.visible:
 				slot.visible = false
@@ -594,11 +604,12 @@ func refresh() -> void:
 		if count_lbl.text != count_text:
 			count_lbl.text = count_text
 
-		var visual_state: String = _compute_category_visual_state(res_id)
+		var cat_info: Dictionary = _compute_category_state_and_cancel_count(res_id, cat_sources)
+		var visual_state: String = String(cat_info["visual_state"])
 		_category_states[res_id] = visual_state
 		_apply_button_visual_state(btn, icon_rect, count_lbl, res_id, count, visual_state)
 
-		var cancellable_count: int = _count_cancellable_tasks_for_category(res_id)
+		var cancellable_count: int = int(cat_info["cancellable_count"])
 		_category_cancel_counts[res_id] = cancellable_count
 		if cancellable_count > 0:
 			var is_partial: bool = cancellable_count < count
@@ -715,6 +726,47 @@ func _count_cancellable_tasks_for_category(resource_id: StringName) -> int:
 	if selected_sources.is_empty():
 		return 0
 	return _board.get_cancellable_tasks_for_sources(selected_sources, resource_id).size()
+
+
+func _compute_category_state_and_cancel_count(
+	resource_id: StringName,
+	sources: Array[ResourceSource]
+) -> Dictionary:
+	if _is_economy_blocked():
+		var blocked_cancellable: int = 0
+		if _board != null and is_instance_valid(_board) and not sources.is_empty():
+			blocked_cancellable = _board.get_cancellable_tasks_for_sources(sources, resource_id).size()
+		return {"visual_state": STATE_ECONOMY_BLOCKED, "cancellable_count": blocked_cancellable}
+	if sources.is_empty():
+		return {"visual_state": STATE_HIDDEN, "cancellable_count": 0}
+	if _board == null or not is_instance_valid(_board):
+		return {"visual_state": STATE_AVAILABLE, "cancellable_count": 0}
+
+	var active_authorized: int = 0
+	var blocked_reauth: int = 0
+	var unassigned: int = 0
+	for src: ResourceSource in sources:
+		var task: WorkTask = _board.get_active_task_for_source(src)
+		if task == null:
+			unassigned += 1
+		elif task.is_blocked_reauthorization():
+			blocked_reauth += 1
+		else:
+			active_authorized += 1
+
+	var cancellable_count: int = 0
+	if (active_authorized + blocked_reauth) > 0:
+		cancellable_count = _board.get_cancellable_tasks_for_sources(sources, resource_id).size()
+
+	var visual_state: String = STATE_AVAILABLE
+	if blocked_reauth > 0 and unassigned == 0:
+		visual_state = STATE_BLOCKED_REAUTH
+	elif unassigned == 0 and active_authorized == sources.size():
+		visual_state = STATE_AUTHORIZED
+	elif active_authorized > 0 or blocked_reauth > 0:
+		visual_state = STATE_PARTIAL
+
+	return {"visual_state": visual_state, "cancellable_count": cancellable_count}
 
 
 func _compute_category_visual_state(resource_id: StringName) -> String:
