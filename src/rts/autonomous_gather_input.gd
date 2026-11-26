@@ -258,11 +258,16 @@ func cancel_selected_category(resource_id: StringName) -> Dictionary:
 		empty_result["reason"] = "no_selected_sources"
 		return empty_result
 
+	var batched_hud: CommunitySelectionActionsHud = _actions_hud if (_actions_hud != null and is_instance_valid(_actions_hud)) else null
+	if batched_hud != null:
+		batched_hud.begin_batch_refresh()
 	var cancel_res: Dictionary = _dispatcher.cancel_tasks_for_sources(
 		selected_sources,
 		resource_id,
 		WorkTask.REASON_PLAYER_CANCELLED
 	)
+	if batched_hud != null and is_instance_valid(batched_hud):
+		batched_hud.end_batch_refresh()
 	var cancelled_count: int = int(cancel_res.get("cancelled_count", 0))
 	if cancelled_count > 0:
 		var delivering_count: int = int(cancel_res.get("delivering_count", 0))

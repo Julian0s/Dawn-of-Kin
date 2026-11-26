@@ -442,6 +442,11 @@ var _category_states: Dictionary = {}
 var _category_cancel_counts: Dictionary = {}
 var _panel_content_rect: Rect2 = Rect2()
 var _ui_built: bool = false
+var _batch_refresh_depth: int = 0
+var _batch_refresh_dirty: bool = false
+var _refresh_invocation_count: int = 0
+var _last_batch_refresh_count: int = 0
+var _last_layout_visible_ids: Array[StringName] = []
 
 
 func _ready() -> void:
@@ -497,6 +502,10 @@ func unbind() -> void:
 			_board.task_closed.disconnect(_on_board_task_changed)
 	_selection_model = null
 	_board = null
+	_batch_refresh_depth = 0
+	_batch_refresh_dirty = false
+	_last_batch_refresh_count = 0
+	_last_layout_visible_ids.clear()
 	_category_states.clear()
 	_category_cancel_counts.clear()
 	for res_id: StringName in CATEGORY_ORDER:
@@ -508,17 +517,46 @@ func unbind() -> void:
 		_panel.visible = false
 
 
+func begin_batch_refresh() -> void:
+	if _batch_refresh_depth == 0:
+		_last_batch_refresh_count = 0
+	_batch_refresh_depth += 1
+
+
+func end_batch_refresh() -> void:
+	if _batch_refresh_depth <= 0:
+		_batch_refresh_depth = 0
+		return
+	_batch_refresh_depth -= 1
+	if _batch_refresh_depth == 0 and _batch_refresh_dirty:
+		_batch_refresh_dirty = false
+		var before_count: int = _refresh_invocation_count
+		refresh()
+		_last_batch_refresh_count = _refresh_invocation_count - before_count
+
+
+func get_refresh_invocation_count() -> int:
+	return _refresh_invocation_count
+
+
+func get_last_refresh_count() -> int:
+	return _last_batch_refresh_count
+
+
 func refresh() -> void:
 	_ensure_ui_built()
+	_refresh_invocation_count += 1
 	if _selection_model == null:
 		_category_states.clear()
 		_category_cancel_counts.clear()
+		_last_layout_visible_ids.clear()
 		for res_id: StringName in CATEGORY_ORDER:
 			var cancel_btn_empty: _PolygonalCancelSealButton = _category_cancel_buttons.get(res_id) as _PolygonalCancelSealButton
-			if cancel_btn_empty != null:
+			if cancel_btn_empty != null and cancel_btn_empty.visible:
 				cancel_btn_empty.visible = false
 		_panel_content_rect = Rect2()
-		_panel.visible = false
+		if _panel.visible:
+			_panel.visible = false
 		return
 
 	var counts: Dictionary = _selection_model.get_counts_by_resource()
@@ -533,19 +571,28 @@ func refresh() -> void:
 			continue
 		var count: int = int(counts.get(res_id, 0))
 		if count <= 0:
-			slot.visible = false
-			btn.visible = false
-			cancel_btn.visible = false
-			cancel_btn.set_glyph_text("")
-			cancel_btn.tooltip_text = ""
+			if slot.visible:
+				slot.visible = false
+			if btn.visible:
+				btn.visible = false
+			if cancel_btn.visible:
+				cancel_btn.visible = false
+			if cancel_btn.get_glyph_text() != "":
+				cancel_btn.set_glyph_text("")
+			if cancel_btn.tooltip_text != "":
+				cancel_btn.tooltip_text = ""
 			_category_states[res_id] = STATE_HIDDEN
 			_category_cancel_counts[res_id] = 0
 			continue
 
 		visible_ids.append(res_id)
-		slot.visible = true
-		btn.visible = true
-		count_lbl.text = str(count)
+		if not slot.visible:
+			slot.visible = true
+		if not btn.visible:
+			btn.visible = true
+		var count_text: String = str(count)
+		if count_lbl.text != count_text:
+			count_lbl.text = count_text
 
 		var visual_state: String = _compute_category_visual_state(res_id)
 		_category_states[res_id] = visual_state
@@ -557,23 +604,35 @@ func refresh() -> void:
 			var is_partial: bool = cancellable_count < count
 			var seal_text: String = ("×%d" % cancellable_count) if is_partial else "×"
 			var seal_w: float = SEAL_WIDTH_PARTIAL if is_partial else SEAL_WIDTH_SINGLE
-			cancel_btn.visible = true
-			cancel_btn.disabled = false
+			var seal_pos := Vector2((SLAB_OUTER_SIZE.x - seal_w) * 0.5, SEAL_TOP_Y)
+			var seal_tooltip: String = "Cancelar %s (%d)" % [_action_verb(res_id), cancellable_count]
+			if not cancel_btn.visible:
+				cancel_btn.visible = true
+			if cancel_btn.disabled:
+				cancel_btn.disabled = false
 			cancel_btn.set_seal_size(Vector2(seal_w, SEAL_HEIGHT))
 			cancel_btn.set_glyph_text(seal_text)
-			cancel_btn.position = Vector2((SLAB_OUTER_SIZE.x - seal_w) * 0.5, SEAL_TOP_Y)
-			cancel_btn.tooltip_text = "Cancelar %s (%d)" % [_action_verb(res_id), cancellable_count]
+			if not cancel_btn.position.is_equal_approx(seal_pos):
+				cancel_btn.position = seal_pos
+			if cancel_btn.tooltip_text != seal_tooltip:
+				cancel_btn.tooltip_text = seal_tooltip
 		else:
-			cancel_btn.visible = false
-			cancel_btn.set_glyph_text("")
-			cancel_btn.tooltip_text = ""
+			if cancel_btn.visible:
+				cancel_btn.visible = false
+			if cancel_btn.get_glyph_text() != "":
+				cancel_btn.set_glyph_text("")
+			if cancel_btn.tooltip_text != "":
+				cancel_btn.tooltip_text = ""
 
 	if visible_ids.is_empty():
+		_last_layout_visible_ids.clear()
 		_panel_content_rect = Rect2()
-		_panel.visible = false
+		if _panel.visible:
+			_panel.visible = false
 		return
 
-	_panel.visible = true
+	if not _panel.visible:
+		_panel.visible = true
 	_layout_slabs_bottom_center(visible_ids)
 
 
@@ -803,16 +862,18 @@ func _layout_slabs_bottom_center(visible_ids: Array[StringName]) -> void:
 	var panel_w: float = content_w + SLAB_SHADOW_PAD_SCALED * 2.0
 	var panel_h: float = SEAL_HEADROOM_Y + content_h + SLAB_SHADOW_PAD_SCALED * 2.0
 	var half_w: float = panel_w * 0.5
-
-	_panel.anchor_left = 0.5
-	_panel.anchor_right = 0.5
-	_panel.anchor_top = 1.0
-	_panel.anchor_bottom = 1.0
-	_panel.offset_left = -half_w
-	_panel.offset_right = half_w
-	_panel.offset_bottom = -(BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED)
-	_panel.offset_top = -(BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED + panel_h)
-	_panel.size = Vector2(panel_w, panel_h)
+	var layout_changed: bool = _last_layout_visible_ids != visible_ids
+	if layout_changed:
+		_last_layout_visible_ids = visible_ids.duplicate()
+		_panel.anchor_left = 0.5
+		_panel.anchor_right = 0.5
+		_panel.anchor_top = 1.0
+		_panel.anchor_bottom = 1.0
+		_panel.offset_left = -half_w
+		_panel.offset_right = half_w
+		_panel.offset_bottom = -(BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED)
+		_panel.offset_top = -(BOTTOM_OFFSET_PX - SLAB_SHADOW_PAD_SCALED + panel_h)
+		_panel.size = Vector2(panel_w, panel_h)
 
 	var slot_size := Vector2(SLAB_OUTER_SIZE.x, SLAB_OUTER_SIZE.y + SEAL_HEADROOM_Y)
 	var any_cancel_visible: bool = false
@@ -824,8 +885,9 @@ func _layout_slabs_bottom_center(visible_ids: Array[StringName]) -> void:
 			continue
 		var sx: float = float(i) * (SLAB_CONTENT_SIZE.x + SLAB_GAP_X)
 		var sy: float = SLAB_STAGGER_Y[i % SLAB_STAGGER_Y.size()] if count > 1 else 0.0
-		slot.position = Vector2(sx, sy)
-		slot.size = slot_size
+		if layout_changed:
+			slot.position = Vector2(sx, sy)
+			slot.size = slot_size
 		if is_category_cancel_visible(res_id):
 			any_cancel_visible = true
 			min_seal_slot_y = minf(min_seal_slot_y, sy)
@@ -853,8 +915,11 @@ func _apply_button_visual_state(
 	visual_state: String
 ) -> void:
 	var is_blocked_econ: bool = visual_state == STATE_ECONOMY_BLOCKED
-	btn.disabled = is_blocked_econ
-	btn.mouse_default_cursor_shape = Control.CURSOR_ARROW if is_blocked_econ else Control.CURSOR_POINTING_HAND
+	if btn.disabled != is_blocked_econ:
+		btn.disabled = is_blocked_econ
+	var desired_cursor: Control.CursorShape = Control.CURSOR_ARROW if is_blocked_econ else Control.CURSOR_POINTING_HAND
+	if btn.mouse_default_cursor_shape != desired_cursor:
+		btn.mouse_default_cursor_shape = desired_cursor
 	btn.set_visual_state(visual_state)
 
 	var text_color: Color = D2Tokens.COLOR_TEXT_PRIMARY_IVORY
@@ -878,17 +943,20 @@ func _apply_button_visual_state(
 		icon_rect.modulate = icon_modulate
 
 	var verb: String = _action_verb(resource_id)
+	var desired_tooltip: String = ""
 	match visual_state:
 		STATE_ECONOMY_BLOCKED:
-			btn.tooltip_text = "Economia regional bloqueada"
+			desired_tooltip = "Economia regional bloqueada"
 		STATE_BLOCKED_REAUTH:
-			btn.tooltip_text = "Reautorizar %s (%d)" % [verb, count]
+			desired_tooltip = "Reautorizar %s (%d)" % [verb, count]
 		STATE_AUTHORIZED:
-			btn.tooltip_text = "%s autorizado (%d)" % [verb, count]
+			desired_tooltip = "%s autorizado (%d)" % [verb, count]
 		STATE_PARTIAL:
-			btn.tooltip_text = "Autorizar %s restantes (%d)" % [verb, count]
+			desired_tooltip = "Autorizar %s restantes (%d)" % [verb, count]
 		_:
-			btn.tooltip_text = "Autorizar %s (%d)" % [verb, count]
+			desired_tooltip = "Autorizar %s (%d)" % [verb, count]
+	if btn.tooltip_text != desired_tooltip:
+		btn.tooltip_text = desired_tooltip
 
 
 static func _icon_for_resource(resource_id: StringName) -> Texture2D:
@@ -912,10 +980,16 @@ static func _action_verb(resource_id: StringName) -> String:
 
 
 func _on_selection_or_board_changed() -> void:
+	if _batch_refresh_depth > 0:
+		_batch_refresh_dirty = true
+		return
 	refresh()
 
 
 func _on_board_task_changed(_task: WorkTask) -> void:
+	if _batch_refresh_depth > 0:
+		_batch_refresh_dirty = true
+		return
 	refresh()
 
 
