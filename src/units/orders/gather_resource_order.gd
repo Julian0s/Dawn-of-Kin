@@ -378,6 +378,7 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if use_provenance_transactions and is_provenance_transfer_executing():
 		return
+	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
 		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
@@ -387,14 +388,16 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 			last_extraction_replayed = true
 		_active_gather_session = null
 	if _deliver_order != null and _deliver_order.is_active():
-		_deliver_order.cancel(movement, reason)
+		_deliver_order.cancel(movement if _still_owns_movement_cleanup(entry_rev) else null, reason)
 	_deliver_order = null
 	_awaiting_felling_before_delivery = false
 	resolved_target = Vector3(INF, INF, INF)
 	_release_source_reservation()
-	if movement != null:
+	if movement != null and _still_owns_movement_cleanup(entry_rev):
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
-	super.cancel(movement, reason)
+		super.cancel(movement, reason)
+	else:
+		super.cancel(null, reason)
 
 
 func request_community_cancel(movement: UnitMovement = null) -> Dictionary:
@@ -427,11 +430,16 @@ func request_community_cancel(movement: UnitMovement = null) -> Dictionary:
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load() if (_unit != null and is_instance_valid(_unit)) else null
 	if _can_start_delivery_with_current_cargo(carry_load):
+		var expected_rev: int = _capture_unit_order_revision()
 		_awaiting_felling_before_delivery = false
 		_disconnect_navigation_signals()
 		if resolved_movement != null:
 			resolved_movement.stop_movement()
 		_start_delivering(resolved_movement)
+		if _unit != null and is_instance_valid(_unit) and _unit.get_current_order() != null and _unit.get_current_order() != self:
+			return {"ok": true, "action": "superseded_by_newer_order"}
+		if not _still_owns_unit_execution(expected_rev) and not is_succeeded() and status != Status.FAILED:
+			return {"ok": true, "action": "cancelled_immediately"}
 		return {"ok": true, "action": "transitioned_to_final_delivery"}
 
 	return {"ok": true, "action": "cancel_immediately"}
@@ -768,17 +776,24 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 
 
 func _start_delivering(movement: UnitMovement) -> void:
+	var expected_rev: int = _capture_unit_order_revision()
 	# Free the source slot while transporting so other workers can approach or gather.
 	_release_source_reservation()
+	if not _still_owns_unit_execution(expected_rev):
+		return
 	_phase = Phase.DELIVERING_TO_CAMP
 	resolved_target = Vector3(INF, INF, INF)
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
+	if not _still_owns_unit_execution(expected_rev):
+		return
 
 	if use_provenance_transactions:
 		_deliver_order = _create_selective_deliver_order()
 	else:
 		_deliver_order = DeliverToCampOrder.new(camp_zone, inventory)
 	_deliver_order.start(_unit, movement, _world_nav)
+	if not _still_owns_unit_execution(expected_rev) or _deliver_order == null:
+		return
 	if _deliver_order.is_finished():
 		_handle_deliver_finished(movement)
 
@@ -934,10 +949,35 @@ func _acquire_source_reservation() -> bool:
 	return true
 
 
+func _capture_unit_order_revision() -> int:
+	if _unit == null or not is_instance_valid(_unit):
+		return -1
+	return _unit.get_order_revision()
+
+
+func _still_owns_unit_execution(expected_revision: int) -> bool:
+	if status != Status.RUNNING:
+		return false
+	if _unit == null or not is_instance_valid(_unit) or not _unit.is_inside_tree():
+		return false
+	return _unit.get_current_order() == self and _unit.get_order_revision() == expected_revision
+
+
+func _still_owns_movement_cleanup(expected_revision: int) -> bool:
+	if _unit == null or not is_instance_valid(_unit):
+		return true
+	if expected_revision >= 0 and _unit.get_order_revision() != expected_revision:
+		return false
+	var cur: UnitOrder = _unit.get_current_order()
+	return cur == self or cur == null
+
+
 func _release_source_reservation() -> void:
-	if _has_reservation and source != null and is_instance_valid(source) and _unit != null and is_instance_valid(_unit):
-		source.release_worker(_unit)
+	if not _has_reservation:
+		return
 	_has_reservation = false
+	if source != null and is_instance_valid(source) and _unit != null and is_instance_valid(_unit):
+		source.release_worker(_unit)
 
 
 func _wait_for_navigation() -> void:
@@ -994,17 +1034,19 @@ func _on_pending_navigation_degraded(_count: int, _reason: String) -> void:
 
 
 func _finish_succeeded() -> void:
+	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	_active_gather_session = null
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
-	if _movement != null:
+	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_succeeded()
 
 
 func _finish_failed(reason: String) -> void:
+	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
 		_active_gather_session.cancel_intent(source, _unit)
@@ -1012,7 +1054,7 @@ func _finish_failed(reason: String) -> void:
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
-	if _movement != null:
+	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		if use_provenance_transactions:
 			_movement.stop_movement()
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
@@ -1020,6 +1062,7 @@ func _finish_failed(reason: String) -> void:
 
 
 func _finish_cancelled(reason: String) -> void:
+	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
 		_active_gather_session.cancel_intent(source, _unit)
@@ -1027,7 +1070,7 @@ func _finish_cancelled(reason: String) -> void:
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
-	if _movement != null:
+	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.stop_movement()
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_cancelled(reason)

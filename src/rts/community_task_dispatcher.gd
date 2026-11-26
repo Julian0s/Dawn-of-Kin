@@ -195,8 +195,12 @@ func cancel_tasks_for_sources(
 					delivering_count += 1
 				"cancelled_immediately":
 					stopped_immediately_count += 1
+					if unit.get_current_order() != null and unit.get_current_order() != snap_order:
+						preserved_personal_orders_count += 1
 				"deferred_during_transfer":
 					deferred_transfer_count += 1
+				"superseded_by_newer_order":
+					preserved_personal_orders_count += 1
 		elif unit.get_current_order() != null and unit.get_current_order() != snap_order:
 			preserved_personal_orders_count += 1
 
