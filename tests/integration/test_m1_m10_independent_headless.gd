@@ -323,11 +323,15 @@ func test_m8_replace_before_and_after_first_extraction() -> void:
 
 	var post_extract := GatherResourceOrder.new(tree, camp, inv, 0.08, 0.25, true, nav.get_region_id())
 	worker.issue_order(post_extract)
+	# D3 contract: tree enters FELLING with zero extraction, then falls to FALLEN before first wood batch.
+	assert_true(await _until(func() -> bool: return tree.is_felling()))
+	assert_eq(load.get_amount(&"wood"), 0)
+	assert_eq(tree.get_remaining_amount(), 12)
 	assert_true(await _until(func() -> bool: return load.get_amount(&"wood") > 0))
 	assert_eq(load.get_amount(&"wood"), 4)
 	assert_eq(load.get_current_weight(), 8)
 	assert_eq(tree.get_remaining_amount(), 8)
-	assert_true(tree.is_felling())
+	assert_true(tree.is_fallen())
 	var loaded_snapshot := load.provenance_snapshot()
 	var lots: Dictionary = loaded_snapshot["ledger"]["lots"]
 	assert_eq(lots.size(), 1)
@@ -340,7 +344,7 @@ func test_m8_replace_before_and_after_first_extraction() -> void:
 	assert_eq(tree.get_active_worker_count(), 0)
 	assert_true(await _until(second_move.is_finished))
 	assert_true(second_move.is_succeeded(), second_move.failure_reason)
-	await wait_physics_frames(60)
+	await wait_physics_frames(10)
 	assert_true(tree.is_fallen())
 	assert_eq(tree.get_active_worker_count(), 0)
 	assert_eq(tree.get_remaining_amount(), 8)

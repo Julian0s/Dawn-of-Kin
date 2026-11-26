@@ -251,6 +251,7 @@ func test_interrupted_trip_reuses_attributed_cargo_and_preserves_unrelated_cargo
 	var free_source := ResourceSource.new()
 	fx.main.add_child(free_source)
 	free_source.configure(&"extra_tree", WOOD.duplicate(), 5, 2, 1)
+	free_source.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	load.set_base_capacity(22)
 	assert_eq(free_source.transfer_to_carry_load_with_provenance(load, &"gather", &"free", 1).extracted, 1)
 	var expected_free: Dictionary = load.provenance_snapshot().ledger.lots[&"free"]

@@ -352,10 +352,11 @@ func test_05_06_07_08_mixed_carry_loads_free_and_multi_site_preservation() -> vo
 	var u1: Unit = _spawn_unit(host, "MixedU1", &"mixed_u1", 50)
 	var load1: UnitCarryLoad = u1.get_carry_load()
 
-	# Gather FREE_GATHERED wood (2) and FREE_GATHERED food (1)
+	# Gather FREE_GATHERED wood (2) from fallen fixture and FREE_GATHERED food (1)
 	var wood_src := ResourceSource.new()
 	host.add_child(wood_src)
 	wood_src.configure(&"src_w", WOOD_BASE.duplicate(), 5, 5, 2)
+	wood_src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_true(bool(wood_src.transfer_to_carry_load_with_provenance(load1, &"fg_w", &"lot_fg_w", 2)["ok"]))
 
 	var food_src := ResourceSource.new()
@@ -799,6 +800,7 @@ func test_24_25_26_concurrent_invalidation_and_aba_detection() -> void:
 	var wood_src := ResourceSource.new()
 	host.add_child(wood_src)
 	wood_src.configure(&"src_25b", WOOD_BASE.duplicate(), 5, 5, 2)
+	wood_src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_true(bool(wood_src.transfer_to_carry_load_with_provenance(load1, &"op_fg25", &"lot_fg25", 1)["ok"]))
 	assert_eq(String(coord.commit_prepared_withdrawal(site_a, u1, plan25b)["reason"]), "stale_revision")
 

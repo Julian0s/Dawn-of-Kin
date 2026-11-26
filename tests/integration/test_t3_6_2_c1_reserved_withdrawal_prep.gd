@@ -460,10 +460,11 @@ func test_03_mixed_carry_load_multi_site_claims_and_unreconciled_detection() -> 
 	var u1: Unit = _spawn_unit(host, "MixedUnit", &"mixed_unit", 20)
 	var load1: UnitCarryLoad = u1.get_carry_load()
 
-	# 1. Gather 2 FREE_GATHERED wood from a real ResourceSource
+	# 1. Gather 2 FREE_GATHERED wood from a fallen ResourceSource (D3 fixture)
 	var wood_source := ResourceSource.new()
 	host.add_child(wood_source)
 	wood_source.configure(&"src_w", WOOD_BASE.duplicate(), 5, 5, 2)
+	wood_source.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var gather_res: Dictionary = wood_source.transfer_to_carry_load_with_provenance(load1, &"op_free_g", &"lot_free_g", 2)
 	assert_true(bool(gather_res["ok"]))
 

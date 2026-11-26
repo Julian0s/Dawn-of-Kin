@@ -284,6 +284,7 @@ func test_04_depleted_and_available_source_command_safety_and_t1_preservation() 
 
 	# 3. Deplete tree, verify deterministic depleted picking & safe contextual command rejection
 	tree.max_extract_per_operation = 50
+	tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_eq(tree.extract(20), 20)
 	var depleted_pick: PickResult = controller.pick_at_screen_pos(tree_screen)
 	assert_true(depleted_pick.is_resource_source())

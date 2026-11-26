@@ -93,6 +93,7 @@ func _gather(fx: Dictionary, unit: Unit, amount: int) -> void:
 	var source := ResourceSource.new()
 	fx.host.add_child(source)
 	source.configure(&"tree", WOOD.duplicate(), 10, 5, 2)
+	source.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_eq(source.transfer_to_carry_load_with_provenance(unit.get_carry_load(), &"gather", &"free_wood", amount).extracted, amount)
 
 

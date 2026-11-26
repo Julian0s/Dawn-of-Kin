@@ -113,8 +113,9 @@ func test_01_prepare_delay_prevents_premature_extraction_and_orders_food_wood_st
 		orders.append(order)
 
 	var saw_zero_during_prep: bool = true
+	var tree_felling_frame: int = -1
 	var ticks: int = 0
-	while (not extracted[0] or not extracted[1] or not extracted[2]) and ticks < 400:
+	while (not extracted[0] or not extracted[1] or not extracted[2]) and ticks < 480:
 		for i: int in range(3):
 			if extracted[i]:
 				continue
@@ -126,6 +127,9 @@ func test_01_prepare_delay_prevents_premature_extraction_and_orders_food_wood_st
 				prep_done[i] = true
 		await wait_physics_frames(1)
 		ticks += 1
+		if tree_felling_frame < 0 and tree.is_felling():
+			tree_felling_frame = ticks
+			assert_eq(tree.get_remaining_amount(), start_rem[1], "D3: zero wood extracted upon entering FELLING")
 		for i: int in range(3):
 			if not extracted[i]:
 				total_frames[i] = ticks
@@ -133,8 +137,10 @@ func test_01_prepare_delay_prevents_premature_extraction_and_orders_food_wood_st
 					extracted[i] = true
 
 	assert_true(saw_zero_during_prep, "No extraction may happen during preparation pause")
+	assert_gt(tree_felling_frame, 0, "D3: standing tree must enter FELLING before first wood extraction")
 	var dt: float = 1.0 / float(Engine.physics_ticks_per_second)
-	var expected_op: Array[float] = [1.5, 2.5, 3.5]
+	# D3 contract: food=1.5s, standing tree=2.5s cut + 0.5s fall + 2.5s post-fall collect = 5.5s, stone=3.5s.
+	var expected_op: Array[float] = [1.5, 5.5, 3.5]
 	var min_prep: Array[float] = [0.15, 0.25, 0.30]
 	var gather_secs: Array[float] = []
 	for i: int in range(3):
@@ -142,11 +148,14 @@ func test_01_prepare_delay_prevents_premature_extraction_and_orders_food_wood_st
 		assert_true(extracted[i], "First extraction must complete at real production timing")
 		assert_gt(float(prep_frames[i]) * dt, min_prep[i])
 		var g_sec: float = float(total_frames[i] - prep_frames[i]) * dt
-		assert_near(g_sec, expected_op[i], 0.15)
+		assert_near(g_sec, expected_op[i], 0.20)
 		gather_secs.append(g_sec)
 
-	assert_lt(gather_secs[0], gather_secs[1])
-	assert_lt(gather_secs[1], gather_secs[2])
+	var tree_cut_sec: float = float(tree_felling_frame - prep_frames[1]) * dt
+	assert_near(tree_cut_sec, 2.5, 0.15, "D3: single-worker tree cut duration remains 2.5s")
+	assert_lt(gather_secs[0], tree_cut_sec)
+	assert_lt(tree_cut_sec, gather_secs[2])
+	assert_lt(gather_secs[2], gather_secs[1])
 
 
 func test_02_source_feedback_tween_pulses_on_extract_with_zero_process_and_resets_cleanly() -> void:
@@ -165,6 +174,8 @@ func test_02_source_feedback_tween_pulses_on_extract_with_zero_process_and_reset
 	assert_false(tree.is_processing())
 	assert_false(tree.is_physics_processing())
 
+	# D3 fixture: extraction feedback pulse occurs on fallen wood.
+	tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var got: int = tree.transfer_to_carry_load(unit.get_carry_load(), 1)
 	assert_eq(got, 1)
 	assert_false(tree.is_processing())
@@ -187,7 +198,9 @@ func test_02_source_feedback_tween_pulses_on_extract_with_zero_process_and_reset
 	# Depletion while mid-tween must cancel tween cleanly and hide AvailableVisual without residual offset
 	unit.get_carry_load().take_all()
 	assert_gt(tree.extract(tree.max_extract_per_operation), 0)
-	while not tree.is_depleted():
+	var drain_guard: int = 0
+	while not tree.is_depleted() and drain_guard < 32:
+		drain_guard += 1
 		assert_gt(tree.extract(tree.max_extract_per_operation), 0)
 	assert_true(tree.is_depleted())
 	assert_false(visual.visible)

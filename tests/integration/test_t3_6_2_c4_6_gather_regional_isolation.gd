@@ -561,8 +561,9 @@ func test_03_r1b_free_gather_preserves_site_a_revision_signals_claims_and_site_b
 	var work_a_before: float = site_a.get_work_progress_sec()
 	var speed_before: float = leader_a.get_movement().get_effective_move_speed()
 
-	# Spawn a free wood tree (4 wood = weight 8; 4 + 8 = 12/20) and free bush (3 food = weight 3).
+	# Spawn a free wood tree (4 wood = weight 8; 4 + 8 = 12/20, D3 fallen fixture for isolated session test) and free bush (3 food = weight 3).
 	var tree_free: ResourceSource = _spawn_source(fx["main"], TREE_SCENE, &"c46_free_tree", Vector3(3.2, 0.0, 2.0), 4, 2)
+	tree_free.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var bush_free: ResourceSource = _spawn_source(fx["main"], BUSH_SCENE, &"c46_free_bush", Vector3(3.2, 0.0, -2.0), 3, 3)
 
 	# Gather FREE wood into LeaderA (same resource_id as Site A's claim!) WITHOUT completing camp dropoff yet.

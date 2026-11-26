@@ -54,6 +54,11 @@ func test_01_extraction_sufficient_capped_and_insufficient() -> void:
 	assert_false(src.is_depleted())
 	assert_eq(src.get_initial_amount(), 10)
 	assert_eq(src.get_remaining_amount(), 10)
+	# D3 contract: standing wood refuses direct extraction until fallen.
+	assert_false(src.can_extract(1))
+	assert_eq(src.extract(2), 0)
+	assert_eq(src.get_remaining_amount(), 10)
+	src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 
 	# Request below cap
 	assert_eq(src.extract(2), 2)
@@ -112,6 +117,7 @@ func test_03_invalid_extractions_rejected_without_signals() -> void:
 
 func test_04_signals_emit_only_after_final_state_updated() -> void:
 	var src: ResourceSource = _make_source(WOOD_RES, 4, 2)
+	src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var events: Array = []
 	_observer_ctx["events"] = events
 	src.amount_changed.connect(Callable(self, "_on_record_source_change"))
@@ -172,8 +178,9 @@ func test_05_placeholder_prefabs_expose_three_categories_and_visual_states() -> 
 	assert_eq((tree.get_node("SolidBody") as StaticBody3D).collision_layer, CollisionLayers.MASK_OBSTACLES)
 	assert_eq((rock.get_node("SolidBody") as StaticBody3D).collision_layer, CollisionLayers.MASK_OBSTACLES)
 
-	# Drain tree completely and check depleted visual toggle
+	# Drain fallen tree completely and check depleted visual toggle (D3 fixture)
 	tree.max_extract_per_operation = 50
+	tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_eq(tree.extract(20), 20)
 	assert_true(tree.is_depleted())
 	assert_eq((tree.get_node("AvailableVisual") as Node3D).visible, false)
@@ -208,6 +215,7 @@ func test_06_worker_reservation_slots_and_pick_result_contracts() -> void:
 	assert_eq(pick.resource_source, src)
 
 	src.max_extract_per_operation = 10
+	src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	src.extract(10)
 	assert_true(pick.is_resource_source())
 	assert_false(pick.is_available_resource_source())

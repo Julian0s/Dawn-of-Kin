@@ -117,8 +117,11 @@ func test_03_automatic_cleanup_on_depletion_and_tree_exit() -> void:
 	var changes: Array[int] = [0]
 	model.selection_changed.connect(func() -> void: changes[0] += 1)
 
-	# Depleting t1 removes it automatically via depleted signal.
-	while not t1.is_depleted():
+	# Depleting t1 removes it automatically via depleted signal (fixture felled per D3).
+	t1.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
+	var drain_guard: int = 0
+	while not t1.is_depleted() and drain_guard < 16:
+		drain_guard += 1
 		t1.extract(t1.get_remaining_amount())
 	assert_true(t1.is_depleted())
 	assert_false(model.is_selected(t1), "Depleted source must be auto-removed from selection")
@@ -163,5 +166,6 @@ func test_04_region_checker_and_supported_resource_filters() -> void:
 	# Teardown clears selection and disconnects signals cleanly.
 	model.teardown()
 	assert_true(model.is_empty())
+	t_ok.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	t_ok.extract(10)
 	assert_true(model.is_empty())

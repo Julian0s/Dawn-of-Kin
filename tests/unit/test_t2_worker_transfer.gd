@@ -70,6 +70,7 @@ func test_02_transfer_commits_both_sides_before_signals_and_blocks_reentrancy() 
 	var src := ResourceSource.new()
 	src.configure(&"wood_test", WOOD_RES, 3, 3, 2) # weight 2
 	add_test_child(src)
+	src.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 
 	var load := UnitCarryLoad.new(20)
 	var events: Array = []

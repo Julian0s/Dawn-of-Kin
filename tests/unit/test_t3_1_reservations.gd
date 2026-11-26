@@ -620,6 +620,7 @@ func test_13_global_conservation_and_t2_delivery_compatibility() -> void:
 	tree.initial_amount = 30
 	tree.max_extract_per_operation = 10
 	(fix["host"] as Node3D).add_child(tree)
+	tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 
 	var carry := UnitCarryLoad.new(20)
 	var withdrawn_total: int = 0

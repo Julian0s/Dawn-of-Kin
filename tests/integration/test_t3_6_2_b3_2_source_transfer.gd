@@ -16,9 +16,24 @@ func source(def: ResourceDefinition, amount: int, limit: int = 3) -> FaultSource
 	var obj := FaultSource.new()
 	add_test_child(obj)
 	obj.configure(&"test_source", def, amount, limit, 2)
+	# D3 fixture: isolated transfer_to_carry_load_with_provenance tests target post-fall wood extraction.
+	if def.category == ResourceDefinition.Category.WOOD:
+		obj.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	return obj
 
 func test_real_resources_conservation_replay_and_legacy() -> void:
+	# D3 contract: standing wood refuses provenance extraction before falling.
+	var standing_wood := FaultSource.new()
+	add_test_child(standing_wood)
+	standing_wood.configure(&"standing_wood", WOOD, 5, 3, 2)
+	var probe_load := UnitCarryLoad.new(100)
+	assert_true(probe_load.enable_provenance(&"worker_standing"))
+	var standing_res: Dictionary = standing_wood.transfer_to_carry_load_with_provenance(probe_load, "pre_fall", "lot_pre", 2)
+	assert_false(bool(standing_res.get("ok", true)))
+	assert_eq(String(standing_res.get("reason", "")), "tree_not_felled")
+	assert_eq(standing_wood.get_remaining_amount(), 5)
+	assert_eq(probe_load.get_amount(WOOD.resource_id), 0)
+
 	for def: ResourceDefinition in [WOOD, STONE, FOOD]:
 		var s := source(def, 5)
 		var load := UnitCarryLoad.new(100)
