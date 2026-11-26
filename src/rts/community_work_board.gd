@@ -28,6 +28,7 @@ func _exit_tree() -> void:
 
 
 func teardown() -> void:
+	var previous_tasks: Array[WorkTask] = _tasks.duplicate()
 	for source_id_key: Variant in _source_callbacks.keys():
 		var sid: int = int(source_id_key)
 		var entry: Dictionary = _source_callbacks[sid] as Dictionary
@@ -38,6 +39,8 @@ func teardown() -> void:
 	_active_by_source_id.clear()
 	_tasks.clear()
 	_expected_world_ref = null
+	for task: WorkTask in previous_tasks:
+		task.revoke_tree_cut()
 
 
 func configure(p_region_id: StringName, p_world_3d: World3D = null) -> void:
@@ -187,6 +190,7 @@ func register_gather_task(source: ResourceSource, p_group_id: int = 0) -> Dictio
 	task.source = source
 	task.source_id = source.get_source_id()
 	task.state = WorkTask.State.PENDING_WORKERS
+	task.authorize_tree_cut()
 
 	_tasks.append(task)
 	_active_by_source_id[sid] = task
@@ -326,8 +330,19 @@ func reauthorize_gather_task(task: WorkTask) -> Dictionary:
 	task.excluded_unit_ids.clear()
 	task.state = WorkTask.State.PENDING_WORKERS
 	task.last_reason = ""
+	task.authorize_tree_cut()
 	notify_task_updated(task)
 	return {"ok": true, "reauthorized": true, "task": task, "reason": ""}
+
+
+func block_for_reauthorization(task: WorkTask) -> void:
+	if task == null or task.state != WorkTask.State.PENDING_WORKERS or not _tasks.has(task):
+		return
+	task.state = WorkTask.State.BLOCKED_REAUTHORIZATION
+	task.last_reason = WorkTask.REASON_ALL_WORKERS_EXCLUDED
+	task.revoke_tree_cut()
+	if task.is_blocked_reauthorization():
+		notify_task_updated(task)
 
 
 func close_task(task: WorkTask, final_state: WorkTask.State, reason: String = "") -> void:
@@ -345,6 +360,7 @@ func close_task(task: WorkTask, final_state: WorkTask.State, reason: String = ""
 	task.state = final_state
 	task.last_reason = reason
 	task.clear_assignment()
+	task.revoke_tree_cut()
 	task_closed.emit(task)
 
 

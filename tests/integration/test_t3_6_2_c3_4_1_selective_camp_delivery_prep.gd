@@ -25,6 +25,9 @@ func _gather_res(
 	fx.host.add_child(source)
 	var cap: int = maxi(amount, 10)
 	source.configure(StringName("src_" + String(lot_id)), res_def.duplicate() as ResourceDefinition, cap, cap, 2)
+	# This delivery fixture seeds legitimate cargo through the extraction API.
+	if source.get_category() == ResourceDefinition.Category.WOOD:
+		source.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var outcome: Dictionary = source.transfer_to_carry_load_with_provenance(
 		unit.get_carry_load(), op_id, lot_id, amount
 	)

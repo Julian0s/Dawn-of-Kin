@@ -35,6 +35,10 @@ func is_preparing_work() -> bool:
 	return false
 
 
+func is_waiting_to_work() -> bool:
+	return false
+
+
 func get_work_category() -> int:
 	return -1
 

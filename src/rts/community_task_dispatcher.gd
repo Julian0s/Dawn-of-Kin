@@ -563,9 +563,13 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 		return false
 
 	var pre_order_rev: int = chosen_unit.get_order_revision()
-	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false)
+	var authorization := task.tree_cut_authorization
+	if task.kind == WorkTask.Kind.GATHER_WOOD and authorization == null:
+		return false
+	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false, authorization)
+	var still_pending: bool = task.state == WorkTask.State.PENDING_WORKERS and task.tree_cut_authorization == authorization
 	if not bool(dispatch_res.get("ok", false)):
-		if not task.is_active():
+		if not still_pending:
 			return false
 		var reject_reason: String = String(dispatch_res.get("reason", "dispatch_rejected"))
 		if reject_reason in [
@@ -581,8 +585,8 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 
 	var assigned_orders: Dictionary = dispatch_res.get("assigned_orders", {}) as Dictionary
 	var order: GatherResourceOrder = assigned_orders.get(chosen_unit.get_instance_id()) as GatherResourceOrder
-	if not task.is_active():
-		# Reentrancy guard (R-03A D2 / E11): task was closed during dispatch; never resurrect it.
+	if not still_pending:
+		# The command can emit signals that close or reauthorize the task.
 		if (
 			order != null
 			and order.is_active()
@@ -609,10 +613,15 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	task.assigned_unit = chosen_unit
 	task.assigned_order = order
 	task.assigned_order_revision = chosen_unit.get_order_revision()
+	var assigned_revision: int = task.assigned_order_revision
 	task.state = WorkTask.State.IN_PROGRESS
 	task.last_reason = ""
 	_board.notify_task_updated(task)
-	if not task.is_active() or task.assigned_order != order:
+	if (
+		task.state != WorkTask.State.IN_PROGRESS or task.assigned_order != order
+		or task.tree_cut_authorization != authorization or not is_instance_valid(chosen_unit)
+		or chosen_unit.get_current_order() != order or chosen_unit.get_order_revision() != assigned_revision
+	):
 		return false
 	task_assigned.emit(task, chosen_unit, order)
 
@@ -695,13 +704,9 @@ func _mark_task_waiting(task: WorkTask, reason: String, feedback_text: String) -
 
 
 func _mark_task_blocked_reauthorization(task: WorkTask) -> void:
-	var reason: String = WorkTask.REASON_ALL_WORKERS_EXCLUDED
-	var changed: bool = task.state != WorkTask.State.BLOCKED_REAUTHORIZATION or task.last_reason != reason
-	task.state = WorkTask.State.BLOCKED_REAUTHORIZATION
-	task.last_reason = reason
-	if changed:
-		_board.notify_task_updated(task)
-		task_blocked.emit(task, reason)
+	_board.block_for_reauthorization(task)
+	if task.is_blocked_reauthorization():
+		task_blocked.emit(task, task.last_reason)
 		task_feedback.emit("Tarefa aguardando nova autorização.")
 
 

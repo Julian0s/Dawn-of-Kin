@@ -103,6 +103,8 @@ func initialize_cycle(
 	)
 	if not bool(id_res.get("ok", false)):
 		return id_res
+	if _wood_is_before_fall(source):
+		return _failure("tree_not_felled", "source")
 
 	_identity = id_res["identity"] as Array
 	_cycle_index = cycle_index
@@ -228,6 +230,8 @@ func _execute_locked(
 		if not source.is_available():
 			var unavail_reason: String = "source_depleted" if source.is_depleted() else "invalid_source"
 			return _failure(unavail_reason, "source")
+		if _wood_is_before_fall(source):
+			return _failure("tree_not_felled", "source")
 		if not in_working_range:
 			return _failure("out_of_gather_range", "authorization")
 		if _operation_id.is_empty():
@@ -317,6 +321,13 @@ func _execute_locked(
 						"receipt": rec_after.duplicate(true),
 					}
 	return _failure("unknown_transaction_outcome", "source")
+
+
+static func _wood_is_before_fall(source: ResourceSource) -> bool:
+	return (
+		source.get_category() == ResourceDefinition.Category.WOOD
+		and source.get_tree_harvest_stage() < ResourceSource.TreeHarvestStage.FALLEN
+	)
 
 
 ## Virtual indirection so adversarial tests can simulate an uncertain source response

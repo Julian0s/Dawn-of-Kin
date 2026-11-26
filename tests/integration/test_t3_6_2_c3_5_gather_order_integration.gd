@@ -447,12 +447,15 @@ func test_group_b_real_cycle_slots_weights_felling_and_depletion() -> void:
 	var tree := await _spawn_source(fx, TREE_SCENE, &"c35_tree_b", Vector3(3.5, 0.0, 2.0), 14, 5, 1, 0.08, 0.16)
 	_place_worker(fx, worker, FAR_WALK_POS)
 	var remote_sess := GatherTransferSession.new()
+	# Isolate the remote authorization check from the pre-fall barrier.
+	tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	assert_true(bool(remote_sess.initialize_cycle(inv, camp, tree, worker, fx.region, 9901, 1, 2).get("ok", false)))
 	var remote_res: Dictionary = remote_sess.execute_or_retry(inv, camp, tree, worker, fx.region, 9901, false)
 	assert_false(bool(remote_res.get("ok", true)))
 	assert_eq(String(remote_res.get("reason", "")), "out_of_gather_range")
 	assert_eq(tree.get_remaining_amount(), 14)
 	assert_true(load.is_empty())
+	tree.configure(tree.source_id, tree.get_definition(), 14, 5, 1)
 
 	# Standing wood tree: prepare timing (9), slot contention (8), felling animation (20),
 	# exact source/load deltas (10,11,12), speed reduction by weight (13), no premature credit (15),
@@ -477,7 +480,7 @@ func test_group_b_real_cycle_slots_weights_felling_and_depletion() -> void:
 	assert_eq(tree.get_remaining_amount(), 14, "Must not extract during prepare window")
 	assert_true(load.is_empty())
 
-	# 10, 11, 12, 20. Observe first chop triggering FELLING animation while awaiting felling cleanly
+	# 10, 11, 12, 20. Observe the full cut and fall before the first extraction.
 	var saw_felling: bool = false
 	var entered_transport_during_felling: bool = false
 	var saw_fallen_before_transport: bool = false
@@ -493,6 +496,9 @@ func test_group_b_real_cycle_slots_weights_felling_and_depletion() -> void:
 		frames += 1
 		if tree.is_felling():
 			saw_felling = true
+			assert_eq(tree.get_remaining_amount(), 14)
+			assert_true(load.is_empty())
+			assert_null(wood_order.get_active_gather_session())
 			if worker.get_state() == Unit.State.TRANSPORTING:
 				entered_transport_during_felling = true
 		if tree.is_fallen() and worker.get_state() == Unit.State.TRANSPORTING:
@@ -522,7 +528,7 @@ func test_group_b_real_cycle_slots_weights_felling_and_depletion() -> void:
 		var total_w: int = tree.get_remaining_amount() + load.get_amount(&"wood") + inv.get_physical_amount(&"wood")
 		assert_eq(total_w, 14)
 
-	assert_true(saw_felling, "Must play tree felling animation on first extraction")
+	assert_true(saw_felling, "The fall must precede collection")
 	assert_false(entered_transport_during_felling, "Worker must wait for felling before entering TRANSPORTING")
 	assert_true(saw_fallen_before_transport)
 	assert_true(checked_transport_invariants and seen_wood_10)
@@ -900,6 +906,8 @@ func test_group_e_cancellations_removals_navigation_callbacks_and_guards() -> vo
 	assert_true(load.is_empty())
 
 	# 39b & 50: Cancel while gather session is RETRY_SCHEDULED -> permanently blocks delayed execution
+	# Start this adversarial transaction on an already-felled fixture.
+	tree_e.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	var cancel_retry := GatherResourceOrder.new(tree_e, camp, inv, 0.04, 0.0, true, fx.region)
 	load.begin_batch()
 	worker.issue_order(cancel_retry)
@@ -918,19 +926,28 @@ func test_group_e_cancellations_removals_navigation_callbacks_and_guards() -> vo
 	assert_eq(tree_e.get_remaining_amount(), 10)
 	assert_true(load.is_empty())
 
-	# 40a. Cancel DURING tree felling animation -> preserves extracted 10 wood, releases slot, tree finishes falling
+	# 40a. Cancel DURING the fall -> no extracted wood, slot freed, fall remains committed.
 	tree_e.configure(&"c35_tree_e", tree_e.get_definition(), 20, 10, 2)
 	tree_e.felling_duration_sec = 0.25
 	var felling_chop := GatherResourceOrder.new(tree_e, camp, inv, 0.04, 0.0, true, fx.region)
 	worker.issue_order(felling_chop)
-	assert_true(await _until(func() -> bool: return load.get_amount(&"wood") == 10 and tree_e.is_felling()))
+	assert_true(await _until(func() -> bool: return tree_e.is_felling()))
 	worker.cancel_current_order()
 	assert_eq(felling_chop.status, UnitOrder.Status.CANCELLED)
-	assert_eq(load.get_amount(&"wood"), 10)
+	assert_eq(load.get_amount(&"wood"), 0)
+	assert_eq(tree_e.get_remaining_amount(), 20)
 	assert_true(load.validate_provenance())
 	assert_eq(inv.get_physical_amount(&"wood"), 0)
 	assert_eq(tree_e.get_active_worker_count(), 0)
 	assert_true(await _until(func() -> bool: return tree_e.is_fallen(), 120))
+
+	# Collect a real lot from the fallen tree for the remaining delivery cases.
+	var pickup := GatherResourceOrder.new(tree_e, camp, inv, 0.04, 0.0, true, fx.region)
+	worker.issue_order(pickup)
+	assert_true(await _until(func() -> bool: return load.get_amount(&"wood") == 10))
+	worker.cancel_current_order()
+	assert_eq(inv.get_physical_amount(&"wood"), 0)
+	assert_eq(tree_e.get_remaining_amount(), 10)
 
 	# 40b. Cancel DURING transport (DELIVERING_TO_CAMP) -> lot preserved, 0 camp credit, 0 slots
 	_place_worker(fx, worker, FAR_WALK_POS)

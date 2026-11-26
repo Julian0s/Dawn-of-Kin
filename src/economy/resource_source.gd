@@ -441,15 +441,18 @@ func begin_tree_cut(unit: Unit, order: UnitOrder, revision: int, authorization: 
 
 ## Releases participation while keeping the authorization and progress available.
 func end_tree_cut(unit: Unit, order: UnitOrder, revision: int, authorization: RefCounted) -> bool:
-	if not is_instance_valid(unit):
+	if not has_tree_cutter(unit, order, revision, authorization):
 		return false
-	var unit_id: int = unit.get_instance_id()
-	var cutter: TreeCutter = _tree_cutters.get(unit_id) as TreeCutter
-	if cutter == null or cutter.order != order or cutter.revision != revision or cutter.authorization != authorization:
-		return false
-	_tree_cutters.erase(unit_id)
+	_tree_cutters.erase(unit.get_instance_id())
 	_refresh_tree_cut_processing()
 	return true
+
+
+func has_tree_cutter(unit: Unit, order: UnitOrder, revision: int, authorization: RefCounted) -> bool:
+	if not is_instance_valid(unit):
+		return false
+	var cutter: TreeCutter = _tree_cutters.get(unit.get_instance_id()) as TreeCutter
+	return cutter != null and cutter.order == order and cutter.revision == revision and cutter.authorization == authorization
 
 
 ## Called by the authorization owner after definitive cancellation, even when the

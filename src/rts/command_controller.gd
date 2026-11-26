@@ -195,7 +195,8 @@ func command_at(pick: PickResult) -> bool:
 func command_units_to_gather(
 	source: ResourceSource,
 	units: Array[Unit] = [],
-	show_marker: bool = true
+	show_marker: bool = true,
+	cut_authorization: GatherResourceOrder.CutAuthorization = null
 ) -> Dictionary:
 	_resolve_dependencies()
 	_last_command_reason = ""
@@ -218,7 +219,7 @@ func command_units_to_gather(
 		return _gather_command_result(false, _last_command_reason)
 
 	var pick := PickResult.from_resource_source(source, source.global_position, Vector3.UP)
-	return _execute_gather_resource(pick, target_units, show_marker)
+	return _execute_gather_resource(pick, target_units, show_marker, cut_authorization)
 
 
 func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
@@ -229,7 +230,8 @@ func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 func _execute_gather_resource(
 	pick: PickResult,
 	units: Array[Unit],
-	show_marker: bool
+	show_marker: bool,
+	cut_authorization: GatherResourceOrder.CutAuthorization = null
 ) -> Dictionary:
 	if pick == null or not pick.is_resource_source() or not is_instance_valid(pick.resource_source):
 		_last_command_reason = "invalid_resource_source"
@@ -264,7 +266,10 @@ func _execute_gather_resource(
 				first_failure_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
 			continue
 
-		var order := GatherResourceOrder.new(source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0, _use_provenance_economy, _economy_region_id)
+		var order := GatherResourceOrder.new(
+			source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0,
+			_use_provenance_economy, _economy_region_id, cut_authorization
+		)
 		unit.issue_order(order)
 		if _is_order_accepted(unit, order):
 			assigned_units.append(unit)

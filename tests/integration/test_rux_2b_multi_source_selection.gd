@@ -577,6 +577,7 @@ func test_b9_invalid_depleted_removed_and_unreachable_sources_do_not_block_other
 
 	# 1. Depleted tree
 	tree_1.configure(tree_1.source_id, tree_1.get_definition(), 2, 2, 2)
+	tree_1.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	tree_1.extract(2)
 
 	# 2. Valid tree

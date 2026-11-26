@@ -8,6 +8,29 @@ extends UnitOrder
 ## - Opt-in provenance mode: uses ResourceSource.transfer_to_carry_load_with_provenance() via
 ##   GatherTransferSession (FREE_GATHERED lots) and selective DeliverToCampOrder (C3.4.2/C3.4.3).
 
+## A task or personal order owns one source-scoped token. Assigned orders only
+## borrow a task's token, so changing workers does not revoke the authorization.
+class CutAuthorization extends RefCounted:
+	var _source: ResourceSource
+	var _revoked: bool = false
+
+	func _init(source_node: ResourceSource) -> void:
+		_source = source_node
+
+	func is_valid_for(source_node: ResourceSource) -> bool:
+		return not _revoked and is_instance_valid(_source) and _source == source_node
+
+	func is_revoked() -> bool:
+		return _revoked
+
+	func revoke() -> void:
+		if _revoked:
+			return
+		_revoked = true
+		if is_instance_valid(_source):
+			_source.cancel_tree_cut_authorization(self)
+
+
 enum Phase {
 	APPROACHING_SOURCE,
 	GATHERING,
@@ -55,7 +78,9 @@ var _explicit_prepare_duration_sec: float = -1.0
 var _approach_retries: int = 0
 var _delivered_trips: int = 0
 var _has_reservation: bool = false
-var _awaiting_felling_before_delivery: bool = false
+var _tree_cut_authorization: CutAuthorization
+var _owns_tree_cut_authorization: bool = false
+var _tree_cut_revision: int = -1
 var _deliver_order: DeliverToCampOrder = null
 var _active_gather_session: GatherTransferSession = null
 var _gather_cycle_serial: int = 0
@@ -75,13 +100,15 @@ func _init(
 	p_gather_interval_sec: float = -1.0,
 	p_prepare_duration_sec: float = -1.0,
 	p_use_provenance_transactions: bool = false,
-	p_region_id: StringName = &""
+	p_region_id: StringName = &"",
+	p_cut_authorization: CutAuthorization = null
 ) -> void:
 	source = p_source
 	camp_zone = p_camp_zone
 	inventory = p_inventory
 	use_provenance_transactions = p_use_provenance_transactions
 	region_id = p_region_id
+	_tree_cut_authorization = p_cut_authorization
 	if p_gather_interval_sec > 0.0 and is_finite(p_gather_interval_sec):
 		_use_explicit_interval = true
 		gather_interval_sec = maxf(p_gather_interval_sec, 0.01)
@@ -120,7 +147,14 @@ func is_stop_after_delivery_requested() -> bool:
 	return _stop_after_delivery
 
 
+func is_waiting_to_work() -> bool:
+	return _phase == Phase.GATHERING and is_instance_valid(source) and source.is_felling()
+
+
 func get_work_category() -> int:
+	# Gathering logs uses the existing low work pose instead of the chopping pose.
+	if get_source_category() == ResourceDefinition.Category.WOOD and source.is_fallen():
+		return -1
 	return get_source_category()
 
 
@@ -133,6 +167,8 @@ func get_gather_operation_duration_sec() -> float:
 
 
 func get_gather_progress() -> float:
+	if _phase == Phase.GATHERING and _tree_cut_revision >= 0 and _is_wood_before_fall() and not source.is_felling():
+		return clampf(source.get_tree_cut_progress_sec() / source.chop_duration_sec, 0.0, 1.0)
 	if _phase != Phase.GATHERING or _preparing_cycle or gather_interval_sec <= 0.0:
 		return 0.0
 	return clampf(_gather_elapsed / gather_interval_sec, 0.0, 1.0)
@@ -220,6 +256,14 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 		_finish_failed(REASON_INVALID_SOURCE)
 		return
 
+	if get_source_category() == ResourceDefinition.Category.WOOD:
+		if _tree_cut_authorization == null:
+			_tree_cut_authorization = CutAuthorization.new(source)
+			_owns_tree_cut_authorization = true
+		elif not _tree_cut_authorization.is_valid_for(source):
+			_finish_cancelled(REASON_COMMUNITY_WORK_CANCELLED)
+			return
+
 	if camp_zone == null or not is_instance_valid(camp_zone) or not camp_zone.is_valid() or inventory == null:
 		_finish_failed(REASON_MISSING_ECONOMY)
 		return
@@ -296,6 +340,9 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 func physics_update(movement: UnitMovement, delta: float) -> void:
 	if status != Status.RUNNING:
 		return
+	if _tree_cut_authorization != null and not _owns_tree_cut_authorization and _tree_cut_authorization.is_revoked():
+		_community_cancel_requested = true
+		_stop_after_delivery = true
 	if use_provenance_transactions and is_provenance_transfer_executing():
 		_replan_requested = true
 		return
@@ -376,12 +423,14 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 
 
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
+	if is_finished():
+		return
 	if use_provenance_transactions and is_provenance_transfer_executing():
 		return
 	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
-		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
+		var recovered: Dictionary = _active_gather_session.cancel_intent(source if is_instance_valid(source) else null, _unit)
 		if not recovered.is_empty():
 			last_extraction_receipt = recovered.duplicate(true)
 			last_extracted_units = 0
@@ -390,9 +439,9 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if _deliver_order != null and _deliver_order.is_active():
 		_deliver_order.cancel(movement if _still_owns_movement_cleanup(entry_rev) else null, reason)
 	_deliver_order = null
-	_awaiting_felling_before_delivery = false
 	resolved_target = Vector3(INF, INF, INF)
 	_release_source_reservation()
+	_close_tree_cut_authorization()
 	if movement != null and _still_owns_movement_cleanup(entry_rev):
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 		super.cancel(movement, reason)
@@ -421,7 +470,7 @@ func request_community_cancel(movement: UnitMovement = null) -> Dictionary:
 		return {"ok": true, "action": "deferred_during_transfer"}
 
 	if use_provenance_transactions and _active_gather_session != null:
-		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
+		var recovered: Dictionary = _active_gather_session.cancel_intent(source if is_instance_valid(source) else null, _unit)
 		if not recovered.is_empty():
 			last_extraction_receipt = recovered.duplicate(true)
 			last_extracted_units = 0
@@ -431,7 +480,6 @@ func request_community_cancel(movement: UnitMovement = null) -> Dictionary:
 	var carry_load: UnitCarryLoad = _unit.get_carry_load() if (_unit != null and is_instance_valid(_unit)) else null
 	if _can_start_delivery_with_current_cargo(carry_load):
 		var expected_rev: int = _capture_unit_order_revision()
-		_awaiting_felling_before_delivery = false
 		_disconnect_navigation_signals()
 		if resolved_movement != null:
 			resolved_movement.stop_movement()
@@ -455,14 +503,13 @@ func _apply_deferred_community_cancel(movement: UnitMovement) -> void:
 		return
 
 	if use_provenance_transactions and _active_gather_session != null:
-		var recovered: Dictionary = _active_gather_session.cancel_intent(source, _unit)
+		var recovered: Dictionary = _active_gather_session.cancel_intent(source if is_instance_valid(source) else null, _unit)
 		if not recovered.is_empty():
 			last_extraction_receipt = recovered.duplicate(true)
 			last_extracted_units = 0
 			last_extraction_replayed = true
 		_active_gather_session = null
 
-	_awaiting_felling_before_delivery = false
 	_disconnect_navigation_signals()
 	var resolved_movement: UnitMovement = movement if movement != null else _movement
 	if resolved_movement != null:
@@ -488,7 +535,7 @@ func _create_selective_deliver_order() -> DeliverToCampOrder:
 
 
 func _start_approaching_source(movement: UnitMovement) -> void:
-	_awaiting_felling_before_delivery = false
+	_leave_tree_cut()
 	if movement != null:
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	if not _is_source_usable():
@@ -526,8 +573,11 @@ func _start_approaching_source(movement: UnitMovement) -> void:
 		_finish_failed(REASON_SOURCE_UNREACHABLE)
 		return
 
+	var expected_revision: int = _capture_unit_order_revision()
 	_phase = Phase.APPROACHING_SOURCE
 	_unit.set_order_state(self, Unit.State.MOVING)
+	if not _still_owns_unit_execution(expected_revision):
+		return
 
 	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
 		movement.stop_movement()
@@ -577,8 +627,10 @@ func _enter_gathering_phase(movement: UnitMovement) -> void:
 	_refresh_cycle_timings()
 	_gather_elapsed = 0.0
 	_prepare_elapsed = 0.0
-	_preparing_cycle = (_resolve_prepare_duration_sec() > 0.0)
-	_awaiting_felling_before_delivery = false
+	_preparing_cycle = (
+		_resolve_prepare_duration_sec() > 0.0
+		and (get_source_category() != ResourceDefinition.Category.WOOD or _is_wood_before_fall())
+	)
 	_phase = Phase.GATHERING
 	_unit.set_order_state(self, Unit.State.WORKING)
 
@@ -597,31 +649,18 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 			return
 
 	if not _is_source_usable():
-		_awaiting_felling_before_delivery = false
 		_handle_source_unavailable(movement)
 		return
-
-	if _awaiting_felling_before_delivery:
-		movement.face_towards(source.global_position, dt)
-		if source.is_felling():
-			return
-		_awaiting_felling_before_delivery = false
-		var felling_load: UnitCarryLoad = _unit.get_carry_load()
-		if _can_start_delivery_with_current_cargo(felling_load):
-			_start_delivering(movement)
-		else:
-			_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)
+	if _tree_cut_authorization != null and not source.is_worker_reserved(_unit):
+		_has_reservation = false
+		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
 	var def: ResourceDefinition = source.get_definition()
 	if not carry_load.can_fit_one(def):
 		if _can_start_delivery_with_current_cargo(carry_load):
-			if source.is_felling():
-				movement.face_towards(source.global_position, dt)
-				_awaiting_felling_before_delivery = true
-			else:
-				_start_delivering(movement)
+			_start_delivering(movement)
 		else:
 			_finish_failed(REASON_INSUFFICIENT_CARRY_CAPACITY)
 		return
@@ -631,6 +670,16 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 		return
 
 	movement.face_towards(source.global_position, dt)
+
+	if _is_wood_before_fall():
+		_update_tree_cut(dt)
+		return
+	if _tree_cut_revision >= 0:
+		_leave_tree_cut()
+		_preparing_cycle = false
+		_gather_elapsed = 0.0
+	elif get_source_category() == ResourceDefinition.Category.WOOD:
+		_preparing_cycle = false
 
 	if _preparing_cycle:
 		var prep_sec: float = _resolve_prepare_duration_sec()
@@ -674,19 +723,79 @@ func _update_gathering(movement: UnitMovement, delta: float) -> void:
 	_execute_active_gather_session(movement)
 
 
+func _is_wood_before_fall() -> bool:
+	return (
+		get_source_category() == ResourceDefinition.Category.WOOD
+		and source.get_tree_harvest_stage() < ResourceSource.TreeHarvestStage.FALLEN
+	)
+
+
+func _update_tree_cut(delta: float) -> void:
+	if source.is_felling():
+		_leave_tree_cut()
+		_preparing_cycle = false
+		return
+	if _preparing_cycle:
+		_prepare_elapsed += delta
+		if _prepare_elapsed >= _resolve_prepare_duration_sec():
+			_preparing_cycle = false
+		# The tree samples a full tick after the unit. Preparation owns this tick.
+		return
+	if _tree_cut_authorization == null:
+		return
+	if _tree_cut_revision >= 0:
+		if source.has_tree_cutter(_unit, self, _tree_cut_revision, _tree_cut_authorization):
+			return
+		# A source can prune a participant after the unit's previous update.
+		_tree_cut_revision = -1
+
+	var revision: int = _capture_unit_order_revision()
+	var authorization := _tree_cut_authorization
+	if not _still_owns_unit_execution(revision) or not authorization.is_valid_for(source):
+		return
+	var tree := source
+	if not tree.begin_tree_cut(_unit, self, revision, authorization):
+		return
+	# Reconciliation can publish STANDING and run callbacks before registering.
+	if (
+		is_instance_valid(tree) and _still_owns_unit_execution(revision)
+		and _has_reservation and not _stop_after_delivery and authorization.is_valid_for(tree)
+	):
+		_tree_cut_revision = revision
+	elif is_instance_valid(tree):
+		tree.end_tree_cut(_unit, self, revision, authorization)
+
+
+func _leave_tree_cut() -> void:
+	var revision: int = _tree_cut_revision
+	_tree_cut_revision = -1
+	if revision >= 0 and is_instance_valid(source) and is_instance_valid(_unit):
+		source.end_tree_cut(_unit, self, revision, _tree_cut_authorization)
+
+
+func _close_tree_cut_authorization() -> void:
+	var authorization := _tree_cut_authorization
+	_tree_cut_authorization = null
+	if _owns_tree_cut_authorization and authorization != null:
+		authorization.revoke()
+
+
 func _execute_legacy_gather_extraction(
 	movement: UnitMovement,
 	carry_load: UnitCarryLoad,
 	def: ResourceDefinition
 ) -> void:
+	var revision: int = _capture_unit_order_revision()
 	var extracted: int = source.transfer_to_carry_load(carry_load, source.max_extract_per_operation)
+	if not _still_owns_unit_execution(revision):
+		return
+	if _community_cancel_requested:
+		_apply_deferred_community_cancel(movement)
+		return
 
 	if extracted <= 0:
 		if not carry_load.is_empty() and (source.is_depleted() or not carry_load.can_fit_one(def)):
-			if source.is_felling():
-				_awaiting_felling_before_delivery = true
-			else:
-				_start_delivering(movement)
+			_start_delivering(movement)
 		elif source.is_depleted():
 			_handle_source_unavailable(movement)
 		else:
@@ -694,26 +803,24 @@ func _execute_legacy_gather_extraction(
 		return
 
 	if carry_load.is_full() or not carry_load.can_fit_one(def) or source.is_depleted():
-		if source.is_felling():
-			_awaiting_felling_before_delivery = true
-		else:
-			_start_delivering(movement)
+		_start_delivering(movement)
 
 
 func _execute_active_gather_session(movement: UnitMovement) -> void:
 	if _active_gather_session == null:
 		return
+	var revision: int = _capture_unit_order_revision()
 	var in_range: bool = _is_unit_in_working_range(_unit.global_position)
 	var result: Dictionary = _active_gather_session.execute_or_retry(
 		inventory,
 		camp_zone,
-		source,
+		source if is_instance_valid(source) else null,
 		_unit,
 		region_id,
 		get_instance_id(),
 		in_range
 	)
-	if status != Status.RUNNING:
+	if not _still_owns_unit_execution(revision):
 		return
 
 	var carry_load: UnitCarryLoad = _unit.get_carry_load()
@@ -740,9 +847,7 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 			or source_gone_or_depleted
 		)
 		if needs_delivery:
-			if source != null and is_instance_valid(source) and source.is_felling():
-				_awaiting_felling_before_delivery = true
-			elif _can_start_delivery_with_current_cargo(carry_load):
+			if _can_start_delivery_with_current_cargo(carry_load):
 				_start_delivering(movement)
 			elif source_gone_or_depleted:
 				_handle_source_unavailable(movement)
@@ -758,12 +863,12 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 		return
 
 	_active_gather_session = null
+	if reason == "tree_not_felled" and _is_wood_before_fall():
+		_enter_gathering_phase(movement)
+		return
 	if reason == "capacity":
 		if _can_start_delivery_with_current_cargo(carry_load):
-			if source != null and is_instance_valid(source) and source.is_felling():
-				_awaiting_felling_before_delivery = true
-			else:
-				_start_delivering(movement)
+			_start_delivering(movement)
 		elif not _is_source_usable():
 			_handle_source_unavailable(movement)
 		else:
@@ -777,11 +882,12 @@ func _execute_active_gather_session(movement: UnitMovement) -> void:
 
 func _start_delivering(movement: UnitMovement) -> void:
 	var expected_rev: int = _capture_unit_order_revision()
-	# Free the source slot while transporting so other workers can approach or gather.
+	# Publish delivery intent before releasing the slot. A synchronous cancel can
+	# then request this one delivery without creating another order.
+	_phase = Phase.DELIVERING_TO_CAMP
 	_release_source_reservation()
 	if not _still_owns_unit_execution(expected_rev):
 		return
-	_phase = Phase.DELIVERING_TO_CAMP
 	resolved_target = Vector3(INF, INF, INF)
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
 	if not _still_owns_unit_execution(expected_rev):
@@ -803,8 +909,10 @@ func _update_delivering(movement: UnitMovement, delta: float) -> void:
 		_finish_failed(REASON_CAMP_UNREACHABLE)
 		return
 
-	_deliver_order.physics_update(movement, delta)
-	if _deliver_order.is_finished():
+	var revision: int = _capture_unit_order_revision()
+	var delivery := _deliver_order
+	delivery.physics_update(movement, delta)
+	if _still_owns_unit_execution(revision) and _deliver_order == delivery and delivery.is_finished():
 		_handle_deliver_finished(movement)
 
 
@@ -973,6 +1081,7 @@ func _still_owns_movement_cleanup(expected_revision: int) -> bool:
 
 
 func _release_source_reservation() -> void:
+	_leave_tree_cut()
 	if not _has_reservation:
 		return
 	_has_reservation = false
@@ -981,6 +1090,10 @@ func _release_source_reservation() -> void:
 
 
 func _wait_for_navigation() -> void:
+	if _tree_cut_revision >= 0:
+		_leave_tree_cut()
+		_prepare_elapsed = 0.0
+		_preparing_cycle = _resolve_prepare_duration_sec() > 0.0
 	_waiting_for_navigation = true
 	if _movement != null:
 		_movement.stop_movement()
@@ -1040,6 +1153,7 @@ func _finish_succeeded() -> void:
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
+	_close_tree_cut_authorization()
 	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_succeeded()
@@ -1049,11 +1163,12 @@ func _finish_failed(reason: String) -> void:
 	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
-		_active_gather_session.cancel_intent(source, _unit)
+		_active_gather_session.cancel_intent(source if is_instance_valid(source) else null, _unit)
 		_active_gather_session = null
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
+	_close_tree_cut_authorization()
 	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		if use_provenance_transactions:
 			_movement.stop_movement()
@@ -1065,11 +1180,12 @@ func _finish_cancelled(reason: String) -> void:
 	var entry_rev: int = _capture_unit_order_revision()
 	_disconnect_navigation_signals()
 	if use_provenance_transactions and _active_gather_session != null:
-		_active_gather_session.cancel_intent(source, _unit)
+		_active_gather_session.cancel_intent(source if is_instance_valid(source) else null, _unit)
 		_active_gather_session = null
 	resolved_target = Vector3(INF, INF, INF)
 	_deliver_order = null
 	_release_source_reservation()
+	_close_tree_cut_authorization()
 	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.stop_movement()
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)

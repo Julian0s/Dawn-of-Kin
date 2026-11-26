@@ -1210,7 +1210,11 @@ func test_r1_reconciled_s06_s11_s12_o04_o07_u12_u14_u20() -> void:
 	dep_tree.position = Vector3(3.0, 0.0, -5.0)
 	main.get_test_map().add_child(dep_tree)
 	await wait_physics_frames(1)
-	while not dep_tree.is_depleted():
+	# S12 needs an already-felled fixture. Exercise depletion through the public API.
+	dep_tree.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
+	for _operation: int in range(dep_tree.get_initial_amount()):
+		if dep_tree.is_depleted():
+			break
 		dep_tree.extract(dep_tree.get_remaining_amount())
 	assert_true(dep_tree.is_depleted(), "S12: source depleted")
 	var c_dep := dispatcher.cancel_tasks_for_sources([dep_tree], &"wood")

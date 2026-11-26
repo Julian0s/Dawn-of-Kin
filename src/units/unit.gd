@@ -339,7 +339,8 @@ func _update_work_and_load_visuals(delta: float) -> void:
 		return
 
 	var target_tf: Transform3D = _visual_base_transform
-	if _state == State.WORKING:
+	var waiting_to_work: bool = _current_order != null and _current_order.is_waiting_to_work()
+	if _state == State.WORKING and not waiting_to_work:
 		_visual_cycle_time += delta
 		var target_offset := Vector3.ZERO
 		var target_euler := Vector3.ZERO

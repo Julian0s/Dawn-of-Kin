@@ -936,6 +936,8 @@ func test_a15_invalid_depleted_removed_and_unreachable_do_not_block_peers() -> v
 		return
 
 	t1.configure(t1.source_id, t1.get_definition(), 2, 2, 2)
+	# Build the depleted fixture through extraction from a previously felled tree.
+	t1.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	t1.extract(2) # depleted
 	t2.configure(t2.source_id, t2.get_definition(), 2, 2, 2)
 
@@ -1497,7 +1499,11 @@ func test_r1_f02_drag_gesture_preserves_source_nature_across_origin_invalidation
 	var p_t3 := _source_screen_point(view, t3)
 	var p_t4 := _source_screen_point(view, t4)
 	await _start_left_drag_hold(view, p_t3, true)
-	while not t3.is_depleted():
+	# Adversarial gesture fixture: simulate depletion synchronously within the drag.
+	t3.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
+	for _operation: int in range(t3.get_initial_amount()):
+		if t3.is_depleted():
+			break
 		t3.extract(t3.get_remaining_amount())
 	assert_true(t3.is_depleted(), "F02-C1: Origin tree depleted mid-drag")
 	var d34 := p_t4 - p_t3

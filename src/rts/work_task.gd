@@ -33,6 +33,7 @@ var state: State = State.PENDING_WORKERS
 var assigned_unit: Unit = null
 var assigned_order: GatherResourceOrder = null
 var assigned_order_revision: int = -1
+var tree_cut_authorization: GatherResourceOrder.CutAuthorization
 var last_reason: String = ""
 var excluded_unit_ids: Dictionary = {}
 
@@ -85,3 +86,15 @@ func clear_assignment() -> void:
 	assigned_unit = null
 	assigned_order = null
 	assigned_order_revision = -1
+
+
+func authorize_tree_cut() -> void:
+	if kind == Kind.GATHER_WOOD and tree_cut_authorization == null:
+		tree_cut_authorization = GatherResourceOrder.CutAuthorization.new(source)
+
+
+func revoke_tree_cut() -> void:
+	var authorization := tree_cut_authorization
+	tree_cut_authorization = null
+	if authorization != null:
+		authorization.revoke()

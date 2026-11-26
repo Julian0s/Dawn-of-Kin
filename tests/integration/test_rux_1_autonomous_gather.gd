@@ -393,6 +393,7 @@ func test_r6_invalid_depleted_removed_and_unreachable_sources_safe() -> void:
 
 	# Subcase A: Depleted tree cannot register an active task or dispatch workers.
 	tree_1.configure(tree_1.source_id, tree_1.get_definition(), 2, 2, 2)
+	tree_1.set(&"_tree_harvest_stage", ResourceSource.TreeHarvestStage.FALLEN)
 	tree_1.extract(2)
 	assert_true(tree_1.is_depleted(), "Precondition: WoodTree01 is depleted")
 	var depleted_point: Vector2 = camera.unproject_position(tree_1.global_position + Vector3.UP)
