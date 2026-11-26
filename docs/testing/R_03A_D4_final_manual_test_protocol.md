@@ -1,8 +1,8 @@
-# Dawn of Kin — Protocolo Atualizado de Testes Humanos Finais (`R-03A D4` / `D4-R1` · `M1`–`M8`)
+# Dawn of Kin — Protocolo Atualizado de Testes Humanos Finais (`R-03A D4` / `D4-R1` / `D4-R2` · `M1`–`M8`)
 
 **Candidata:** `feat/r-03a-community-work-main-scene` (`C:\Projetos\Dawn_of_Kin_wt_r_03a`)  
-**SHA base anterior (`D4`):** `94744eca16e9eea60b03033f82a318f8e7825dc2`  
-**SHA documental final da `D4-R1` esperado na ponta da branch candidata:** confirmado por `git rev-parse HEAD` na entrega `D4-R1` e registrado em `evidencias\R-03A\D4\D4-R1\16_git_final\git_final.txt` *(não editar cenas, código ou flags para executar este roteiro)*.  
+**SHAs anteriores na branch:** `D4` (`94744eca16e9eea60b03033f82a318f8e7825dc2`) · `D4-R1` (`b088620dbd7042a926f3bcd0c2357c48131c0821`)  
+**SHA final da `D4-R2` esperado na ponta da branch candidata:** confirmado por `git rev-parse HEAD` na entrega `D4-R2` e registrado em `evidencias\R-03A\D4\D4-R2\09_git_final\git_final.txt` *(não editar cenas, código ou flags para executar este roteiro)*.  
 **Status obrigatório:** **`AGUARDANDO EXECUÇÃO PELO PROPRIETÁRIO`** · **`NENHUM CENÁRIO M1–M8 APROVADO`**
 
 > [!NOTE]

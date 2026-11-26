@@ -119,7 +119,9 @@ static func compute_source_approach_slot(
 				if travel_dist < best_separated_dist:
 					best_separated_dist = travel_dist
 					best_separated = resolved
-				if separated_hit_step < 0:
+				# Only trust angular-order early exit when snapping kept the resolved point near the sampled candidate.
+				var snap_shift_sq: float = Vector2(resolved.x - candidate.x, resolved.z - candidate.z).length_squared()
+				if separated_hit_step < 0 and snap_shift_sq <= 0.25:
 					separated_hit_step = step
 			elif travel_dist < best_fallback_dist:
 				best_fallback_dist = travel_dist

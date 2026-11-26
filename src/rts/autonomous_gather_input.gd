@@ -52,6 +52,8 @@ var _task_highlights: Dictionary = {}
 var _selection_highlights: Dictionary = {}
 
 var _drag_mode: DragMode = DragMode.NONE
+var _dispatcher_batch_hud: CommunitySelectionActionsHud = null
+var _dispatcher_batch_depth: int = 0
 
 
 func _ready() -> void:
@@ -329,6 +331,7 @@ func _ensure_wired() -> void:
 
 
 func _disconnect_signals() -> void:
+	_release_active_dispatcher_batch()
 	if _selection_model != null:
 		if _selection_model.selection_changed.is_connected(_on_source_selection_changed):
 			_selection_model.selection_changed.disconnect(_on_source_selection_changed)
@@ -511,13 +514,34 @@ func _on_dispatcher_feedback(message: String) -> void:
 
 
 func _on_dispatcher_batch_started() -> void:
-	if _actions_hud != null and is_instance_valid(_actions_hud):
-		_actions_hud.begin_batch_refresh()
+	if _dispatcher_batch_depth == 0:
+		_dispatcher_batch_hud = _actions_hud if (_actions_hud != null and is_instance_valid(_actions_hud)) else null
+	if _dispatcher_batch_hud != null and is_instance_valid(_dispatcher_batch_hud):
+		_dispatcher_batch_hud.begin_batch_refresh()
+		_dispatcher_batch_depth += 1
 
 
 func _on_dispatcher_batch_finished() -> void:
-	if _actions_hud != null and is_instance_valid(_actions_hud):
-		_actions_hud.end_batch_refresh()
+	if _dispatcher_batch_depth <= 0:
+		_dispatcher_batch_depth = 0
+		_dispatcher_batch_hud = null
+		return
+	_dispatcher_batch_depth -= 1
+	var hud: CommunitySelectionActionsHud = _dispatcher_batch_hud
+	if _dispatcher_batch_depth == 0:
+		_dispatcher_batch_hud = null
+	if hud != null and is_instance_valid(hud):
+		hud.end_batch_refresh()
+
+
+func _release_active_dispatcher_batch() -> void:
+	var hud: CommunitySelectionActionsHud = _dispatcher_batch_hud
+	var remaining_depth: int = _dispatcher_batch_depth
+	_dispatcher_batch_hud = null
+	_dispatcher_batch_depth = 0
+	if hud != null and is_instance_valid(hud):
+		for _i: int in range(remaining_depth):
+			hud.end_batch_refresh()
 
 
 func _show_feedback(message: String) -> void:

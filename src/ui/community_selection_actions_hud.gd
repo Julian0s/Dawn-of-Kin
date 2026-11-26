@@ -518,8 +518,6 @@ func unbind() -> void:
 
 
 func begin_batch_refresh() -> void:
-	if _batch_refresh_depth == 0:
-		_last_batch_refresh_count = 0
 	_batch_refresh_depth += 1
 
 

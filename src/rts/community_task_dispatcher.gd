@@ -435,12 +435,18 @@ func _flush_dispatch() -> void:
 	if not is_inside_tree() or _board == null or not is_instance_valid(_board) or _command_controller == null or not is_instance_valid(_command_controller):
 		return
 
+	var active_tasks: Array[WorkTask] = _board.get_active_tasks()
+	if active_tasks.is_empty():
+		return
+
 	_dispatching = true
 	dispatch_batch_started.emit()
 
 	# Pass 1: validate active tasks (preserve valid running tasks, never silently unblock BLOCKED_REAUTHORIZATION, close unusable sources).
 	var pending_tasks: Array[WorkTask] = []
-	for task: WorkTask in _board.get_active_tasks():
+	for task: WorkTask in active_tasks:
+		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+			break
 		if not task.is_active():
 			continue
 		if task.is_blocked_reauthorization():
@@ -469,9 +475,12 @@ func _flush_dispatch() -> void:
 		pending_tasks.append(task)
 
 	# Pass 2: deterministic fair group-FIFO + spatial nearest dispatch across pending tasks.
-	var ordered_groups: Array[Array] = _partition_pending_tasks_by_group_fifo(pending_tasks)
-	for group_tasks: Array in ordered_groups:
-		_dispatch_group_tasks(group_tasks)
+	if not _is_tearing_down and _board != null and is_instance_valid(_board):
+		var ordered_groups: Array[Array] = _partition_pending_tasks_by_group_fifo(pending_tasks)
+		for group_tasks: Array in ordered_groups:
+			if _is_tearing_down or _board == null or not is_instance_valid(_board):
+				break
+			_dispatch_group_tasks(group_tasks)
 
 	dispatch_batch_finished.emit()
 	_dispatching = false
@@ -510,6 +519,8 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 				remaining.append(t)
 
 	while not remaining.is_empty():
+		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+			return
 		if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
 			break
 
@@ -529,20 +540,25 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 		if usable_tasks.is_empty() or raw_units.is_empty():
 			break
 
+		var sample_world: World3D = usable_tasks[0].source.get_world_3d()
 		for unit: Unit in raw_units:
 			var uid: int = unit.get_instance_id()
 			unit_labels[uid] = String(unit.get_character_id())
-			var sample_task: WorkTask = usable_tasks[0]
-			var unit_reason: String = _check_unit_base_eligibility(unit, sample_task.source.get_world_3d())
+			var unit_reason: String = _check_unit_base_eligibility(unit, sample_world)
 			unit_base_eligible[uid] = unit_reason.is_empty()
 
 		for t_idx: int in range(usable_tasks.size()):
 			var task: WorkTask = usable_tasks[t_idx]
+			var task_world: World3D = task.source.get_world_3d()
+			var same_world_as_sample: bool = task_world == sample_world
 			for unit: Unit in raw_units:
 				var uid: int = unit.get_instance_id()
-				if not bool(unit_base_eligible.get(uid, false)):
-					continue
-				if not _check_pre_nav_eligibility(unit, task).is_empty():
+				if same_world_as_sample:
+					if not bool(unit_base_eligible.get(uid, false)):
+						continue
+					if not _check_task_specific_eligibility(unit, task).is_empty():
+						continue
+				elif not _check_pre_nav_eligibility(unit, task).is_empty():
 					continue
 				candidate_pairs.append({
 					"dist_sq": unit.global_position.distance_squared_to(task.source.global_position),
@@ -559,7 +575,7 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 		candidate_pairs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			var da: float = float(a["dist_sq"])
 			var db: float = float(b["dist_sq"])
-			if not is_equal_approx(da, db):
+			if da != db:
 				return da < db
 			var ta: int = int(a["task_idx"])
 			var tb: int = int(b["task_idx"])
@@ -601,12 +617,16 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 
 		var dispatched: bool = _try_dispatch_unit_to_task(best_task, best_unit)
 		remaining.erase(best_task)
+		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+			return
 		if not dispatched and best_task.is_active() and best_task.state == WorkTask.State.PENDING_WORKERS:
 			# Fall through to final status evaluation below so this task records its wait/fail state cleanly.
 			_evaluate_unassigned_task(best_task)
 
 	# Any tasks in this group that did not receive a worker get their exact waiting / blocked / failed status.
 	for task: WorkTask in remaining:
+		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+			return
 		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.assigned_unit == null:
 			_evaluate_unassigned_task(task)
 
@@ -831,6 +851,20 @@ func _collect_sorted_candidates(target_pos: Vector3) -> Array[Unit]:
 	return units
 
 
+func _check_task_specific_eligibility(unit: Unit, task: WorkTask) -> String:
+	if task.excluded_unit_ids.has(unit.get_instance_id()):
+		return "manually_overridden"
+	var carry_load: UnitCarryLoad = unit.get_carry_load()
+	var def: ResourceDefinition = task.source.get_definition()
+	if carry_load == null or def == null or not def.is_valid():
+		return "invalid_carry_load"
+	if carry_load.get_effective_capacity() < def.unit_weight:
+		return "insufficient_carry_capacity"
+	if not task.source.has_worker_slot(unit):
+		return "no_worker_slot"
+	return ""
+
+
 func _check_pre_nav_eligibility(unit: Unit, task: WorkTask) -> String:
 	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
 		return "invalid_unit"
@@ -840,17 +874,7 @@ func _check_pre_nav_eligibility(unit: Unit, task: WorkTask) -> String:
 	var base_reason: String = _check_unit_base_eligibility(unit, expected_world)
 	if not base_reason.is_empty():
 		return base_reason
-
-	var carry_load: UnitCarryLoad = unit.get_carry_load()
-	var def: ResourceDefinition = task.source.get_definition()
-	if def == null or not def.is_valid():
-		return "invalid_carry_load"
-	if carry_load.get_effective_capacity() < def.unit_weight:
-		return "insufficient_carry_capacity"
-
-	if not task.source.has_worker_slot(unit):
-		return "no_worker_slot"
-	return ""
+	return _check_task_specific_eligibility(unit, task)
 
 
 func _is_economy_busy(source: ResourceSource) -> bool:
