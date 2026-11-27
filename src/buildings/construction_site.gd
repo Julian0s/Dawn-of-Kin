@@ -951,7 +951,14 @@ func get_remaining_supply_to_claim(resource_id: StringName, exclude_unit: Unit =
 	return maxi(0, remaining_dropoff - in_transit - pending_other)
 
 
-func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amount: int, pile_reserved_total: int = -1) -> int:
+func claim_pickup(
+	unit: Unit,
+	pile_id: int,
+	resource_id: StringName,
+	desired_amount: int,
+	pile_reserved_total: int = -1,
+	owner_order: UnitOrder = null
+) -> int:
 	if is_transaction_busy() or _site_state == SiteState.CANCELLED:
 		return 0
 	_prune_stale_state()
@@ -981,8 +988,10 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 			_transaction_revision += 1
 		return 0
 
+	var resolved_owner: UnitOrder = owner_order if owner_order != null else unit.get_current_order()
 	_pending_pickups[uid] = {
 		"unit": unit,
+		"order": resolved_owner,
 		"pile_id": pile_id,
 		"resource_id": resource_id,
 		"amount": claim_amt,
@@ -991,7 +1000,7 @@ func claim_pickup(unit: Unit, pile_id: int, resource_id: StringName, desired_amo
 	return claim_amt
 
 
-func release_pickup_claim(unit: Unit) -> void:
+func release_pickup_claim(unit: Unit, owner_order: UnitOrder = null) -> void:
 	if is_transaction_busy():
 		return
 	if unit == null or not is_instance_valid(unit):
@@ -999,6 +1008,11 @@ func release_pickup_claim(unit: Unit) -> void:
 		return
 	var uid: int = unit.get_instance_id()
 	if _pending_pickups.has(uid):
+		if owner_order != null:
+			var existing_entry: Dictionary = _pending_pickups[uid] as Dictionary
+			var existing_owner: UnitOrder = existing_entry.get("order") as UnitOrder
+			if existing_owner != null and existing_owner != owner_order:
+				return
 		_pending_pickups.erase(uid)
 		_transaction_revision += 1
 
@@ -1313,14 +1327,14 @@ func unregister_worker(unit: Unit, order: UnitOrder = null) -> void:
 		_prune_stale_state()
 		return
 	var uid: int = unit.get_instance_id()
-	release_pickup_claim(unit)
-	if not _assigned_workers.has(uid):
-		_prune_stale_state()
-		return
-	if order != null:
+	if _assigned_workers.has(uid) and order != null:
 		var entry: Dictionary = _assigned_workers[uid] as Dictionary
 		if entry.get("order") != order:
 			return
+	release_pickup_claim(unit, order)
+	if not _assigned_workers.has(uid):
+		_prune_stale_state()
+		return
 	_assigned_workers.erase(uid)
 	_builder_slot_positions.erase(uid)
 	_worker_order_ids.erase(uid)

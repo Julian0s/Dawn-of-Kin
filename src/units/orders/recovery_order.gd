@@ -99,17 +99,28 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 	_updating = false
 
 
+func _still_owns_unit_execution(expected_rev: int) -> bool:
+	if status != Status.RUNNING:
+		return false
+	if not is_instance_valid(_unit) or not _unit.is_inside_tree() or _unit.is_queued_for_deletion():
+		return false
+	return _unit.get_current_order() == self and (expected_rev < 0 or _unit.get_order_revision() == expected_rev)
+
+
 func _update(movement: UnitMovement, delta: float) -> void:
 	if status != Status.RUNNING:
 		return
 	if not is_instance_valid(_unit) or not _unit.is_inside_tree():
 		mark_failed(REASON_UNIT_EXITED)
 		return
+	var entry_rev: int = _unit.get_order_revision()
 	if _cooldown > 0:
 		_cooldown = maxf(0.0, _cooldown - delta)
 		return
 	if _delegate != null:
 		_delegate.physics_update(movement, delta)
+		if not _still_owns_unit_execution(entry_rev):
+			return
 		if not _delegate.is_finished():
 			return
 		if not _delegate.is_succeeded():
@@ -137,8 +148,14 @@ func _update(movement: UnitMovement, delta: float) -> void:
 	var selection := _owned_lots(record)
 	if not selection.is_empty():
 		_at_pickup = false
-		_delegate = DeliverToCampOrder.new(_camp, _inventory, true, region_id, selection)
-		_delegate.start(_unit, movement, _nav)
+		var del_sub := DeliverToCampOrder.new(_camp, _inventory, true, region_id, selection)
+		_delegate = del_sub
+		del_sub.start(_unit, movement, _nav)
+		if not _still_owns_unit_execution(entry_rev):
+			if _delegate == del_sub and del_sub.is_active():
+				del_sub.cancel(null, REASON_REPLACED)
+			_delegate = null
+			return
 		_unit.set_order_state(self, Unit.State.TRANSPORTING)
 		return
 	if record.get_local_custody_total() == 0:
@@ -152,8 +169,14 @@ func _update(movement: UnitMovement, delta: float) -> void:
 	if not slot.is_finite():
 		_blocked("recovery_unreachable_or_slot_occupied", movement)
 		return
-	_delegate = MoveOrder.new(slot)
-	_delegate.start(_unit, movement, _nav)
+	var mv_sub := MoveOrder.new(slot)
+	_delegate = mv_sub
+	mv_sub.start(_unit, movement, _nav)
+	if not _still_owns_unit_execution(entry_rev):
+		if _delegate == mv_sub and mv_sub.is_active():
+			mv_sub.cancel(null, REASON_REPLACED)
+		_delegate = null
+		return
 	_at_pickup = true
 
 

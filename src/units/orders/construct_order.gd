@@ -145,14 +145,20 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 		mark_failed(admission)
 		return
 
+	var entry_rev: int = _capture_unit_order_revision()
 	mark_running()
 	var assigned_role: ConstructionSite.WorkerRole = site.register_worker(_unit, self, force_transporter)
+	if not _still_owns_unit_execution(entry_rev):
+		return
 	if assigned_role == ConstructionSite.WorkerRole.UNASSIGNED:
 		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
 	_last_known_role = assigned_role
 
 	_bind_site_signals()
+	if not _still_owns_unit_execution(entry_rev):
+		_unbind_site_signals()
+		return
 	_advance_by_role(_movement)
 
 
@@ -242,21 +248,36 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
 	if site != null and is_instance_valid(site) and _unit != null and is_instance_valid(_unit):
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		site.unregister_worker(_unit, self)
-	var owns_movement: bool = (
-		_unit == null
-		or not is_instance_valid(_unit)
-		or (
-			(entry_rev < 0 or _unit.get_order_revision() == entry_rev)
-			and (_unit.get_current_order() == self or _unit.get_current_order() == null)
-		)
-	)
-	if movement != null and owns_movement:
+	if movement != null and _still_owns_movement_cleanup(entry_rev):
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 		super.cancel(movement, reason)
 	else:
 		super.cancel(null, reason)
+
+
+func _capture_unit_order_revision() -> int:
+	if _unit == null or not is_instance_valid(_unit):
+		return -1
+	return _unit.get_order_revision()
+
+
+func _still_owns_unit_execution(expected_rev: int) -> bool:
+	if status != Status.RUNNING:
+		return false
+	if _unit == null or not is_instance_valid(_unit) or not _unit.is_inside_tree() or _unit.is_queued_for_deletion():
+		return false
+	return _unit.get_current_order() == self and (expected_rev < 0 or _unit.get_order_revision() == expected_rev)
+
+
+func _still_owns_movement_cleanup(expected_rev: int) -> bool:
+	if _unit == null or not is_instance_valid(_unit):
+		return true
+	if expected_rev >= 0 and _unit.get_order_revision() != expected_rev:
+		return false
+	var cur: UnitOrder = _unit.get_current_order()
+	return cur == self or cur == null
 
 
 func _carry_admission_failure() -> String:
@@ -371,7 +392,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		has_usable_site_cargo = bool(provenance_cargo["has_usable_for_site"])
 		if provenance_cargo["other_site_return_required"]:
 			_clear_pickup_target()
-			site.release_pickup_claim(_unit)
+			site.release_pickup_claim(_unit, self)
 			var return_reason: String = provenance_cargo["preflight_fatal_reason"]
 			if not return_reason.is_empty():
 				_finish_failed(return_reason)
@@ -388,7 +409,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 
 	if role == ConstructionSite.WorkerRole.BUILDER:
 		_clear_pickup_target()
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		if has_usable_site_cargo:
 			if _provenance_transfer != null:
 				_finish_failed(REASON_PROVENANCE_BUILDER_CARGO)
@@ -402,7 +423,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 	# Transporter or Solo Supplier role:
 	if site.is_fully_supplied():
 		_clear_pickup_target()
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		if not force_transporter:
 			if _provenance_transfer != null and carry_load != null and not carry_load.is_empty() and _would_promote_to_builder(role):
 				var post_returnable: Array[Dictionary] = provenance_cargo["returnable_requests"] as Array[Dictionary]
@@ -429,7 +450,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 	if has_usable_site_cargo:
 		_cancel_deliver_suborder(movement)
 		_clear_pickup_target()
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		_start_moving_to_site_dropoff(movement)
 		return
 
@@ -437,20 +458,20 @@ func _advance_by_role(movement: UnitMovement) -> void:
 		var returnable: Array[Dictionary] = provenance_cargo["returnable_requests"] as Array[Dictionary]
 		if not returnable.is_empty() and carry_load != null and carry_load.get_transaction_revision() != _last_camp_return_load_revision:
 			_clear_pickup_target()
-			site.release_pickup_claim(_unit)
+			site.release_pickup_claim(_unit, self)
 			_start_returning_unneeded_cargo_selective(movement, returnable)
 			return
 		var fatal_reason: String = String(provenance_cargo["preflight_fatal_reason"])
 		if not fatal_reason.is_empty():
 			_cancel_deliver_suborder(movement)
 			_clear_pickup_target()
-			site.release_pickup_claim(_unit)
+			site.release_pickup_claim(_unit, self)
 			_finish_failed(fatal_reason)
 			return
 		if bool(provenance_cargo["has_non_returnable"]) and not _can_fit_any_claimable_site_resource(carry_load):
 			_cancel_deliver_suborder(movement)
 			_clear_pickup_target()
-			site.release_pickup_claim(_unit)
+			site.release_pickup_claim(_unit, self)
 			var block_reason: String = String(provenance_cargo["blocking_reason"])
 			_finish_failed(block_reason if not block_reason.is_empty() else REASON_UNNEEDED_CARGO_REJECTED)
 			return
@@ -461,7 +482,7 @@ func _advance_by_role(movement: UnitMovement) -> void:
 	var unneeded: Dictionary = site.get_unneeded_cargo_for_unit(_unit, carry_load)
 	if not unneeded.is_empty():
 		_clear_pickup_target()
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		_start_returning_unneeded_cargo(movement)
 		return
 
@@ -601,7 +622,7 @@ func _update_returning_unneeded_cargo(movement: UnitMovement, delta: float) -> v
 
 func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 	_clear_pickup_target()
-	site.release_pickup_claim(_unit)
+	site.release_pickup_claim(_unit, self)
 
 	var occupied: Array[Vector3] = BuildSlotPlanner.collect_other_unit_positions(_unit, true)
 	var candidate: Dictionary = BuildSlotPlanner.find_best_pickup_candidate(
@@ -659,7 +680,7 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 	var desired: int = int(candidate["available_claim"])
 	var reserved_on_pile: int = int(candidate["reserved_on_pile"])
 
-	var claimed: int = site.claim_pickup(_unit, pile_id, res_id, desired, reserved_on_pile)
+	var claimed: int = site.claim_pickup(_unit, pile_id, res_id, desired, reserved_on_pile, self)
 	if claimed <= 0:
 		_finish_failed(REASON_RESERVATION_UNAVAILABLE)
 		return
@@ -689,11 +710,14 @@ func _select_and_approach_next_pile(movement: UnitMovement) -> void:
 
 	resolved_target = slot_pos
 	if not movement.begin_move_to(resolved_target):
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		_clear_pickup_target()
 		_finish_failed(REASON_PILE_UNREACHABLE)
 		return
+	var state_rev: int = _capture_unit_order_revision()
 	_unit.set_order_state(self, Unit.State.MOVING)
+	if not _still_owns_unit_execution(state_rev):
+		return
 
 	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED and _provenance_transfer == null:
 		movement.stop_movement()
@@ -713,7 +737,7 @@ func _update_moving_to_pile(movement: UnitMovement) -> void:
 			_handle_pile_arrival(movement)
 		UnitMovement.MoveState.FAILED_STUCK, UnitMovement.MoveState.FAILED_INVALID:
 			movement.stop_movement()
-			site.release_pickup_claim(_unit)
+			site.release_pickup_claim(_unit, self)
 			_clear_pickup_target()
 			_finish_failed(REASON_PILE_UNREACHABLE)
 		UnitMovement.MoveState.IDLE:
@@ -772,7 +796,7 @@ func _retry_pile_approach_or_fail(movement: UnitMovement) -> void:
 				_unit.set_order_state(self, Unit.State.MOVING)
 				return
 
-	site.release_pickup_claim(_unit)
+	site.release_pickup_claim(_unit, self)
 	_clear_pickup_target()
 	_finish_failed(REASON_PILE_UNREACHABLE)
 
@@ -1445,14 +1469,15 @@ func _is_site_valid() -> bool:
 
 
 func _finish_succeeded() -> void:
-	_cancel_deliver_suborder(_movement)
+	var entry_rev: int = _capture_unit_order_revision()
+	_cancel_deliver_suborder(_movement if _still_owns_movement_cleanup(entry_rev) else null)
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
 	if site != null and is_instance_valid(site) and _unit != null and is_instance_valid(_unit):
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		site.unregister_worker(_unit, self)
-	if _movement != null:
+	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_succeeded()
 
@@ -1485,14 +1510,15 @@ func _finish_failed(reason: String) -> void:
 	if _slot_navigation_pending and reason == REASON_SITE_UNREACHABLE:
 		_wait_for_navigation()
 		return
-	_cancel_deliver_suborder(_movement)
+	var entry_rev: int = _capture_unit_order_revision()
+	_cancel_deliver_suborder(_movement if _still_owns_movement_cleanup(entry_rev) else null)
 	_clear_pickup_target()
 	resolved_target = Vector3(INF, INF, INF)
 	_unbind_site_signals()
 	if site != null and is_instance_valid(site) and _unit != null and is_instance_valid(_unit):
-		site.release_pickup_claim(_unit)
+		site.release_pickup_claim(_unit, self)
 		site.unregister_worker(_unit, self)
-	if _movement != null:
+	if _movement != null and _still_owns_movement_cleanup(entry_rev):
 		_movement.stop_movement()
 		_movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
 	mark_failed(reason)

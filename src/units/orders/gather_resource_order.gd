@@ -337,11 +337,14 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 		_start_delivering(movement)
 		return
 
+	var entry_rev: int = _capture_unit_order_revision()
 	if not _acquire_source_reservation():
 		_finish_failed(REASON_NO_WORKER_SLOT)
 		return
 
 	mark_running()
+	if not _still_owns_unit_execution(entry_rev):
+		return
 	_start_approaching_source(movement)
 
 

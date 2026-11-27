@@ -169,6 +169,14 @@ func start(unit_body: CharacterBody3D, movement: UnitMovement, world_nav: WorldN
 	_start_selective_walk(movement, true)
 
 
+func _still_owns_delivery_execution(expected_rev: int) -> bool:
+	if status != Status.RUNNING:
+		return false
+	if _unit == null or not is_instance_valid(_unit) or not _unit.is_inside_tree() or _unit.is_queued_for_deletion():
+		return false
+	return expected_rev < 0 or _unit.get_order_revision() == expected_rev
+
+
 func _start_legacy_walk(movement: UnitMovement) -> void:
 	var occupied: Array[Vector3] = GatherSlotPlanner.collect_other_unit_positions(_unit, true)
 	var slot_res: Dictionary = GatherSlotPlanner.compute_camp_dropoff_slot(
@@ -186,8 +194,11 @@ func _start_legacy_walk(movement: UnitMovement) -> void:
 		mark_failed(REASON_CAMP_UNREACHABLE)
 		return
 
+	var entry_rev: int = _unit.get_order_revision() if (_unit != null and is_instance_valid(_unit)) else -1
 	mark_running()
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
+	if not _still_owns_delivery_execution(entry_rev):
+		return
 
 	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:
 		movement.stop_movement()
@@ -220,9 +231,12 @@ func _start_selective_walk(movement: UnitMovement, initial_start: bool) -> void:
 		_finish_selective_failed(REASON_CAMP_UNREACHABLE)
 		return
 
+	var entry_rev: int = _unit.get_order_revision() if (_unit != null and is_instance_valid(_unit)) else -1
 	if initial_start:
 		mark_running()
 	_unit.set_order_state(self, Unit.State.TRANSPORTING)
+	if not _still_owns_delivery_execution(entry_rev):
+		return
 
 	# Defer the selective economic commit to physics_update rather than firing signals inside start().
 	if movement.get_move_state() == UnitMovement.MoveState.ARRIVED:

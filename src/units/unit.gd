@@ -122,13 +122,18 @@ func _exit_tree() -> void:
 		exiting_order.cancel(_movement, UnitOrder.REASON_UNIT_EXITED)
 		if _cancelling_order == exiting_order:
 			_cancelling_order = null
-		if exiting_order.status == UnitOrder.Status.CANCELLED:
-			exiting_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
-		_order_revision += 1
-		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
-		_set_state(State.IDLE)
-		_publish_control_mode_if_changed()
-		_emit_order_finished_once(exiting_order)
+		if exiting_order.is_finished():
+			if exiting_order.status == UnitOrder.Status.CANCELLED:
+				exiting_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+			_order_revision += 1
+			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+			_set_state(State.IDLE)
+			_publish_control_mode_if_changed()
+			_emit_order_finished_once(exiting_order)
+		else:
+			# Cancellation was refused by an active transactional lock/transfer: preserve revision
+			# and ownership without emitting a false order_finished or marking _finished_notified.
+			_current_order = exiting_order
 	else:
 		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_publish_control_mode_if_changed()
@@ -384,7 +389,7 @@ func issue_community_order(
 		_last_order_rejection_reason = "invalid_dispatch_lease"
 		return false
 	_last_order_rejection_reason = ""
-	var installed: bool = _install_admitted_order(order, UnitOrder.OrderOrigin.COMMUNITY)
+	var installed: bool = _install_admitted_order(order, UnitOrder.OrderOrigin.COMMUNITY, {}, dispatch_lease)
 	if not installed and is_instance_valid(board):
 		board.abort_task_dispatch(dispatch_lease)
 	return installed
@@ -489,7 +494,7 @@ func _has_mutation_authority(my_seq: int, issued_revision: int) -> bool:
 
 
 func _emit_order_finished_once(order: UnitOrder) -> void:
-	if order == null or order.was_finished_notified():
+	if order == null or not order.is_finished() or order.was_finished_notified():
 		return
 	order.mark_finished_notified()
 	order_finished.emit(order)
@@ -631,7 +636,8 @@ func _perform_administrative_cancel(reason: String) -> bool:
 func _install_admitted_order(
 	order: UnitOrder,
 	origin: UnitOrder.OrderOrigin,
-	recovery_ctx: Dictionary = {}
+	recovery_ctx: Dictionary = {},
+	dispatch_lease: CommunityWorkBoard.DispatchLease = null
 ) -> bool:
 	var target_mode: UnitControlState.ControlMode = UnitControlState.mode_for_origin(origin)
 
@@ -669,13 +675,30 @@ func _install_admitted_order(
 			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 			return false
 
-		# Stage 2B: previous_order finished -> commit cause, advance _order_revision if still owner,
-		# and guarantee single-shot order_finished(previous_order) regardless of reentrant successor.
+		# Check Point 1 (B2-A01): Revalidate permissions/locks/authority before stamping InterruptionCause,
+		# so a rejected MoveOrder invalidated during cancel() never stamps InterruptionCause.PERSONAL_MOVE.
+		var pre_reval_reason: String = ""
 		if _transition_seq == my_seq:
-			previous_order.set_interruption_cause(_interruption_cause_for(order, origin))
-			_order_revision += 1
-			issued_revision = _order_revision
-			_control_state._apply_internal(target_mode, origin)
+			pre_reval_reason = _revalidate_admitted_order_before_install(order, origin, recovery_ctx, dispatch_lease)
+			if pre_reval_reason.is_empty():
+				previous_order.set_interruption_cause(_interruption_cause_for(order, origin))
+				_order_revision += 1
+				issued_revision = _order_revision
+				_control_state._apply_internal(target_mode, origin)
+			else:
+				previous_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+				_order_revision += 1
+				issued_revision = _order_revision
+				_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+				if _pending_transition_seq == my_seq:
+					_pending_transition_seq = 0
+				_set_state(State.IDLE)
+				if _has_mutation_authority(my_seq, issued_revision) and _current_order == null:
+					_publish_control_mode_if_changed()
+				_emit_order_finished_once(previous_order)
+				order.mark_cancelled(UnitOrder.REASON_REPLACED)
+				_last_order_rejection_reason = pre_reval_reason
+				return false
 
 		_emit_order_finished_once(previous_order)
 
@@ -686,8 +709,10 @@ func _install_admitted_order(
 			_last_order_rejection_reason = UnitOrder.REASON_REPLACED
 			return false
 
-		# Revalidate F02 recovery authority after callbacks during T1b cancellation/order_finished.
-		if origin == UnitOrder.OrderOrigin.SYSTEM_RECOVERY and not _revalidate_recovery_authority_post_cancel(order, recovery_ctx):
+		# Check Point 2 (B2-A01): Revalidate current permissions, locks, and F01/F02 authority
+		# immediately before effective installation after order_finished callbacks.
+		var post_reval_reason: String = _revalidate_admitted_order_before_install(order, origin, recovery_ctx, dispatch_lease)
+		if not post_reval_reason.is_empty():
 			if _pending_transition_seq == my_seq:
 				_pending_transition_seq = 0
 			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
@@ -695,7 +720,7 @@ func _install_admitted_order(
 			if _has_mutation_authority(my_seq, issued_revision) and _current_order == null:
 				_publish_control_mode_if_changed()
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)
-			_last_order_rejection_reason = "unadmitted_recovery_order"
+			_last_order_rejection_reason = post_reval_reason
 			return false
 	else:
 		# No active previous order -> commit revision & internal target state directly.
@@ -743,6 +768,45 @@ func _install_admitted_order(
 	return true
 
 
+func _revalidate_admitted_order_before_install(
+	order: UnitOrder,
+	origin: UnitOrder.OrderOrigin,
+	recovery_ctx: Dictionary,
+	dispatch_lease: CommunityWorkBoard.DispatchLease
+) -> String:
+	if _is_exiting_tree or not is_inside_tree() or is_queued_for_deletion():
+		return UnitOrder.REASON_UNIT_NOT_IN_TREE
+	if _is_reserved_withdrawal_locked():
+		return CommandController.REASON_UNIT_TRANSACTION_LOCKED
+	if order == null or order.is_finished() or order.status != UnitOrder.Status.PENDING:
+		return "order_not_pending"
+
+	match origin:
+		UnitOrder.OrderOrigin.PERSONAL:
+			return UnitControlPermissions.get_personal_order_rejection_reason_for_order(self, order)
+		UnitOrder.OrderOrigin.COMMUNITY:
+			if not (order is GatherResourceOrder):
+				return "invalid_dispatch_lease"
+			if not UnitControlPermissions.can_participate_in_community_work_for_order(self, order):
+				return UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
+			if dispatch_lease == null:
+				return "invalid_dispatch_lease"
+			var board: CommunityWorkBoard = dispatch_lease.get_board()
+			if board == null or not is_instance_valid(board) or not board.is_inside_tree():
+				return "invalid_dispatch_lease"
+			if not board.is_dispatch_lease_valid_for_commit(dispatch_lease):
+				return "invalid_dispatch_lease"
+			return ""
+		UnitOrder.OrderOrigin.SYSTEM_RECOVERY:
+			if not UnitControlPermissions.can_perform_recovery_order(self):
+				return UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
+			if not _revalidate_recovery_authority_post_cancel(order, recovery_ctx):
+				return "unadmitted_recovery_order"
+			return ""
+		_:
+			return UnitControlPermissions.REASON_INVALID_ORDER
+
+
 func _revalidate_recovery_authority_post_cancel(order: UnitOrder, recovery_ctx: Dictionary) -> bool:
 	if _is_reserved_withdrawal_locked():
 		return false
@@ -767,7 +831,16 @@ func _revalidate_recovery_authority_post_cancel(order: UnitOrder, recovery_ctx: 
 		region_id,
 		cancel_id
 	)
-	return record != null and record.has_unsettled_custody()
+	if record == null or not record.has_unsettled_custody():
+		return false
+	var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+		world,
+		region_id,
+		self,
+		_carry_load,
+		get_tree()
+	)
+	return bool(id_check.get("ok", false))
 
 
 func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
