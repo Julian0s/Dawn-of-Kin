@@ -26,6 +26,7 @@ var _flush_queued: bool = false
 var _dispatching: bool = false
 var _cancelling_batch_depth: int = 0
 var _is_tearing_down: bool = false
+var _config_epoch: int = 0
 
 
 func _ready() -> void:
@@ -38,6 +39,7 @@ func _exit_tree() -> void:
 
 
 func teardown() -> void:
+	_config_epoch += 1
 	_is_tearing_down = true
 	_cancelling_batch_depth = 0
 	_unbind_all()
@@ -60,6 +62,7 @@ func configure(
 	p_use_provenance: bool = true,
 	p_economy_admission_reason: String = ""
 ) -> void:
+	_config_epoch += 1
 	_unbind_all()
 	_is_tearing_down = false
 	_board = p_board
@@ -435,7 +438,9 @@ func _flush_dispatch() -> void:
 	if not is_inside_tree() or _board == null or not is_instance_valid(_board) or _command_controller == null or not is_instance_valid(_command_controller):
 		return
 
-	var active_tasks: Array[WorkTask] = _board.get_active_tasks()
+	var flush_epoch: int = _config_epoch
+	var flush_board: CommunityWorkBoard = _board
+	var active_tasks: Array[WorkTask] = flush_board.get_active_tasks()
 	if active_tasks.is_empty():
 		return
 
@@ -445,14 +450,14 @@ func _flush_dispatch() -> void:
 	# Pass 1: validate active tasks (preserve valid running tasks, never silently unblock BLOCKED_REAUTHORIZATION, close unusable sources).
 	var pending_tasks: Array[WorkTask] = []
 	for task: WorkTask in active_tasks:
-		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+		if _is_tearing_down or _config_epoch != flush_epoch or _board != flush_board or not is_instance_valid(flush_board):
 			break
 		if not task.is_active():
 			continue
 		if task.is_blocked_reauthorization():
 			if not task.is_source_usable():
 				var blocked_unusable: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
-				_board.close_task(task, WorkTask.State.FAILED, blocked_unusable)
+				flush_board.close_task(task, WorkTask.State.FAILED, blocked_unusable)
 			continue
 		if task.assigned_unit != null:
 			var u: Unit = task.assigned_unit
@@ -470,17 +475,17 @@ func _flush_dispatch() -> void:
 			task.state = WorkTask.State.PENDING_WORKERS
 		if not task.is_source_usable():
 			var unusable_reason: String = "source_depleted" if (task.is_source_valid() and task.source.is_depleted()) else "invalid_source"
-			_board.close_task(task, WorkTask.State.FAILED, unusable_reason)
+			flush_board.close_task(task, WorkTask.State.FAILED, unusable_reason)
 			continue
 		pending_tasks.append(task)
 
 	# Pass 2: deterministic fair group-FIFO + spatial nearest dispatch across pending tasks.
-	if not _is_tearing_down and _board != null and is_instance_valid(_board):
+	if not _is_tearing_down and _config_epoch == flush_epoch and _board == flush_board and is_instance_valid(flush_board):
 		var ordered_groups: Array[Array] = _partition_pending_tasks_by_group_fifo(pending_tasks)
 		for group_tasks: Array in ordered_groups:
-			if _is_tearing_down or _board == null or not is_instance_valid(_board):
+			if _is_tearing_down or _config_epoch != flush_epoch or _board != flush_board or not is_instance_valid(flush_board):
 				break
-			_dispatch_group_tasks(group_tasks)
+			_dispatch_group_tasks(group_tasks, flush_epoch, flush_board)
 
 	dispatch_batch_finished.emit()
 	_dispatching = false
@@ -506,7 +511,7 @@ func _partition_pending_tasks_by_group_fifo(pending_tasks: Array[WorkTask]) -> A
 	return result
 
 
-func _dispatch_group_tasks(group_tasks: Array) -> void:
+func _dispatch_group_tasks(group_tasks: Array, flush_epoch: int, flush_board: CommunityWorkBoard) -> void:
 	# Repeatedly pair the closest available (unit, pending task) inside the group so
 	# multiple workers naturally spread across distinct sources with zero starvation.
 	# Ranks eligible (task, unit) pairs by Euclidean distance before querying navigation
@@ -519,7 +524,7 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 				remaining.append(t)
 
 	while not remaining.is_empty():
-		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+		if _is_tearing_down or _config_epoch != flush_epoch or _board != flush_board or not is_instance_valid(flush_board):
 			return
 		if _world_nav == null or not is_instance_valid(_world_nav) or not _world_nav.is_navigation_ready():
 			break
@@ -617,7 +622,7 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 
 		var dispatched: bool = _try_dispatch_unit_to_task(best_task, best_unit)
 		remaining.erase(best_task)
-		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+		if _is_tearing_down or _config_epoch != flush_epoch or _board != flush_board or not is_instance_valid(flush_board):
 			return
 		if not dispatched and best_task.is_active() and best_task.state == WorkTask.State.PENDING_WORKERS:
 			# Fall through to final status evaluation below so this task records its wait/fail state cleanly.
@@ -625,7 +630,7 @@ func _dispatch_group_tasks(group_tasks: Array) -> void:
 
 	# Any tasks in this group that did not receive a worker get their exact waiting / blocked / failed status.
 	for task: WorkTask in remaining:
-		if _is_tearing_down or _board == null or not is_instance_valid(_board):
+		if _is_tearing_down or _config_epoch != flush_epoch or _board != flush_board or not is_instance_valid(flush_board):
 			return
 		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.assigned_unit == null:
 			_evaluate_unassigned_task(task)
@@ -677,7 +682,12 @@ func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String
 
 
 func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
-	if task == null or not task.is_active() or task.state != WorkTask.State.PENDING_WORKERS:
+	if _is_tearing_down or task == null or not task.is_active() or task.state != WorkTask.State.PENDING_WORKERS:
+		return false
+	var owner_board: CommunityWorkBoard = _board
+	var owner_cmd: CommandController = _command_controller
+	var owner_epoch: int = _config_epoch
+	if owner_board == null or not is_instance_valid(owner_board) or owner_cmd == null or not is_instance_valid(owner_cmd):
 		return false
 	if not _check_pre_nav_eligibility(chosen_unit, task).is_empty():
 		return false
@@ -685,11 +695,11 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	var authorization := task.tree_cut_authorization
 	if task.kind == WorkTask.Kind.GATHER_WOOD and authorization == null:
 		return false
-	var lease: CommunityWorkBoard.DispatchLease = _board.begin_task_dispatch(task, chosen_unit)
+	var lease: CommunityWorkBoard.DispatchLease = owner_board.begin_task_dispatch(task, chosen_unit)
 	if lease == null:
 		return false
 
-	var dispatch_res: Dictionary = _command_controller.dispatch_community_gather(
+	var dispatch_res: Dictionary = owner_cmd.dispatch_community_gather(
 		task.source,
 		chosen_unit,
 		authorization,
@@ -698,9 +708,21 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	var order: GatherResourceOrder = dispatch_res.get("order") as GatherResourceOrder
 	var installed_revision: int = int(dispatch_res.get("installed_revision", -1))
 	var completed_sync: bool = bool(dispatch_res.get("completed_synchronously", false))
+	var owner_board_alive: bool = owner_board != null and is_instance_valid(owner_board)
+	var context_still_valid: bool = (
+		not _is_tearing_down
+		and _config_epoch == owner_epoch
+		and _board == owner_board
+		and _command_controller == owner_cmd
+		and owner_board_alive
+		and owner_board.is_inside_tree()
+	)
 
 	if not bool(dispatch_res.get("ok", false)):
-		_board.abort_task_dispatch(lease)
+		if owner_board_alive:
+			owner_board.abort_task_dispatch(lease)
+		if not context_still_valid:
+			return false
 		var still_pending_fail: bool = task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.tree_cut_authorization == authorization
 		if not still_pending_fail:
 			return false
@@ -711,15 +733,17 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 			"resource_source_depleted",
 			"invalid_resource_source",
 		]:
-			_board.close_task(task, WorkTask.State.FAILED, reject_reason)
+			owner_board.close_task(task, WorkTask.State.FAILED, reject_reason)
 		else:
 			_mark_task_waiting(task, reject_reason, "")
 		return false
 
-	if not _board.is_dispatch_lease_valid_for_commit(lease):
-		_board.abort_task_dispatch(lease)
-		# The command can emit signals that close or reauthorize the task, or install a personal successor.
-		# Only cancel if the unit is still executing this exact community order instance and revision.
+	if not context_still_valid or not owner_board.is_dispatch_lease_valid_for_commit(lease):
+		if owner_board_alive:
+			owner_board.abort_task_dispatch(lease)
+		# The command can emit signals that tear down/reconfigure the dispatcher, close or reauthorize
+		# the task, or install a personal successor. Only reconcile if the unit still owns this exact
+		# community order instance and revision.
 		if (
 			order != null
 			and order.is_active()
@@ -732,10 +756,11 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 		return false
 
 	if completed_sync and order != null and order.is_succeeded():
-		_board.commit_task_dispatch(lease)
+		owner_board.commit_task_dispatch(lease)
 		if not task.is_source_usable():
-			_board.close_task(task, WorkTask.State.COMPLETED, "")
-			task_feedback.emit(_completed_feedback(task.resource_id))
+			owner_board.close_task(task, WorkTask.State.COMPLETED, "")
+			if not _is_tearing_down and _config_epoch == owner_epoch and _board == owner_board:
+				task_feedback.emit(_completed_feedback(task.resource_id))
 		return true
 
 	if (
@@ -745,14 +770,14 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 		or chosen_unit.get_current_order() != order
 		or chosen_unit.get_order_revision() != installed_revision
 	):
-		_board.abort_task_dispatch(lease)
+		owner_board.abort_task_dispatch(lease)
 		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS:
 			var inactive_reason: String = order.failure_reason if (order != null and not order.failure_reason.is_empty()) else "order_not_active"
 			_mark_task_waiting(task, inactive_reason, "")
 		return false
 
-	if not _board.commit_task_dispatch(lease):
-		_board.abort_task_dispatch(lease)
+	if not owner_board.commit_task_dispatch(lease):
+		owner_board.abort_task_dispatch(lease)
 		if chosen_unit.get_current_order() == order and chosen_unit.get_order_revision() == installed_revision:
 			_apply_community_cancel_to_order(chosen_unit, order)
 		return false
@@ -762,9 +787,10 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	task.assigned_order_revision = installed_revision
 	task.state = WorkTask.State.IN_PROGRESS
 	task.last_reason = ""
-	_board.notify_task_updated(task)
+	owner_board.notify_task_updated(task)
 	if (
-		task.state != WorkTask.State.IN_PROGRESS or task.assigned_order != order
+		_is_tearing_down or _config_epoch != owner_epoch or _board != owner_board
+		or task.state != WorkTask.State.IN_PROGRESS or task.assigned_order != order
 		or task.tree_cut_authorization != authorization or not is_instance_valid(chosen_unit)
 		or chosen_unit.get_current_order() != order or chosen_unit.get_order_revision() != installed_revision
 	):

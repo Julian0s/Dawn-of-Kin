@@ -17,6 +17,7 @@ const REASON_PERSONAL_CONTROL_DENIED: String = "personal_control_denied"
 const REASON_AGE_RESTRICTED_TASK: String = "age_restricted_task"
 const REASON_RECOVERY_REQUIRES_AUTHORITY: String = "recovery_order_requires_system_authority"
 const REASON_INVALID_ORDER: String = "invalid_order"
+const REASON_UNSUPPORTED_PERSONAL_ORDER: String = "unsupported_personal_order"
 
 
 static func _get_valid_definition(unit: Unit) -> CharacterDefinition:
@@ -102,7 +103,7 @@ static func get_personal_order_rejection_reason_for_order(unit: Unit, order: Uni
 				return get_personal_order_rejection_reason(unit, PersonalCommandKind.GATHER_WOOD)
 			_:
 				return get_personal_order_rejection_reason(unit, PersonalCommandKind.GATHER_WOOD)
-	return get_personal_order_rejection_reason(unit, PersonalCommandKind.MOVE)
+	return REASON_UNSUPPORTED_PERSONAL_ORDER
 
 
 static func can_receive_personal_order_for_order(unit: Unit, order: UnitOrder) -> bool:

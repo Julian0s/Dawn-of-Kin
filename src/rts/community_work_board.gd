@@ -429,27 +429,34 @@ func validate_dispatch_lease_for_installation(
 	if lease._state != DispatchLease.State.ACTIVE:
 		return false
 	var task: WorkTask = lease.get_task()
-	if task == null or not _tasks.has(task) or _pending_leases_by_task_id.get(task.task_id) != lease:
+	if task == null or not _tasks.has(task) or task.task_id != lease._task_id or _pending_leases_by_task_id.get(task.task_id) != lease:
 		return false
 	if task.state != WorkTask.State.PENDING_WORKERS or task.assigned_unit != null or task.assigned_order != null:
 		return false
 	if not task.is_source_usable() or task.region_id != _region_id or lease._region_id != _region_id or not is_source_in_region_domain(task.source):
 		return false
+	if _active_by_source_id.get(task.source.get_instance_id()) != task:
+		return false
 	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
 		return false
 	if lease.get_unit() != unit:
+		return false
+	if task.excluded_unit_ids.has(unit.get_instance_id()):
 		return false
 	if unit.get_order_revision() != lease._expected_unit_revision:
 		return false
 	if unit.get_current_order() != null or unit.get_state() != Unit.State.IDLE:
 		return false
-	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
-		return false
 	if order == null or order.status != UnitOrder.Status.PENDING:
 		return false
 	if order.source == null or order.source != task.source or order.source != lease.get_source():
 		return false
-	if order.source.get_resource_id() != task.resource_id or task.resource_id != lease._resource_id:
+	var source_res_id: StringName = order.source.get_resource_id()
+	if task.resource_id != source_res_id or task.resource_id != lease._resource_id:
+		return false
+	if task.kind != lease._task_kind or task.kind != WorkTask.kind_from_resource_id(source_res_id):
+		return false
+	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
 		return false
 	if not UnitControlPermissions.can_participate_in_community_work_for_order(unit, order):
 		return false
@@ -488,9 +495,19 @@ func is_dispatch_lease_valid_for_commit(lease: DispatchLease) -> bool:
 	if lease._state != DispatchLease.State.INSTALLING:
 		return false
 	var task: WorkTask = lease.get_task()
-	if task == null or not _tasks.has(task) or _pending_leases_by_task_id.get(task.task_id) != lease:
+	if task == null or not _tasks.has(task) or task.task_id != lease._task_id or _pending_leases_by_task_id.get(task.task_id) != lease:
 		return false
 	if task.state != WorkTask.State.PENDING_WORKERS or task.assigned_unit != null or task.assigned_order != null:
+		return false
+	var lease_source: ResourceSource = lease.get_source()
+	if task.source == null or not is_instance_valid(task.source) or task.source != lease_source:
+		return false
+	if _active_by_source_id.get(task.source.get_instance_id()) != task:
+		return false
+	var lease_unit: Unit = lease.get_unit()
+	if lease_unit == null or not is_instance_valid(lease_unit) or task.excluded_unit_ids.has(lease_unit.get_instance_id()):
+		return false
+	if task.kind != lease._task_kind or task.resource_id != lease._resource_id:
 		return false
 	if task.region_id != _region_id or lease._region_id != _region_id:
 		return false

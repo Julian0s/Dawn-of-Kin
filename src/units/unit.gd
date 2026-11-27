@@ -298,7 +298,10 @@ func issue_community_order(
 		_last_order_rejection_reason = "invalid_dispatch_lease"
 		return false
 	_last_order_rejection_reason = ""
-	return _install_admitted_order(order, UnitOrder.OrderOrigin.COMMUNITY)
+	var installed: bool = _install_admitted_order(order, UnitOrder.OrderOrigin.COMMUNITY)
+	if not installed and is_instance_valid(board):
+		board.abort_task_dispatch(dispatch_lease)
+	return installed
 
 
 func issue_recovery_order(

@@ -405,14 +405,12 @@ func test_a07_dispatch_lease_full_authority_and_audit_edge_cases() -> void:
 	assert_false(board.has_pending_dispatch_lease(task_r1.task_id), "No orphan lease may remain after mid-install invalidation")
 	assert_true(disp_res is Dictionary)
 
-	# Audit complementary: synchronous completion inside start() must NOT be treated as rejected!
+	# Post-install commit validation accepts legitimately advanced unit revision after installation.
 	leader_a.cancel_current_order()
 	var reg_sync := board.register_gather_task(bush_1)
 	var task_sync: WorkTask = reg_sync["task"] as WorkTask
 	var lease_sync := board.begin_task_dispatch(task_sync, leader_a)
 	assert_not_null(lease_sync)
-	# Deplete bush just enough or test synchronous failure/completion cleanly:
-	# Position leader_a with full backpack right at camp dropoff so DeliverToCampOrder finishes synchronously, OR test with unit right next to camp.
 	var sync_order := GatherResourceOrder.new(bush_1, camp, inv, -1.0, -1.0, true, region_id)
 	assert_true(leader_a.issue_community_order(sync_order, lease_sync), "Community order installation succeeds")
 	assert_true(board.is_dispatch_lease_valid_for_commit(lease_sync), "Post-install commit validation must accept advanced unit revision")
@@ -488,3 +486,394 @@ func test_b01_b02_production_entries_enforce_baby_and_child_restrictions() -> vo
 	assert_null(baby.get_current_order(), "BABY must never receive community work")
 
 	await _teardown_main(ctx)
+
+
+func _boot_isolated_main(use_provenance: bool = true) -> Dictionary:
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.size = Vector2i(640, 360)
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_test_child(vp)
+	var main: MainScene = MAIN_SCENE.instantiate() as MainScene
+	main.use_provenance_economy = use_provenance
+	vp.add_child(main)
+	var nav: WorldNavigation = main.get_test_map().get_navigation()
+	for _i: int in range(180):
+		if nav.is_navigation_ready():
+			break
+		await wait_physics_frames(1)
+	assert_true(nav.is_navigation_ready(), "Isolated MainScene navigation ready")
+	await wait_process_frames(2)
+	return {
+		"vp": vp,
+		"main": main,
+		"nav": nav,
+		"board": main.get_community_work_board(),
+		"dispatcher": main.get_community_task_dispatcher(),
+		"cmd": main.get_command_controller(),
+		"inv": main.get_settlement_inventory(),
+		"camp": main.get_camp_storage_zone(),
+		"units_root": main.get_node("Units") as Node3D,
+		"region_id": main.get_construction_manager().get_region_id(),
+		"leader_a": main.get_node("Units/LeaderA") as Unit,
+		"leader_b": main.get_node("Units/LeaderB") as Unit,
+	}
+
+
+func _teardown_isolated_main(ctx: Dictionary) -> void:
+	var vp: Node = ctx.get("vp") as Node
+	if vp != null and is_instance_valid(vp):
+		if vp.get_parent() != null:
+			vp.get_parent().remove_child(vp)
+		vp.queue_free()
+	await wait_process_frames(2)
+
+
+func test_b1_a01_dispatcher_teardown_and_reconfigure_reentrancy() -> void:
+	# A01-R01: Teardown inside synchronous callback during REAL CommunityTaskDispatcher dispatch.
+	var ctx1 := await _boot_isolated_main(true)
+	var main1: MainScene = ctx1["main"] as MainScene
+	var board1: CommunityWorkBoard = ctx1["board"] as CommunityWorkBoard
+	var disp1: CommunityTaskDispatcher = ctx1["dispatcher"] as CommunityTaskDispatcher
+	var cmd1: CommandController = ctx1["cmd"] as CommandController
+	var leader_a1: Unit = ctx1["leader_a"] as Unit
+	var leader_b1: Unit = ctx1["leader_b"] as Unit
+	var rock1: ResourceSource = _find_source(main1, &"stone_rock_01")
+	leader_b1.issue_personal_order(MoveOrder.new(Vector3(-12.0, 0.0, -10.0)))
+	leader_a1.global_position = rock1.global_position + Vector3(-1.8, 0.0, 0.0)
+
+	var a01_r01_fired := [false]
+	var cb_r01 := func(_pick: PickResult, _pos: Vector3, _cnt: int, _reach: bool) -> void:
+		if not a01_r01_fired[0]:
+			a01_r01_fired[0] = true
+			disp1.teardown()
+	cmd1.command_issued.connect(cb_r01)
+	var reg1 := board1.register_gather_task(rock1)
+	var task1: WorkTask = reg1["task"] as WorkTask
+	disp1._flush_dispatch()
+	if cmd1.command_issued.is_connected(cb_r01):
+		cmd1.command_issued.disconnect(cb_r01)
+
+	assert_true(a01_r01_fired[0], "A01-R01: teardown callback fired during real dispatch")
+	assert_false(board1.has_pending_dispatch_lease(task1.task_id), "A01-R01: no orphan lease on owner board")
+	assert_null(task1.assigned_unit, "A01-R01: task must not be consolidated after teardown")
+	assert_eq(task1.state, WorkTask.State.PENDING_WORKERS, "A01-R01: task remains unconsolidated")
+	assert_null(leader_a1.get_current_order(), "A01-R01: no orphan community order remains on unit")
+	await _teardown_isolated_main(ctx1)
+
+	# A01-R02: Reconfigure Dispatcher with a NEW legitimate Board inside synchronous callback.
+	var ctx2 := await _boot_isolated_main(true)
+	var main2: MainScene = ctx2["main"] as MainScene
+	var old_board: CommunityWorkBoard = ctx2["board"] as CommunityWorkBoard
+	var disp2: CommunityTaskDispatcher = ctx2["dispatcher"] as CommunityTaskDispatcher
+	var cmd2: CommandController = ctx2["cmd"] as CommandController
+	var leader_a2: Unit = ctx2["leader_a"] as Unit
+	var leader_b2: Unit = ctx2["leader_b"] as Unit
+	var rock2: ResourceSource = _find_source(main2, &"stone_rock_01")
+	var bush2: ResourceSource = _find_source(main2, &"food_bush_01")
+	leader_b2.issue_personal_order(MoveOrder.new(Vector3(-12.0, 0.0, -10.0)))
+	leader_a2.global_position = rock2.global_position + Vector3(-1.8, 0.0, 0.0)
+
+	var new_board := CommunityWorkBoard.new()
+	new_board.name = "SuccessorCommunityWorkBoard"
+	main2.add_child(new_board)
+	new_board.configure(ctx2["region_id"] as StringName, main2.get_world_3d())
+	var reg_new := new_board.register_gather_task(bush2)
+	var new_task: WorkTask = reg_new["task"] as WorkTask
+
+	var a01_r02_fired := [false]
+	var cb_r02 := func(_pick: PickResult, _pos: Vector3, _cnt: int, _reach: bool) -> void:
+		if not a01_r02_fired[0]:
+			a01_r02_fired[0] = true
+			disp2.configure(
+				new_board,
+				cmd2,
+				ctx2["nav"] as WorldNavigation,
+				ctx2["units_root"] as Node,
+				ctx2["camp"] as CampStorageZone,
+				ctx2["inv"] as SettlementInventory,
+				ctx2["region_id"] as StringName,
+				true,
+				""
+			)
+	cmd2.command_issued.connect(cb_r02)
+	var reg_old := old_board.register_gather_task(rock2)
+	var old_task: WorkTask = reg_old["task"] as WorkTask
+	disp2._flush_dispatch()
+	if cmd2.command_issued.is_connected(cb_r02):
+		cmd2.command_issued.disconnect(cb_r02)
+
+	assert_true(a01_r02_fired[0], "A01-R02: reconfigure callback fired during real dispatch")
+	assert_false(old_board.has_pending_dispatch_lease(old_task.task_id), "A01-R02: old lease aborted on owner board")
+	assert_null(old_task.assigned_unit, "A01-R02: old task never consolidated onto new context")
+	assert_eq(old_task.state, WorkTask.State.PENDING_WORKERS)
+	assert_false(new_board.has_pending_dispatch_lease(new_task.task_id), "A01-R02: new board untouched by old lease abort")
+	await wait_process_frames(4)
+	await wait_physics_frames(2)
+	assert_eq(new_task.assigned_unit, leader_a2, "A01-R02: new board task legitimately dispatches afterward")
+	assert_eq(new_task.state, WorkTask.State.IN_PROGRESS)
+	new_board.teardown()
+	await _teardown_isolated_main(ctx2)
+
+	# A01-R03 & A01-R04: Teardown + personal successor installed DURING failing admission path (dispatch_res.ok == false)
+	# and during successful command_issued path.
+	var ctx3 := await _boot_isolated_main(true)
+	var main3: MainScene = ctx3["main"] as MainScene
+	var board3: CommunityWorkBoard = ctx3["board"] as CommunityWorkBoard
+	var disp3: CommunityTaskDispatcher = ctx3["dispatcher"] as CommunityTaskDispatcher
+	var leader_a3: Unit = ctx3["leader_a"] as Unit
+	var leader_b3: Unit = ctx3["leader_b"] as Unit
+	var rock3: ResourceSource = _find_source(main3, &"stone_rock_01")
+	leader_b3.issue_personal_order(MoveOrder.new(Vector3(-12.0, 0.0, -10.0)))
+	leader_a3.global_position = rock3.global_position + Vector3(-1.8, 0.0, 0.0)
+
+	var successor_r04 := MoveOrder.new(Vector3(4.0, 0.0, 4.0))
+	var a01_r04_fired := [false]
+	var cb_r04 := func(_new_s: Unit.State, _prev_s: Unit.State) -> void:
+		if not a01_r04_fired[0]:
+			a01_r04_fired[0] = true
+			# Teardown dispatcher AND install personal successor inside order.start() -> causes issue_community_order -> false!
+			disp3.teardown()
+			leader_a3.issue_personal_order(successor_r04)
+	leader_a3.state_changed.connect(cb_r04)
+	var reg3 := board3.register_gather_task(rock3)
+	var task3: WorkTask = reg3["task"] as WorkTask
+	disp3._flush_dispatch()
+	if leader_a3.state_changed.is_connected(cb_r04):
+		leader_a3.state_changed.disconnect(cb_r04)
+
+	assert_true(a01_r04_fired[0], "A01-R03/R04: state_changed callback fired during start()")
+	assert_eq(leader_a3.get_current_order(), successor_r04, "A01-R03/R04: personal successor preserved intact")
+	assert_true(successor_r04.is_active(), "A01-R03/R04: personal successor never cancelled")
+	assert_false(board3.has_pending_dispatch_lease(task3.task_id), "A01-R04: old lease aborted on owner board despite ok==false + teardown")
+	assert_null(task3.assigned_unit)
+	await _teardown_isolated_main(ctx3)
+
+
+func test_b1_a02_dispatch_lease_full_section_8_3_validation() -> void:
+	var ctx := await _boot_isolated_main(true)
+	var main: MainScene = ctx["main"] as MainScene
+	var board: CommunityWorkBoard = ctx["board"] as CommunityWorkBoard
+	var dispatcher: CommunityTaskDispatcher = ctx["dispatcher"] as CommunityTaskDispatcher
+	var inv: SettlementInventory = ctx["inv"] as SettlementInventory
+	var camp: CampStorageZone = ctx["camp"] as CampStorageZone
+	var region_id: StringName = ctx["region_id"] as StringName
+	var leader_a: Unit = ctx["leader_a"] as Unit
+	var bush_1: ResourceSource = _find_source(main, &"food_bush_01")
+	var rock_1: ResourceSource = _find_source(main, &"stone_rock_01")
+	var tree_1: ResourceSource = _find_source(main, &"wood_tree_01")
+	dispatcher.teardown()
+	await wait_process_frames(1)
+
+	# A02-R01: Unit added to task.excluded_unit_ids AFTER lease issuance -> MUST be rejected at installation!
+	var reg1 := board.register_gather_task(bush_1)
+	var task1: WorkTask = reg1["task"] as WorkTask
+	var lease1 := board.begin_task_dispatch(task1, leader_a)
+	assert_not_null(lease1)
+	task1.excluded_unit_ids[leader_a.get_instance_id()] = true
+	var rev_before_r01: int = leader_a.get_order_revision()
+	var ord1 := GatherResourceOrder.new(bush_1, camp, inv, -1.0, -1.0, true, region_id)
+	assert_false(leader_a.issue_community_order(ord1, lease1), "A02-R01: excluded unit must be rejected at installation even with previously valid lease")
+	assert_eq(leader_a.get_order_revision(), rev_before_r01, "A02-R01: revision preserved on rejection")
+	assert_null(leader_a.get_current_order())
+	board.abort_task_dispatch(lease1)
+	assert_false(board.has_pending_dispatch_lease(task1.task_id))
+	task1.excluded_unit_ids.clear()
+
+	# A02-R02: Task no longer indexed in _active_by_source_id -> MUST be rejected at installation!
+	var lease2 := board.begin_task_dispatch(task1, leader_a)
+	assert_not_null(lease2)
+	var sid1: int = bush_1.get_instance_id()
+	board._active_by_source_id.erase(sid1)
+	var ord2 := GatherResourceOrder.new(bush_1, camp, inv, -1.0, -1.0, true, region_id)
+	assert_false(leader_a.issue_community_order(ord2, lease2), "A02-R02: task missing from _active_by_source_id must be rejected")
+	assert_null(leader_a.get_current_order())
+	board._active_by_source_id[sid1] = task1
+	board.abort_task_dispatch(lease2)
+
+	# A02-R03: Divergent task.kind vs lease / source resource_id -> MUST be rejected!
+	var lease3 := board.begin_task_dispatch(task1, leader_a)
+	assert_not_null(lease3)
+	task1.kind = WorkTask.Kind.GATHER_STONE
+	var ord3 := GatherResourceOrder.new(bush_1, camp, inv, -1.0, -1.0, true, region_id)
+	assert_false(leader_a.issue_community_order(ord3, lease3), "A02-R03: task.kind diverging from lease/source must be rejected")
+	task1.kind = WorkTask.Kind.GATHER_FOOD
+	task1.resource_id = &"stone"
+	assert_false(leader_a.issue_community_order(ord3, lease3), "A02-R03: task.resource_id diverging from lease/source must be rejected")
+	task1.resource_id = &"food"
+	board.abort_task_dispatch(lease3)
+
+	# A02-R04 & A02-R05: Legitimate WOOD/STONE/FOOD succeed, and failed installation never stays stuck in INSTALLING.
+	for src: ResourceSource in [tree_1, rock_1, bush_1]:
+		leader_a.cancel_current_order()
+		var t_existing: WorkTask = board.get_active_task_for_source(src)
+		if t_existing != null:
+			board.close_task(t_existing, WorkTask.State.CANCELLED, "reset")
+		var reg_ok := board.register_gather_task(src)
+		var t_ok: WorkTask = reg_ok["task"] as WorkTask
+		var l_ok := board.begin_task_dispatch(t_ok, leader_a)
+		assert_not_null(l_ok)
+		var o_ok := GatherResourceOrder.new(src, camp, inv, -1.0, -1.0, true, region_id, t_ok.tree_cut_authorization)
+		assert_true(leader_a.issue_community_order(o_ok, l_ok), "A02-R04: valid install succeeds for %s" % String(src.get_resource_id()))
+		assert_true(board.commit_task_dispatch(l_ok))
+		assert_false(board.has_pending_dispatch_lease(t_ok.task_id))
+		board.close_task(t_ok, WorkTask.State.CANCELLED, "cleanup")
+		leader_a.cancel_current_order()
+
+	# Failed installation (e.g. null camp -> GatherResourceOrder.start() fails synchronously) must NOT stay stuck in INSTALLING!
+	var reg_fail := board.register_gather_task(rock_1)
+	var t_fail: WorkTask = reg_fail["task"] as WorkTask
+	var l_fail := board.begin_task_dispatch(t_fail, leader_a)
+	assert_not_null(l_fail)
+	var o_fail := GatherResourceOrder.new(rock_1, null, inv, -1.0, -1.0, true, region_id)
+	assert_false(leader_a.issue_community_order(o_fail, l_fail), "A02-R05: failing start() returns false")
+	assert_false(l_fail.is_installing(), "A02-R05: failed installation must NOT leave lease stuck in INSTALLING")
+	assert_false(board.has_pending_dispatch_lease(t_fail.task_id), "A02-R05: failed installation leaves zero orphan lease")
+
+	await _teardown_isolated_main(ctx)
+
+
+func test_b1_a04_real_synchronous_completion_and_failure() -> void:
+	# A04-R01: REAL production GatherResourceOrder + DeliverToCampOrder (legacy mode) completing
+	# synchronously inside start() through REAL CommunityTaskDispatcher -> CommandController -> Unit,
+	# with ZERO physics frames advanced!
+	var ctx_leg := await _boot_isolated_main(false)
+	var main_leg: MainScene = ctx_leg["main"] as MainScene
+	var board_leg: CommunityWorkBoard = ctx_leg["board"] as CommunityWorkBoard
+	var disp_leg: CommunityTaskDispatcher = ctx_leg["dispatcher"] as CommunityTaskDispatcher
+	var inv_leg: SettlementInventory = ctx_leg["inv"] as SettlementInventory
+	var camp_leg: CampStorageZone = ctx_leg["camp"] as CampStorageZone
+	var leader_a_leg: Unit = ctx_leg["leader_a"] as Unit
+	var leader_b_leg: Unit = ctx_leg["leader_b"] as Unit
+	var bush_leg: ResourceSource = _find_source(main_leg, &"food_bush_01")
+
+	leader_b_leg.issue_personal_order(MoveOrder.new(Vector3(-12.0, 0.0, -10.0)))
+	# Fill leader_a's backpack completely with wood (10 units * weight 2 = 20/20) so GatherResourceOrder
+	# delivers first, and place leader_a right on camp so legacy DeliverToCampOrder finishes synchronously inside start().
+	assert_true(leader_a_leg.get_carry_load().add_units(MainScene.WOOD_DEFINITION, 10), "A04-R01: seed full backpack")
+	leader_a_leg.global_position = camp_leg.global_position
+	var finished_events: Array[UnitOrder] = []
+	var on_fin := func(ord: UnitOrder) -> void:
+		finished_events.append(ord)
+	leader_a_leg.order_finished.connect(on_fin)
+
+	var stop_requested := [false]
+	var on_transporting := func(new_s: Unit.State, _old_s: Unit.State) -> void:
+		if new_s == Unit.State.TRANSPORTING and not stop_requested[0]:
+			var cur := leader_a_leg.get_current_order() as GatherResourceOrder
+			if cur != null:
+				stop_requested[0] = true
+				# Sets _stop_after_delivery = true right before DeliverToCampOrder.start() executes synchronously!
+				cur.request_community_cancel(leader_a_leg.get_movement())
+	leader_a_leg.state_changed.connect(on_transporting)
+
+	var reg_leg := board_leg.register_gather_task(bush_leg)
+	var task_leg: WorkTask = reg_leg["task"] as WorkTask
+	# Invoke flush synchronously — ZERO physics frames after this line!
+	disp_leg._flush_dispatch()
+	leader_a_leg.state_changed.disconnect(on_transporting)
+	leader_a_leg.order_finished.disconnect(on_fin)
+
+	assert_true(stop_requested[0], "A04-R01: synchronous transporting callback triggered inside start()")
+	assert_eq(finished_events.size(), 1, "A04-R01: exactly ONE order_finished emitted synchronously")
+	if finished_events.size() == 1:
+		assert_true(finished_events[0] is GatherResourceOrder, "A04-R01: finished order is GatherResourceOrder")
+		assert_true(finished_events[0].is_succeeded(), "A04-R01: order.is_succeeded() == true immediately inside start() with 0 physics frames")
+		assert_eq(finished_events[0].get_order_origin(), UnitOrder.OrderOrigin.COMMUNITY)
+	assert_null(leader_a_leg.get_current_order(), "A04-R01: _current_order cleared after synchronous completion")
+	assert_eq(leader_a_leg.get_state(), Unit.State.IDLE)
+	assert_false(board_leg.has_pending_dispatch_lease(task_leg.task_id), "A04-R01: lease committed with zero orphan")
+	assert_eq(inv_leg.get_physical_amount(&"wood"), 10, "A04-R01: exact single delivery with zero duplication")
+	assert_true(leader_a_leg.get_carry_load().is_empty())
+
+	# A04-R04: Source depleted during synchronous installation inside start() -> task closed, lease revoked, zero orphan, cargo conserved!
+	assert_true(leader_a_leg.get_carry_load().add_units(MainScene.WOOD_DEFINITION, 10), "A04-R04: seed full backpack")
+	leader_a_leg.global_position = camp_leg.global_position
+	var bush_dep: ResourceSource = _find_source(main_leg, &"food_bush_02")
+	var depleted_in_cb := [false]
+	var on_dep_cb := func(new_s: Unit.State, _old_s: Unit.State) -> void:
+		if new_s == Unit.State.TRANSPORTING and not depleted_in_cb[0]:
+			depleted_in_cb[0] = true
+			while not bush_dep.is_depleted():
+				var got: int = bush_dep.extract(bush_dep.get_remaining_amount())
+				if got <= 0:
+					break
+	leader_a_leg.state_changed.connect(on_dep_cb)
+	board_leg.close_task(task_leg, WorkTask.State.CANCELLED, "clear_prev")
+	var reg_dep := board_leg.register_gather_task(bush_dep)
+	var task_dep: WorkTask = reg_dep["task"] as WorkTask
+	disp_leg._flush_dispatch()
+	leader_a_leg.state_changed.disconnect(on_dep_cb)
+	assert_true(depleted_in_cb[0], "A04-R04: source depleted during start()")
+	assert_true(bush_dep.is_depleted(), "A04-R04: source actually reached 0 remaining during installation")
+	assert_false(task_dep.is_active(), "A04-R04: task closed cleanly when source depleted during installation")
+	assert_false(board_leg.has_pending_dispatch_lease(task_dep.task_id), "A04-R04: zero orphan lease")
+	assert_eq(inv_leg.get_physical_amount(&"wood"), 20, "A04-R04: delivered cargo conserved without duplication")
+	await _teardown_isolated_main(ctx_leg)
+
+	# A04-R02 & A04-R03: Synchronous failure inside start() & personal successor installed during real Dispatcher callback.
+	var ctx_prov := await _boot_isolated_main(true)
+	var main_prov: MainScene = ctx_prov["main"] as MainScene
+	var board_prov: CommunityWorkBoard = ctx_prov["board"] as CommunityWorkBoard
+	var disp_prov: CommunityTaskDispatcher = ctx_prov["dispatcher"] as CommunityTaskDispatcher
+	var leader_a_p: Unit = ctx_prov["leader_a"] as Unit
+	var leader_b_p: Unit = ctx_prov["leader_b"] as Unit
+	var rock_p: ResourceSource = _find_source(main_prov, &"stone_rock_01")
+	leader_b_p.issue_personal_order(MoveOrder.new(Vector3(-12.0, 0.0, -10.0)))
+	leader_a_p.global_position = rock_p.global_position + Vector3(-1.8, 0.0, 0.0)
+
+	# A04-R02: Force synchronous failure inside start() by reserving rock_p slots just before start via invalid carry capacity (temporary modifier)
+	# Wait: capacity is checked in pre-nav; instead simulate source becoming unavailable inside command_controller / unit start via full capacity on a single-slot check,
+	# OR reserve rock_p slots for leader_b & an extra unit? Cleaner: mark rock_p unavailable via depleted in state_changed? No, test GatherResourceOrder failing start()
+	# directly when camp_zone is invalid during dispatch -> dispatcher reconciles lease and task cleanly!
+	var reg_fail_p := board_prov.register_gather_task(rock_p)
+	var task_fail_p: WorkTask = reg_fail_p["task"] as WorkTask
+	var orig_camp_valid: Vector2 = (ctx_prov["camp"] as CampStorageZone).zone_bounds_half_extents
+	# Trigger synchronous failure inside GatherResourceOrder.start() when carry load cannot fit one unit via invalid provenance on a non-free lot?
+	# Even cleaner: temporarily set leader_a_p's carry load base capacity to 1 while stone weighs 2 -> passes nothing? No, pre-nav checks effective capacity.
+	# Reserve all worker slots on rock_p during command_issued? No, command_issued fires after start().
+	# Test synchronous failure through REAL Unit.issue_community_order() with invalid camp (REASON_MISSING_ECONOMY) AND verify lease & task state:
+	disp_prov.teardown()
+	var lease_sf := board_prov.begin_task_dispatch(task_fail_p, leader_a_p)
+	assert_not_null(lease_sf)
+	var fail_ord := GatherResourceOrder.new(rock_p, null, ctx_prov["inv"] as SettlementInventory, -1.0, -1.0, true, ctx_prov["region_id"] as StringName)
+	var sf_finished: Array[UnitOrder] = []
+	var on_sf := func(o: UnitOrder) -> void: sf_finished.append(o)
+	leader_a_p.order_finished.connect(on_sf)
+	var sf_ok: bool = leader_a_p.issue_community_order(fail_ord, lease_sf)
+	leader_a_p.order_finished.disconnect(on_sf)
+	assert_false(sf_ok, "A04-R02: synchronous start() failure must return false")
+	assert_eq(fail_ord.status, UnitOrder.Status.FAILED)
+	assert_eq(sf_finished.size(), 1, "A04-R02: synchronous failure notifies order_finished once")
+	assert_false(board_prov.has_pending_dispatch_lease(task_fail_p.task_id), "A04-R02: lease aborted with zero orphan")
+	assert_null(task_fail_p.assigned_unit)
+	assert_eq(task_fail_p.state, WorkTask.State.PENDING_WORKERS)
+	assert_true(orig_camp_valid.x > 0.0)
+
+	# A04-R03: Re-enable dispatcher and verify personal successor installed in callback during real Dispatcher flush is preserved.
+	disp_prov.configure(
+		board_prov,
+		ctx_prov["cmd"] as CommandController,
+		ctx_prov["nav"] as WorldNavigation,
+		ctx_prov["units_root"] as Node,
+		ctx_prov["camp"] as CampStorageZone,
+		ctx_prov["inv"] as SettlementInventory,
+		ctx_prov["region_id"] as StringName,
+		true,
+		""
+	)
+	var succ_a04 := MoveOrder.new(Vector3(3.0, 0.0, 3.0))
+	var succ_fired := [false]
+	var on_succ := func(_ns: Unit.State, _ps: Unit.State) -> void:
+		if not succ_fired[0]:
+			succ_fired[0] = true
+			board_prov.close_task(task_fail_p, WorkTask.State.CANCELLED, "a04_r03_cancel")
+			leader_a_p.issue_personal_order(succ_a04)
+	leader_a_p.state_changed.connect(on_succ)
+	disp_prov._flush_dispatch()
+	leader_a_p.state_changed.disconnect(on_succ)
+	assert_true(succ_fired[0], "A04-R03: callback fired during real Dispatcher flush")
+	assert_eq(leader_a_p.get_current_order(), succ_a04, "A04-R03: personal successor preserved intact")
+	assert_true(succ_a04.is_active())
+	assert_false(board_prov.has_pending_dispatch_lease(task_fail_p.task_id))
+	await _teardown_isolated_main(ctx_prov)

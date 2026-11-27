@@ -10,6 +10,14 @@ const LEADER_A_DEF: CharacterDefinition = preload("res://data/characters/leader_
 const LEADER_B_DEF: CharacterDefinition = preload("res://data/characters/leader_b.tres")
 
 
+class UnknownCustomOrder extends UnitOrder:
+	func get_order_name() -> String:
+		return "UnknownCustomOrder"
+
+	func start(_unit_body: CharacterBody3D, _movement: UnitMovement, _world_nav: WorldNavigation) -> void:
+		mark_running()
+
+
 func _make_def(
 	id: StringName,
 	display_name_text: String,
@@ -229,3 +237,72 @@ func test_b01_b02_b03_age_stage_permission_matrix() -> void:
 func test_order_origin_defaults() -> void:
 	var move := MoveOrder.new(Vector3.ZERO)
 	assert_eq(move.get_order_origin(), UnitOrder.OrderOrigin.NONE, "Unadmitted order must have OrderOrigin.NONE")
+
+
+func test_b1_a03_restrictive_default_denies_unknown_unit_order_subclasses() -> void:
+	var adult_founder: Unit = _spawn_unit(LEADER_A_DEF, "A03AdultFounder")
+	var child_founder: Unit = _spawn_unit(
+		_make_def(&"a03_child_f", "Crianca F", CharacterDefinition.HouseAffiliation.FOUNDING_HOUSE, CharacterDefinition.FoundingHouseOrigin.DIRECT_DESCENDANT, CharacterDefinition.AgeStage.CHILD),
+		"A03ChildFounder"
+	)
+	var adult_common: Unit = _spawn_unit(
+		_make_def(&"a03_adult_c", "Morador C", CharacterDefinition.HouseAffiliation.COMMUNITY, CharacterDefinition.FoundingHouseOrigin.NONE, CharacterDefinition.AgeStage.ADULT),
+		"A03AdultCommon"
+	)
+	await wait_process_frames(1)
+
+	# A03-R01: Unknown UnitOrder subclass on adult founder MUST be rejected.
+	var unk_adult := UnknownCustomOrder.new()
+	var rev_adult: int = adult_founder.get_order_revision()
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(adult_founder, unk_adult), "A03-R01: adult founder must reject unknown UnitOrder subclass")
+	assert_eq(UnitControlPermissions.get_personal_order_rejection_reason_for_order(adult_founder, unk_adult), "unsupported_personal_order")
+	assert_false(adult_founder.issue_personal_order(unk_adult), "A03-R01: issue_personal_order must reject unknown order on adult founder")
+	assert_false(adult_founder.issue_order(unk_adult), "A03-R01: issue_order must reject unknown order on adult founder")
+	assert_eq(adult_founder.get_last_order_rejection_reason(), "unsupported_personal_order")
+	assert_eq(adult_founder.get_order_revision(), rev_adult, "A03-R01: revision must remain unchanged")
+	assert_null(adult_founder.get_current_order())
+
+	# A03-R02: Unknown UnitOrder subclass on child founder MUST be rejected.
+	var unk_child := UnknownCustomOrder.new()
+	var rev_child: int = child_founder.get_order_revision()
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(child_founder, unk_child), "A03-R02: child founder must reject unknown UnitOrder subclass")
+	assert_eq(UnitControlPermissions.get_personal_order_rejection_reason_for_order(child_founder, unk_child), "unsupported_personal_order")
+	assert_false(child_founder.issue_personal_order(unk_child))
+	assert_eq(child_founder.get_order_revision(), rev_child)
+	assert_null(child_founder.get_current_order())
+
+	# A03-R03: Unknown UnitOrder subclass on common villager MUST be rejected.
+	var unk_common := UnknownCustomOrder.new()
+	var rev_common: int = adult_common.get_order_revision()
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(adult_common, unk_common), "A03-R03: common villager must reject unknown UnitOrder subclass")
+	assert_false(adult_common.issue_personal_order(unk_common))
+	assert_false(adult_common.issue_order(unk_common))
+	assert_eq(adult_common.get_order_revision(), rev_common)
+	assert_null(adult_common.get_current_order())
+
+	# Raw base UnitOrder.new() must also be rejected (restrictive by default).
+	var raw_base := UnitOrder.new()
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(adult_founder, raw_base), "Raw UnitOrder base class must be rejected")
+	assert_false(adult_founder.issue_personal_order(raw_base))
+
+	# A03-R04: Unknown order MUST NOT cancel an active valid order or bump revision.
+	var active_valid := MoveOrder.new(Vector3(1.0, 0.0, 1.0))
+	active_valid.mark_running()
+	adult_founder._current_order = active_valid
+	adult_founder._state = Unit.State.MOVING
+	var rev_with_active: int = adult_founder.get_order_revision()
+	assert_false(adult_founder.issue_personal_order(UnknownCustomOrder.new()), "A03-R04: unknown order must fail when unit has active order")
+	assert_eq(adult_founder.get_current_order(), active_valid, "A03-R04: previous valid order must remain active")
+	assert_eq(active_valid.status, UnitOrder.Status.RUNNING, "A03-R04: previous order must not be cancelled")
+	assert_eq(adult_founder.get_order_revision(), rev_with_active, "A03-R04: revision must not advance")
+	adult_founder._current_order = null
+	adult_founder._state = Unit.State.IDLE
+
+	# A03-R05: Known orders continue respecting exact age & affiliation matrix.
+	assert_true(UnitControlPermissions.can_receive_personal_order_for_order(adult_founder, MoveOrder.new(Vector3.ZERO)))
+	assert_true(UnitControlPermissions.can_receive_personal_order_for_order(adult_founder, DeliverToCampOrder.new()))
+	assert_true(UnitControlPermissions.can_receive_personal_order_for_order(adult_founder, ConstructOrder.new()))
+	assert_true(UnitControlPermissions.can_receive_personal_order_for_order(child_founder, MoveOrder.new(Vector3.ZERO)))
+	assert_true(UnitControlPermissions.can_receive_personal_order_for_order(child_founder, DeliverToCampOrder.new()))
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(child_founder, ConstructOrder.new()))
+	assert_false(UnitControlPermissions.can_receive_personal_order_for_order(adult_common, MoveOrder.new(Vector3.ZERO)))
