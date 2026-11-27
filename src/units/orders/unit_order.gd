@@ -11,6 +11,13 @@ enum Status {
 	CANCELLED,
 }
 
+enum OrderOrigin {
+	NONE,
+	PERSONAL,
+	COMMUNITY,
+	SYSTEM_RECOVERY,
+}
+
 const REASON_NONE: String = ""
 const REASON_CANCELLED: String = "cancelled"
 const REASON_REPLACED: String = "replaced"
@@ -25,6 +32,15 @@ const REASON_UNIT_EXITED: String = "unit_exited"
 
 var status: Status = Status.PENDING
 var failure_reason: String = REASON_NONE
+var _order_origin: OrderOrigin = OrderOrigin.NONE
+
+
+func get_order_origin() -> OrderOrigin:
+	return _order_origin
+
+
+func _set_order_origin(origin: OrderOrigin) -> void:
+	_order_origin = origin
 
 
 func get_order_name() -> String:

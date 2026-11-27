@@ -1030,14 +1030,30 @@ func test_group_e_cancellations_removals_navigation_callbacks_and_guards() -> vo
 	assert_true(w3.get_carry_load().enable_provenance(&"temp_w3"))
 	assert_true(w4.get_carry_load().enable_provenance(&"temp_w4"))
 
+	var c35_board := CommunityWorkBoard.new()
+	fx.main.add_child(c35_board)
+	_nodes_to_free.append(c35_board)
+	c35_board.configure(fx.region, w3.get_world_3d())
+
 	var slot_bush := await _spawn_source(fx, BUSH_SCENE, &"c35_bush_temp", Vector3(-1.5, 0.0, -3.5), 6, 2, 2, 0.25, 0.25, false)
+	var slot_bush_w4 := await _spawn_source(fx, BUSH_SCENE, &"c35_bush_temp_w4", Vector3(-0.2, 0.0, -3.5), 4, 2, 2, 0.04, 0.0, false)
 	_place_worker(fx, w3, Vector3(-3.0, 0.0, -3.5))
-	w3.issue_order(GatherResourceOrder.new(slot_bush, camp, inv, 0.25, 0.25, true, fx.region))
+	var reg_w3: Dictionary = c35_board.register_gather_task(slot_bush)
+	assert_true(bool(reg_w3.get("ok", false)))
+	var lease_w3: CommunityWorkBoard.DispatchLease = c35_board.begin_task_dispatch(reg_w3["task"] as WorkTask, w3)
+	assert_not_null(lease_w3)
+	assert_true(w3.issue_community_order(GatherResourceOrder.new(slot_bush, camp, inv, 0.25, 0.25, true, fx.region), lease_w3))
+	assert_true(c35_board.commit_task_dispatch(lease_w3))
 	assert_true(slot_bush.is_worker_reserved(w3))
-	# w4 gathers 2 food into backpack -> removal MUST be refused with cargo_in_backpack
-	_place_worker(fx, w4, Vector3(-1.0, 0.0, -3.5))
-	var w4_order := GatherResourceOrder.new(slot_bush, camp, inv, 0.04, 0.0, true, fx.region)
-	w4.issue_order(w4_order)
+	# w4 gathers 2 food into backpack via legitimate community task -> removal MUST be refused with cargo_in_backpack
+	_place_worker(fx, w4, Vector3(-0.8, 0.0, -3.5))
+	var reg_w4: Dictionary = c35_board.register_gather_task(slot_bush_w4)
+	assert_true(bool(reg_w4.get("ok", false)))
+	var lease_w4: CommunityWorkBoard.DispatchLease = c35_board.begin_task_dispatch(reg_w4["task"] as WorkTask, w4)
+	assert_not_null(lease_w4)
+	var w4_order := GatherResourceOrder.new(slot_bush_w4, camp, inv, 0.04, 0.0, true, fx.region)
+	assert_true(w4.issue_community_order(w4_order, lease_w4))
+	assert_true(c35_board.commit_task_dispatch(lease_w4))
 	assert_true(await _until(func() -> bool: return w4.get_carry_load().get_amount(&"food") == 2))
 	var check_blocked: Dictionary = temp_ctrl.can_remove_temporary_workers()
 	assert_false(bool(check_blocked.get("can_remove", true)))
@@ -1050,6 +1066,7 @@ func test_group_e_cancellations_removals_navigation_callbacks_and_guards() -> vo
 	assert_true(bool(check_ok.get("ok", false)), str(check_ok))
 	await wait_physics_frames(2)
 	assert_eq(slot_bush.get_active_worker_count(), 0, "Controlled worker removal must release source slot")
+	c35_board.teardown()
 
 	# 44. Navigation unavailable -> fails cleanly without premature stock credit or slot leak;
 	#     transient navigation sync -> pauses reactively without fail/credit, resumes cleanly on navigation_ready

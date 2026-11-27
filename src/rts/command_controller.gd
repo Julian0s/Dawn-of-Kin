@@ -92,8 +92,8 @@ func command_at(pick: PickResult) -> bool:
 		_last_command_reason = "navigation_not_ready"
 		return false
 
-	var units: Array[Unit] = _collect_commandable_units()
-	if units.is_empty():
+	var selected_units: Array[Unit] = _collect_commandable_units()
+	if selected_units.is_empty():
 		_last_command_reason = "no_commandable_units"
 		return false
 
@@ -119,12 +119,19 @@ func command_at(pick: PickResult) -> bool:
 			allow_snapped_anchor = true
 			marker_normal = Vector3.UP
 		PickResult.Kind.RESOURCE_SOURCE:
-			return _command_gather_resource(pick, units)
+			return _command_gather_resource(pick, selected_units)
 		PickResult.Kind.CONSTRUCTION_SITE:
-			return _command_supply_construction_site(pick, units)
+			return _command_supply_construction_site(pick, selected_units)
 		_:
 			_last_command_reason = "unsupported_pick_kind"
 			return false
+
+	var move_filter: Dictionary = _filter_personal_command_units(selected_units, UnitControlPermissions.PersonalCommandKind.MOVE)
+	var units: Array[Unit] = move_filter["eligible"] as Array[Unit]
+	if units.is_empty():
+		_last_command_reason = String(move_filter.get("first_reason", UnitControlPermissions.REASON_PERSONAL_CONTROL_DENIED))
+		command_rejected.emit(pick, _last_command_reason)
+		return false
 
 	if not requested_target.is_finite():
 		return false
@@ -171,7 +178,7 @@ func command_at(pick: PickResult) -> bool:
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
 		var order := MoveOrder.new(plan.targets[idx], requested_target, plan.adjusted_for_occupancy)
-		unit.issue_order(order)
+		unit.issue_personal_order(order)
 		if _is_order_accepted(unit, order):
 			started_count += 1
 		elif first_failure_reason.is_empty():
@@ -222,6 +229,86 @@ func command_units_to_gather(
 	return _execute_gather_resource(pick, target_units, show_marker, cut_authorization)
 
 
+func dispatch_community_gather(
+	source: ResourceSource,
+	unit: Unit,
+	cut_authorization: GatherResourceOrder.CutAuthorization,
+	dispatch_lease: CommunityWorkBoard.DispatchLease
+) -> Dictionary:
+	_resolve_dependencies()
+	_last_command_reason = ""
+	if source == null or not is_instance_valid(source) or not source.is_inside_tree():
+		_last_command_reason = "invalid_resource_source"
+		return _community_dispatch_result(false, _last_command_reason)
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
+		_last_command_reason = "invalid_unit"
+		return _community_dispatch_result(false, _last_command_reason)
+	if dispatch_lease == null:
+		_last_command_reason = "invalid_dispatch_lease"
+		return _community_dispatch_result(false, _last_command_reason)
+	if _world_navigation == null or not is_instance_valid(_world_navigation):
+		_last_command_reason = "missing_navigation"
+		return _community_dispatch_result(false, _last_command_reason)
+	if not _world_navigation.is_navigation_ready():
+		_last_command_reason = "navigation_not_ready"
+		return _community_dispatch_result(false, _last_command_reason)
+	if source.is_depleted():
+		_last_command_reason = "resource_source_depleted"
+		return _community_dispatch_result(false, _last_command_reason)
+	if not source.is_available():
+		_last_command_reason = "invalid_resource_source"
+		return _community_dispatch_result(false, _last_command_reason)
+	if _settlement_inventory == null or _camp_storage_zone == null or not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_valid():
+		_last_command_reason = GatherResourceOrder.REASON_MISSING_ECONOMY
+		return _community_dispatch_result(false, _last_command_reason)
+
+	if _use_provenance_economy:
+		var econ_reason: String = _economy_admission_reason
+		if econ_reason.is_empty():
+			econ_reason = _inspect_economic_command([unit], source)
+		if not econ_reason.is_empty():
+			_last_command_reason = econ_reason
+			return _community_dispatch_result(false, econ_reason)
+
+	if unit.get_world_navigation() == null:
+		unit.set_world_navigation(_world_navigation)
+	if not source.has_worker_slot(unit):
+		_last_command_reason = GatherResourceOrder.REASON_NO_WORKER_SLOT
+		return _community_dispatch_result(false, _last_command_reason)
+
+	var order := GatherResourceOrder.new(
+		source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0,
+		_use_provenance_economy, _economy_region_id, cut_authorization
+	)
+	var accepted: bool = unit.issue_community_order(order, dispatch_lease)
+	if not accepted:
+		var unit_reason: String = _resolve_order_rejection_reason(unit, order)
+		_last_command_reason = unit_reason if not unit_reason.is_empty() else "dispatch_rejected"
+		return _community_dispatch_result(false, _last_command_reason, order)
+
+	var installed_revision: int = unit.get_order_revision()
+	var completed_sync: bool = order.is_succeeded()
+	var pick := PickResult.from_resource_source(source, source.global_position, Vector3.UP)
+	command_issued.emit(pick, source.global_position, 1, true)
+	return _community_dispatch_result(true, "", order, installed_revision, completed_sync)
+
+
+static func _community_dispatch_result(
+	ok: bool,
+	reason: String,
+	order: GatherResourceOrder = null,
+	installed_revision: int = -1,
+	completed_synchronously: bool = false
+) -> Dictionary:
+	return {
+		"ok": ok,
+		"reason": reason,
+		"order": order,
+		"installed_revision": installed_revision,
+		"completed_synchronously": completed_synchronously,
+	}
+
+
 func _command_gather_resource(pick: PickResult, units: Array[Unit]) -> bool:
 	var result: Dictionary = _execute_gather_resource(pick, units, true)
 	return bool(result.get("ok", false))
@@ -238,25 +325,33 @@ func _execute_gather_resource(
 		return _gather_command_result(false, _last_command_reason)
 
 	var source: ResourceSource = pick.resource_source
-	if not _admit_economic_command(pick, units, source):
-		return _gather_command_result(false, _last_command_reason)
+	var cmd_kind: UnitControlPermissions.PersonalCommandKind = UnitControlPermissions.personal_command_kind_for_resource_source(source)
+	var filter_res: Dictionary = _filter_personal_command_units(units, cmd_kind)
+	var eligible_units: Array[Unit] = filter_res["eligible"] as Array[Unit]
+	var rejected_reasons: Dictionary = (filter_res["rejected_reasons"] as Dictionary).duplicate()
+	if eligible_units.is_empty():
+		_last_command_reason = String(filter_res.get("first_reason", UnitControlPermissions.REASON_PERSONAL_CONTROL_DENIED))
+		command_rejected.emit(pick, _last_command_reason)
+		return _gather_command_result(false, _last_command_reason, [], {}, rejected_reasons)
+
+	if not _admit_economic_command(pick, eligible_units, source):
+		return _gather_command_result(false, _last_command_reason, [], {}, rejected_reasons)
 	if source.is_depleted():
 		_last_command_reason = "resource_source_depleted"
-		return _gather_command_result(false, _last_command_reason)
+		return _gather_command_result(false, _last_command_reason, [], {}, rejected_reasons)
 	if not source.is_available():
 		_last_command_reason = "invalid_resource_source"
-		return _gather_command_result(false, _last_command_reason)
+		return _gather_command_result(false, _last_command_reason, [], {}, rejected_reasons)
 
 	if _settlement_inventory == null or _camp_storage_zone == null or not is_instance_valid(_camp_storage_zone) or not _camp_storage_zone.is_valid():
 		_last_command_reason = GatherResourceOrder.REASON_MISSING_ECONOMY
-		return _gather_command_result(false, _last_command_reason)
+		return _gather_command_result(false, _last_command_reason, [], {}, rejected_reasons)
 
 	var assigned_units: Array[Unit] = []
 	var assigned_orders: Dictionary = {}
-	var rejected_reasons: Dictionary = {}
 	var first_failure_reason: String = ""
 
-	for unit: Unit in units:
+	for unit: Unit in eligible_units:
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
 
@@ -270,7 +365,7 @@ func _execute_gather_resource(
 			source, _camp_storage_zone, _settlement_inventory, -1.0, -1.0,
 			_use_provenance_economy, _economy_region_id, cut_authorization
 		)
-		unit.issue_order(order)
+		unit.issue_personal_order(order)
 		if _is_order_accepted(unit, order):
 			assigned_units.append(unit)
 			assigned_orders[unit.get_instance_id()] = order
@@ -345,18 +440,25 @@ func _command_supply_construction_site(pick: PickResult, units: Array[Unit]) -> 
 		_last_command_reason = ConstructOrder.REASON_INVALID_SITE
 		return false
 
-	if not _admit_economic_command(pick, units, site):
+	var site_filter: Dictionary = _filter_personal_command_units(units, UnitControlPermissions.PersonalCommandKind.CONSTRUCT_SITE)
+	var eligible_units: Array[Unit] = site_filter["eligible"] as Array[Unit]
+	if eligible_units.is_empty():
+		_last_command_reason = String(site_filter.get("first_reason", UnitControlPermissions.REASON_PERSONAL_CONTROL_DENIED))
+		command_rejected.emit(pick, _last_command_reason)
+		return false
+
+	if not _admit_economic_command(pick, eligible_units, site):
 		return false
 	var started_count: int = 0
 	var first_failure_reason: String = ""
-	for unit: Unit in units:
+	for unit: Unit in eligible_units:
 		if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
 			continue
 		if unit.get_world_navigation() == null:
 			unit.set_world_navigation(_world_navigation)
 
 		var order := ConstructOrder.new(site, _camp_storage_zone, false, _use_provenance_economy, _use_provenance_economy)
-		unit.issue_order(order)
+		unit.issue_personal_order(order)
 		if _is_order_accepted(unit, order):
 			started_count += 1
 		elif first_failure_reason.is_empty():
@@ -425,9 +527,37 @@ func _is_order_accepted(unit: Unit, order: UnitOrder) -> bool:
 func _resolve_order_rejection_reason(unit: Unit, order: UnitOrder) -> String:
 	if order != null and not order.failure_reason.is_empty():
 		return order.failure_reason
-	if unit != null and is_instance_valid(unit) and (unit._is_reserved_withdrawal_locked() or (order != null and order.status == UnitOrder.Status.PENDING)):
-		return REASON_UNIT_TRANSACTION_LOCKED
+	if unit != null and is_instance_valid(unit):
+		var unit_reject: String = unit.get_last_order_rejection_reason()
+		if not unit_reject.is_empty():
+			return unit_reject
+		if unit._is_reserved_withdrawal_locked() or (order != null and order.status == UnitOrder.Status.PENDING):
+			return REASON_UNIT_TRANSACTION_LOCKED
 	return ""
+
+
+func _filter_personal_command_units(
+	units: Array[Unit],
+	command_kind: UnitControlPermissions.PersonalCommandKind
+) -> Dictionary:
+	var eligible: Array[Unit] = []
+	var rejected_reasons: Dictionary = {}
+	var first_reason: String = ""
+	for unit: Unit in units:
+		if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree():
+			continue
+		var reject_reason: String = UnitControlPermissions.get_personal_order_rejection_reason(unit, command_kind)
+		if reject_reason.is_empty():
+			eligible.append(unit)
+		else:
+			rejected_reasons[unit.get_instance_id()] = reject_reason
+			if first_reason.is_empty():
+				first_reason = reject_reason
+	return {
+		"eligible": eligible,
+		"rejected_reasons": rejected_reasons,
+		"first_reason": first_reason,
+	}
 
 
 func _collect_occupied_positions(commanded_units: Array[Unit]) -> Array[Vector3]:

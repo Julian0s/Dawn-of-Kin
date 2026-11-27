@@ -310,7 +310,12 @@ func _update_hover_at(screen_pos: Vector2) -> void:
 
 
 func _set_hovered_unit(unit: Unit) -> void:
-	var valid_unit: Unit = unit if (unit != null and is_instance_valid(unit) and unit.is_inside_tree()) else null
+	var valid_unit: Unit = unit if (
+		unit != null
+		and is_instance_valid(unit)
+		and unit.is_inside_tree()
+		and UnitControlPermissions.can_be_selected_visually(unit)
+	) else null
 	if _hovered_unit == valid_unit:
 		return
 

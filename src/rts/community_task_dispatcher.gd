@@ -646,6 +646,8 @@ func _collect_active_scene_units() -> Array[Unit]:
 func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String:
 	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
 		return "invalid_unit"
+	if not UnitControlPermissions.can_be_community_worker_base(unit):
+		return "community_work_denied"
 	if unit.get_current_order() != null and unit.get_current_order().is_active():
 		return "busy"
 	if unit.get_state() != Unit.State.IDLE:
@@ -680,14 +682,27 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	if not _check_pre_nav_eligibility(chosen_unit, task).is_empty():
 		return false
 
-	var pre_order_rev: int = chosen_unit.get_order_revision()
 	var authorization := task.tree_cut_authorization
 	if task.kind == WorkTask.Kind.GATHER_WOOD and authorization == null:
 		return false
-	var dispatch_res: Dictionary = _command_controller.command_units_to_gather(task.source, [chosen_unit], false, authorization)
-	var still_pending: bool = task.state == WorkTask.State.PENDING_WORKERS and task.tree_cut_authorization == authorization
+	var lease: CommunityWorkBoard.DispatchLease = _board.begin_task_dispatch(task, chosen_unit)
+	if lease == null:
+		return false
+
+	var dispatch_res: Dictionary = _command_controller.dispatch_community_gather(
+		task.source,
+		chosen_unit,
+		authorization,
+		lease
+	)
+	var order: GatherResourceOrder = dispatch_res.get("order") as GatherResourceOrder
+	var installed_revision: int = int(dispatch_res.get("installed_revision", -1))
+	var completed_sync: bool = bool(dispatch_res.get("completed_synchronously", false))
+
 	if not bool(dispatch_res.get("ok", false)):
-		if not still_pending:
+		_board.abort_task_dispatch(lease)
+		var still_pending_fail: bool = task.is_active() and task.state == WorkTask.State.PENDING_WORKERS and task.tree_cut_authorization == authorization
+		if not still_pending_fail:
 			return false
 		var reject_reason: String = String(dispatch_res.get("reason", "dispatch_rejected"))
 		if reject_reason in [
@@ -701,44 +716,57 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 			_mark_task_waiting(task, reject_reason, "")
 		return false
 
-	var assigned_orders: Dictionary = dispatch_res.get("assigned_orders", {}) as Dictionary
-	var order: GatherResourceOrder = assigned_orders.get(chosen_unit.get_instance_id()) as GatherResourceOrder
-	if not still_pending:
-		# The command can emit signals that close or reauthorize the task.
+	if not _board.is_dispatch_lease_valid_for_commit(lease):
+		_board.abort_task_dispatch(lease)
+		# The command can emit signals that close or reauthorize the task, or install a personal successor.
+		# Only cancel if the unit is still executing this exact community order instance and revision.
 		if (
 			order != null
 			and order.is_active()
 			and is_instance_valid(chosen_unit)
 			and chosen_unit.is_inside_tree()
 			and chosen_unit.get_current_order() == order
-			and chosen_unit.get_order_revision() > pre_order_rev
+			and chosen_unit.get_order_revision() == installed_revision
 		):
 			_apply_community_cancel_to_order(chosen_unit, order)
 		return false
-	if order == null:
-		_mark_task_waiting(task, "dispatch_rejected", "")
-		return false
-	if order.is_succeeded():
+
+	if completed_sync and order != null and order.is_succeeded():
+		_board.commit_task_dispatch(lease)
 		if not task.is_source_usable():
 			_board.close_task(task, WorkTask.State.COMPLETED, "")
+			task_feedback.emit(_completed_feedback(task.resource_id))
 		return true
-	if not order.is_active():
-		_mark_task_waiting(task, order.failure_reason if not order.failure_reason.is_empty() else "order_not_active", "")
+
+	if (
+		order == null
+		or not order.is_active()
+		or not is_instance_valid(chosen_unit)
+		or chosen_unit.get_current_order() != order
+		or chosen_unit.get_order_revision() != installed_revision
+	):
+		_board.abort_task_dispatch(lease)
+		if task.is_active() and task.state == WorkTask.State.PENDING_WORKERS:
+			var inactive_reason: String = order.failure_reason if (order != null and not order.failure_reason.is_empty()) else "order_not_active"
+			_mark_task_waiting(task, inactive_reason, "")
 		return false
-	if chosen_unit.get_current_order() != order:
+
+	if not _board.commit_task_dispatch(lease):
+		_board.abort_task_dispatch(lease)
+		if chosen_unit.get_current_order() == order and chosen_unit.get_order_revision() == installed_revision:
+			_apply_community_cancel_to_order(chosen_unit, order)
 		return false
 
 	task.assigned_unit = chosen_unit
 	task.assigned_order = order
-	task.assigned_order_revision = chosen_unit.get_order_revision()
-	var assigned_revision: int = task.assigned_order_revision
+	task.assigned_order_revision = installed_revision
 	task.state = WorkTask.State.IN_PROGRESS
 	task.last_reason = ""
 	_board.notify_task_updated(task)
 	if (
 		task.state != WorkTask.State.IN_PROGRESS or task.assigned_order != order
 		or task.tree_cut_authorization != authorization or not is_instance_valid(chosen_unit)
-		or chosen_unit.get_current_order() != order or chosen_unit.get_order_revision() != assigned_revision
+		or chosen_unit.get_current_order() != order or chosen_unit.get_order_revision() != installed_revision
 	):
 		return false
 	task_assigned.emit(task, chosen_unit, order)
@@ -854,6 +882,8 @@ func _collect_sorted_candidates(target_pos: Vector3) -> Array[Unit]:
 func _check_task_specific_eligibility(unit: Unit, task: WorkTask) -> String:
 	if task.excluded_unit_ids.has(unit.get_instance_id()):
 		return "manually_overridden"
+	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
+		return UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
 	var carry_load: UnitCarryLoad = unit.get_carry_load()
 	var def: ResourceDefinition = task.source.get_definition()
 	if carry_load == null or def == null or not def.is_valid():

@@ -586,7 +586,11 @@ func test_p5_02_transit_claim_refusal_inside_and_outside_default_sites_root() ->
 	assert_true(inside_site.configure(&"p502_in_site", &"p502_in_res", _make_custom_building_def(&"p502_in_def", {&"wood": 4}), inv, defs, &"default"))
 	assert_true(inv.reserve_batch(&"p502_in_res", {&"wood": 4}))
 	var pile_1: GroundResourcePile = manager.get_piles_for_resource(&"wood")[0]
-	w3.issue_order(ConstructOrder.new(inside_site, camp, 1.45, 0.1, true))
+	var c_order_in := ConstructOrder.new(inside_site, camp, true, true)
+	c_order_in._unit = w3
+	c_order_in.mark_running()
+	w3._current_order = c_order_in
+	assert_ne(inside_site.register_worker(w3, c_order_in, true), ConstructionSite.WorkerRole.UNASSIGNED)
 	assert_eq(inside_site.claim_pickup(w3, pile_1.pile_id, &"wood", 4), 4)
 	w3.global_position = manager.get_pile_world_position(pile_1)
 	var w_coord := ReservedWithdrawalCoordinator.new()
@@ -602,6 +606,8 @@ func test_p5_02_transit_claim_refusal_inside_and_outside_default_sites_root() ->
 	w3.global_position = _site_dropoff_pos(inside_site)
 	var site_coord := SelectiveSiteDeliveryCoordinator.new()
 	assert_true(bool(site_coord.execute_selective_site_delivery(inside_site, w3, &"p502_sd_in", {&"wood": 4}).get("ok", false)))
+	inside_site.unregister_worker(w3, c_order_in)
+	w3._current_order = null
 	w3.cancel_current_order("test_switch")
 
 	# B. Claim on valid ConstructionSite mounted OUTSIDE _construction_sites_root
@@ -615,7 +621,11 @@ func test_p5_02_transit_claim_refusal_inside_and_outside_default_sites_root() ->
 	assert_true(outside_site.configure(&"p502_out_site", &"p502_out_res", _make_custom_building_def(&"p502_out_def", {&"wood": 4}), inv, defs, &"default"))
 	assert_true(inv.reserve_batch(&"p502_out_res", {&"wood": 4}))
 	var pile_2: GroundResourcePile = manager.get_piles_for_resource(&"wood")[0]
-	w4.issue_order(ConstructOrder.new(outside_site, camp, 1.45, 0.1, true))
+	var c_order_out := ConstructOrder.new(outside_site, camp, true, true)
+	c_order_out._unit = w4
+	c_order_out.mark_running()
+	w4._current_order = c_order_out
+	assert_ne(outside_site.register_worker(w4, c_order_out, true), ConstructionSite.WorkerRole.UNASSIGNED)
 	assert_eq(outside_site.claim_pickup(w4, pile_2.pile_id, &"wood", 4), 4)
 	w4.global_position = manager.get_pile_world_position(pile_2)
 	assert_true(bool(w_coord.execute_reserved_withdrawal(outside_site, w4, pile_2.pile_id, &"wood", 4, &"p502_wd_out", &"p502_lot_out").get("ok", false)))
@@ -631,6 +641,8 @@ func test_p5_02_transit_claim_refusal_inside_and_outside_default_sites_root() ->
 	w4.global_position = _site_dropoff_pos(outside_site)
 	var sd_out_res: Dictionary = site_coord.execute_selective_site_delivery(outside_site, w4, &"p502_sd_out", {&"wood": 4})
 	assert_true(bool(sd_out_res.get("ok", false)), "p502 sd_out: %s" % str(sd_out_res))
+	outside_site.unregister_worker(w4, c_order_out)
+	w4._current_order = null
 	var rem_ok: Dictionary = ctrl.remove_temporary_workers_safely()
 	assert_true(bool(rem_ok.get("ok", false)), "Removal must succeed once obligations are cleared: %s" % str(rem_ok))
 	await get_tree().process_frame
@@ -731,8 +743,13 @@ func test_p5_04_uncancellable_order_no_partial_removal_and_multi_region_isolatio
 	assert_true(w3.get_carry_load().enable_provenance(&"p504_w3"))
 	assert_true(w4.get_carry_load().enable_provenance(&"p504_w4"))
 
-	# 1. Worker3 holds a cancellable order while Worker4 holds a NonCancellableOrder ->
+	# 1. Worker3 holds a cancellable community order while Worker4 holds a synthetic NonCancellableOrder ->
 	#    safe failure, w4's order stays intact, ZERO partial removal (both w3 and w4 remain in tree).
+	var p504_board := CommunityWorkBoard.new()
+	main.add_child(p504_board)
+	_extra_nodes.append(p504_board)
+	p504_board.configure(&"default", main.get_world_3d())
+
 	var bush: ResourceSource = BUSH_SCENE.instantiate() as ResourceSource
 	bush.source_id = &"p504_bush"
 	bush.initial_amount = 6
@@ -740,11 +757,20 @@ func test_p5_04_uncancellable_order_no_partial_removal_and_multi_region_isolatio
 	_extra_nodes.append(bush)
 	bush.global_position = Vector3(-2.5, 0.0, -3.5)
 	w3.global_position = Vector3(-4.0, 0.0, -3.5)
-	w3.issue_order(GatherResourceOrder.new(bush, camp, inv, 0.25, 0.25, true, &"default"))
+	var reg_1: Dictionary = p504_board.register_gather_task(bush)
+	assert_true(bool(reg_1.get("ok", false)))
+	var task_1: WorkTask = reg_1["task"] as WorkTask
+	var lease_1: CommunityWorkBoard.DispatchLease = p504_board.begin_task_dispatch(task_1, w3)
+	assert_not_null(lease_1)
+	assert_true(w3.issue_community_order(GatherResourceOrder.new(bush, camp, inv, 0.25, 0.25, true, &"default"), lease_1))
+	assert_true(p504_board.commit_task_dispatch(lease_1))
 	assert_true(bush.is_worker_reserved(w3))
 
+	# Fault-injection fixture setup for uncancellable active order on COMMUNITY Worker4.
 	var stuck := NonCancellableOrder.new()
-	w4.issue_order(stuck)
+	stuck.start(w4, w4.get_movement(), ctx["nav"] as WorldNavigation)
+	w4._current_order = stuck
+	w4._state = Unit.State.MOVING
 	assert_true(stuck.is_active())
 
 	var fail_res: Dictionary = ctrl.remove_temporary_workers_safely()
@@ -762,7 +788,14 @@ func test_p5_04_uncancellable_order_no_partial_removal_and_multi_region_isolatio
 	assert_null(w4.get_current_order())
 
 	# 2. Reentrant cargo injection during w3's order_finished callback -> Phase 3 revalidation aborts with ZERO partial removal!
-	w3.issue_order(GatherResourceOrder.new(bush, camp, inv, 0.25, 0.25, true, &"default"))
+	p504_board.close_task(task_1, WorkTask.State.CANCELLED, "reset_for_step_2")
+	var reg_2: Dictionary = p504_board.register_gather_task(bush)
+	assert_true(bool(reg_2.get("ok", false)))
+	var task_2: WorkTask = reg_2["task"] as WorkTask
+	var lease_2: CommunityWorkBoard.DispatchLease = p504_board.begin_task_dispatch(task_2, w3)
+	assert_not_null(lease_2)
+	assert_true(w3.issue_community_order(GatherResourceOrder.new(bush, camp, inv, 0.25, 0.25, true, &"default"), lease_2))
+	assert_true(p504_board.commit_task_dispatch(lease_2))
 	var injected_cargo: Array[bool] = [false]
 	var on_w3_order_finished := func(_ord: UnitOrder) -> void:
 		if not injected_cargo[0]:

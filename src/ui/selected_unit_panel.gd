@@ -21,6 +21,7 @@ enum BarTier {
 @onready var _unit_state_label: Label = $Margin/VBox/HeaderRow/UnitStateLabel
 @onready var _multi_summary_label: Label = $Margin/VBox/MultiSummaryLabel
 @onready var _single_content: VBoxContainer = $Margin/VBox/SingleUnitContent
+@onready var _inspection_meta_label: Label = get_node_or_null("Margin/VBox/SingleUnitContent/InspectionMetaLabel") as Label
 @onready var _carry_bar: ProgressBar = $Margin/VBox/SingleUnitContent/CarryBarRow/CarryProgressBar
 @onready var _percentage_label: Label = $Margin/VBox/SingleUnitContent/CarryBarRow/PercentageLabel
 @onready var _weight_label: Label = $Margin/VBox/SingleUnitContent/WeightLabel
@@ -32,6 +33,7 @@ var _mode: SelectionMode = SelectionMode.EMPTY
 var _selected_count: int = 0
 var _tracked_unit: Unit = null
 var _tracked_carry_load: UnitCarryLoad = null
+var _community_work_board: CommunityWorkBoard = null
 var _last_render_key: Dictionary = {}
 var _has_rendered: bool = false
 var _apply_count: int = 0
@@ -94,8 +96,25 @@ func set_selected_units(selected_units: Array[Unit]) -> void:
 	_render_current()
 
 
+func set_community_work_board(board: CommunityWorkBoard) -> void:
+	if _community_work_board == board:
+		return
+	_unbind_community_work_board()
+	_community_work_board = board
+	if _community_work_board != null and is_instance_valid(_community_work_board):
+		if not _community_work_board.task_registered.is_connected(_on_board_task_changed):
+			_community_work_board.task_registered.connect(_on_board_task_changed)
+		if not _community_work_board.task_updated.is_connected(_on_board_task_changed):
+			_community_work_board.task_updated.connect(_on_board_task_changed)
+		if not _community_work_board.task_closed.is_connected(_on_board_task_changed):
+			_community_work_board.task_closed.connect(_on_board_task_changed)
+	if is_node_ready():
+		_render_current()
+
+
 func unbind() -> void:
 	_unbind_tracked_unit()
+	_unbind_community_work_board()
 	_mode = SelectionMode.EMPTY
 	_selected_count = 0
 	if is_node_ready():
@@ -124,6 +143,12 @@ func get_header_text() -> String:
 
 func get_state_text() -> String:
 	return _unit_state_label.text if _unit_state_label != null else ""
+
+
+func get_inspection_meta_text() -> String:
+	if _inspection_meta_label == null or not _inspection_meta_label.visible:
+		return ""
+	return _inspection_meta_label.text
 
 
 func get_percentage_text() -> String:
@@ -205,6 +230,22 @@ func _unbind_tracked_unit() -> void:
 	_tracked_carry_load = null
 
 
+func _unbind_community_work_board() -> void:
+	if _community_work_board != null and is_instance_valid(_community_work_board):
+		if _community_work_board.task_registered.is_connected(_on_board_task_changed):
+			_community_work_board.task_registered.disconnect(_on_board_task_changed)
+		if _community_work_board.task_updated.is_connected(_on_board_task_changed):
+			_community_work_board.task_updated.disconnect(_on_board_task_changed)
+		if _community_work_board.task_closed.is_connected(_on_board_task_changed):
+			_community_work_board.task_closed.disconnect(_on_board_task_changed)
+	_community_work_board = null
+
+
+func _on_board_task_changed(_task: WorkTask) -> void:
+	if _mode == SelectionMode.SINGLE:
+		_render_current()
+
+
 func _on_unit_state_changed(_new_state: Unit.State, _previous_state: Unit.State) -> void:
 	_render_current()
 
@@ -239,6 +280,7 @@ func _build_render_key() -> Dictionary:
 			"count": 0,
 			"name": "",
 			"state": "",
+			"inspection_meta": "",
 			"display_pct": 0,
 			"fill_pct": 0.0,
 			"weight": 0,
@@ -257,6 +299,7 @@ func _build_render_key() -> Dictionary:
 			"count": _selected_count,
 			"name": "%d selecionados" % _selected_count,
 			"state": "",
+			"inspection_meta": "",
 			"display_pct": 0,
 			"fill_pct": 0.0,
 			"weight": 0,
@@ -276,6 +319,7 @@ func _build_render_key() -> Dictionary:
 		"count": 1,
 		"name": HudFormatter.format_unit_name(_tracked_unit),
 		"state": HudFormatter.format_unit_state(_tracked_unit.get_state()),
+		"inspection_meta": HudFormatter.format_unit_inspection_meta(_tracked_unit, _community_work_board),
 		"display_pct": int(carry.get("display_percentage", 0)),
 		"fill_pct": float(carry.get("fill_percentage", 0.0)),
 		"weight": int(carry.get("current_weight", 0)),
@@ -334,6 +378,10 @@ func _apply_render_key(key: Dictionary) -> void:
 		_multi_summary_label.visible = false
 	if _single_content != null:
 		_single_content.visible = true
+	if _inspection_meta_label != null:
+		var meta_text: String = str(key.get("inspection_meta", ""))
+		_inspection_meta_label.text = meta_text
+		_inspection_meta_label.visible = not meta_text.is_empty()
 
 	var fill_pct: float = clampf(float(key.get("fill_pct", 0.0)), 0.0, 100.0)
 	var display_pct: int = int(key.get("display_pct", 0))
@@ -409,6 +457,7 @@ static func _render_keys_match(a: Dictionary, b: Dictionary) -> bool:
 		and int(a.get("count", -1)) == int(b.get("count", -2))
 		and str(a.get("name", "")) == str(b.get("name", ""))
 		and str(a.get("state", "")) == str(b.get("state", ""))
+		and str(a.get("inspection_meta", "")) == str(b.get("inspection_meta", ""))
 		and int(a.get("display_pct", -1)) == int(b.get("display_pct", -2))
 		and is_equal_approx(float(a.get("fill_pct", -1.0)), float(b.get("fill_pct", -2.0)))
 		and int(a.get("weight", -1)) == int(b.get("weight", -2))

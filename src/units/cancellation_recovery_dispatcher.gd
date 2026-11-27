@@ -10,6 +10,20 @@ var _entries: Dictionary = {}
 var _pending: Array[Dictionary] = []
 var _flush_queued: bool = false
 var _assigning: bool = false
+var _admitting_unit: Unit = null
+var _admitting_order: RecoveryOrder = null
+var _admitting_explicit: bool = false
+
+
+func is_admitting_recovery(unit: Unit, order: RecoveryOrder, explicit: bool) -> bool:
+	return (
+		_assigning
+		and unit != null
+		and order != null
+		and _admitting_unit == unit
+		and _admitting_order == order
+		and _admitting_explicit == explicit
+	)
 
 
 func configure(inventory: SettlementInventory, camp: CampStorageZone, nav: WorldNavigation, region: StringName) -> void:
@@ -85,7 +99,10 @@ func _busy() -> bool:
 func _assign(cancel_id: StringName, unit: Unit, expected_revision: int, explicit: bool) -> bool:
 	if _assigning or _busy() or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion() or unit.get_order_revision() != expected_revision:
 		return false
+	if not UnitControlPermissions.can_perform_recovery_order(unit):
+		return false
 	var uid := unit.get_character_id()
+	var had_prior: bool = _entries.has(uid)
 	var prior: Dictionary = _entries.get(uid, {})
 	if not explicit and prior.get("manual", false):
 		return false
@@ -108,8 +125,26 @@ func _assign(cancel_id: StringName, unit: Unit, expected_revision: int, explicit
 	if not unit.order_finished.is_connected(callback):
 		unit.order_finished.connect(callback)
 	_assigning = true
-	unit.issue_order(order)
+	_admitting_unit = unit
+	_admitting_order = order
+	_admitting_explicit = explicit
+	var accepted: bool = unit.issue_recovery_order(order, expected_revision, explicit)
+	_admitting_unit = null
+	_admitting_order = null
+	_admitting_explicit = false
 	_assigning = false
+	if not accepted and unit.get_order_revision() == expected_revision:
+		if unit.order_finished.is_connected(callback):
+			unit.order_finished.disconnect(callback)
+		if had_prior:
+			_entries[uid] = prior
+			if prior.get("unit") is WeakRef:
+				var restored_prev := prior.unit.get_ref() as Unit
+				if is_instance_valid(restored_prev) and not restored_prev.order_finished.is_connected(prior.callback):
+					restored_prev.order_finished.connect(prior.callback)
+		else:
+			_entries.erase(uid)
+		return false
 	if unit.get_current_order() != order:
 		if not order.is_finished():
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)

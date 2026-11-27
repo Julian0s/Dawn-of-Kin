@@ -67,6 +67,25 @@ func _seed_shelter_stock(ctx: Dictionary) -> void:
 	assert_true(inventory.get_available_amount(&"stone") >= 6, "Seeded stone >= 6")
 
 
+func _spawn_founding_house_test_unit(ctx: Dictionary, node_name: String, id: StringName, pos: Vector3) -> Unit:
+	var units_root: Node3D = ctx["units_root"] as Node3D
+	var nav: WorldNavigation = ctx["nav"] as WorldNavigation
+	var unit_scene: PackedScene = preload("res://src/units/unit.tscn")
+	var def := CharacterDefinition.new()
+	def.character_id = id
+	def.display_name = node_name
+	def.house_affiliation = CharacterDefinition.HouseAffiliation.FOUNDING_HOUSE
+	def.founding_house_origin = CharacterDefinition.FoundingHouseOrigin.DIRECT_DESCENDANT
+	def.age_stage = CharacterDefinition.AgeStage.ADULT
+	var u: Unit = unit_scene.instantiate() as Unit
+	u.name = node_name
+	u.definition = def
+	u.position = pos
+	units_root.add_child(u)
+	u.set_world_navigation(nav)
+	return u
+
+
 func test_01_resolution_toggle_preserves_scene_sites_backpacks_and_camera() -> void:
 	var ctx: Dictionary = await _boot_main_scene()
 	_seed_shelter_stock(ctx)
@@ -177,6 +196,17 @@ func test_03_c4_three_workers_fourth_rejected_and_promotion_on_interrupt() -> vo
 	var site: ConstructionSite = site_res["site"] as ConstructionSite
 	overlay.set_inspected_site(site)
 
+	# R-03B B1 (B0-Q03 B): Worker3/Worker4 are COMMUNITY and do not receive personal site commands.
+	assert_eq(w3.get_definition().house_affiliation, CharacterDefinition.HouseAffiliation.COMMUNITY)
+	assert_eq(w4.get_definition().house_affiliation, CharacterDefinition.HouseAffiliation.COMMUNITY)
+	assert_false(command_ctrl.command_units_to_site(site, [w3]), "COMMUNITY Worker3 must reject personal site command")
+	assert_eq(command_ctrl.get_last_command_reason(), UnitControlPermissions.REASON_PERSONAL_CONTROL_DENIED)
+
+	# Local Founding House adult units to exercise D9 3-worker cap, 4th no_worker_slot rejection, and promotion.
+	var founder_c: Unit = _spawn_founding_house_test_unit(ctx, "FounderC", &"founder_c_c4", Vector3(-3.0, 0.0, 1.5))
+	var founder_d: Unit = _spawn_founding_house_test_unit(ctx, "FounderD", &"founder_d_c4", Vector3(-2.0, 0.0, 3.0))
+	await get_tree().process_frame
+
 	# C4-A: 1 worker
 	assert_true(command_ctrl.command_units_to_site(site, [leader_a]), "C4-A LeaderA assigned")
 	await get_tree().physics_frame
@@ -190,7 +220,7 @@ func test_03_c4_three_workers_fourth_rejected_and_promotion_on_interrupt() -> vo
 	assert_eq(entries_2.size(), 2, "C4-B has 2 workers")
 
 	# C4-C: 3 workers (1 transporter + 2 builders)
-	assert_true(command_ctrl.command_units_to_site(site, [w3]), "C4-C Worker3 assigned")
+	assert_true(command_ctrl.command_units_to_site(site, [founder_c]), "C4-C 3rd Founding House worker assigned")
 	await get_tree().physics_frame
 	var entries_3: Array[Dictionary] = site.get_assigned_worker_entries()
 	assert_eq(entries_3.size(), 3, "C4-C has 3 workers")
@@ -205,7 +235,7 @@ func test_03_c4_three_workers_fourth_rejected_and_promotion_on_interrupt() -> vo
 	assert_eq(b_count, 2, "C4-C has 2 builders")
 
 	# C4-D: 4th worker rejected + panel displays clear reason
-	var reject_ok: bool = command_ctrl.command_units_to_site(site, [w4])
+	var reject_ok: bool = command_ctrl.command_units_to_site(site, [founder_d])
 	assert_false(reject_ok, "C4-D 4th worker must be rejected")
 	assert_eq(command_ctrl.get_last_command_reason(), ConstructOrder.REASON_NO_WORKER_SLOT, "Reason is no_worker_slot")
 	assert_eq(site.get_assigned_worker_entries().size(), 3, "Previous 3 workers remain assigned")

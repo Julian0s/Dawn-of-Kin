@@ -42,6 +42,7 @@ signal order_finished(order: UnitOrder)
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
 var _order_revision: int = 0
+var _last_order_rejection_reason: String = ""
 ## A contribution follows the worker even when its active order changes sites.
 var _last_construction_work_frame: int = -1
 var _world_navigation: WorldNavigation = null
@@ -200,6 +201,10 @@ func get_order_revision() -> int:
 	return _order_revision
 
 
+func get_last_order_rejection_reason() -> String:
+	return _last_order_rejection_reason
+
+
 func get_definition() -> CharacterDefinition:
 	return definition
 
@@ -244,28 +249,178 @@ func _is_reserved_withdrawal_locked() -> bool:
 	return is_instance_valid(assigned_site) and bool(assigned_site.get("_is_preparing_or_transacting"))
 
 
-func issue_order(order: UnitOrder) -> void:
+func issue_order(order: UnitOrder) -> bool:
+	if order == null:
+		if _is_reserved_withdrawal_locked():
+			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+			return false
+		_last_order_rejection_reason = ""
+		return _clear_current_order_for_null_issue()
+	return issue_personal_order(order)
+
+
+func issue_personal_order(order: UnitOrder) -> bool:
 	if _is_reserved_withdrawal_locked():
-		return
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+	if order == null:
+		_last_order_rejection_reason = UnitControlPermissions.REASON_INVALID_ORDER
+		return false
+	if order.is_finished() or order.status != UnitOrder.Status.PENDING:
+		_last_order_rejection_reason = "order_not_pending"
+		return false
+	var reject_reason: String = UnitControlPermissions.get_personal_order_rejection_reason_for_order(self, order)
+	if not reject_reason.is_empty():
+		_last_order_rejection_reason = reject_reason
+		return false
+	_last_order_rejection_reason = ""
+	return _install_admitted_order(order, UnitOrder.OrderOrigin.PERSONAL)
+
+
+func issue_community_order(
+	order: GatherResourceOrder,
+	dispatch_lease: CommunityWorkBoard.DispatchLease
+) -> bool:
+	if _is_reserved_withdrawal_locked():
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+	if order == null or dispatch_lease == null:
+		_last_order_rejection_reason = "invalid_dispatch_lease"
+		return false
+	var board: CommunityWorkBoard = dispatch_lease.get_board()
+	if board == null or not is_instance_valid(board) or not board.is_inside_tree():
+		_last_order_rejection_reason = "invalid_dispatch_lease"
+		return false
+	if not board.validate_dispatch_lease_for_installation(dispatch_lease, self, order):
+		_last_order_rejection_reason = "invalid_dispatch_lease"
+		return false
+	if not board.mark_dispatch_lease_installing(dispatch_lease):
+		_last_order_rejection_reason = "invalid_dispatch_lease"
+		return false
+	_last_order_rejection_reason = ""
+	return _install_admitted_order(order, UnitOrder.OrderOrigin.COMMUNITY)
+
+
+func issue_recovery_order(
+	order: RecoveryOrder,
+	expected_revision: int,
+	explicit: bool = false
+) -> bool:
+	if _is_reserved_withdrawal_locked():
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+	if order == null or order.status != UnitOrder.Status.PENDING:
+		_last_order_rejection_reason = "invalid_recovery_order"
+		return false
+	if not is_inside_tree() or is_queued_for_deletion():
+		_last_order_rejection_reason = UnitOrder.REASON_UNIT_NOT_IN_TREE
+		return false
+	if not UnitControlPermissions.can_perform_recovery_order(self):
+		_last_order_rejection_reason = UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
+		return false
+	if _order_revision != expected_revision:
+		_last_order_rejection_reason = "obsolete_order_revision"
+		return false
+	var dispatcher: CancellationRecoveryDispatcher = order.get_dispatcher()
+	if (
+		dispatcher == null
+		or not is_instance_valid(dispatcher)
+		or not dispatcher.is_inside_tree()
+		or not dispatcher.is_admitting_recovery(self, order, explicit)
+	):
+		_last_order_rejection_reason = "unadmitted_recovery_order"
+		return false
+	var world: World3D = get_world_3d()
+	if world == null:
+		_last_order_rejection_reason = "invalid_domain"
+		return false
+	if ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, order.region_id):
+		_last_order_rejection_reason = "regional_transaction_active"
+		return false
+	var record: ReservedWithdrawalCoordinator.CancellationCustodyRecord = CancellationRecoveryTransaction._record(
+		world,
+		order.region_id,
+		order.cancel_id
+	)
+	if record == null or not record.has_unsettled_custody():
+		_last_order_rejection_reason = "no_unsettled_custody"
+		return false
+	var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+		world,
+		order.region_id,
+		self,
+		_carry_load,
+		get_tree()
+	)
+	if not bool(id_check.get("ok", false)):
+		_last_order_rejection_reason = String(id_check.get("reason", "ambiguous_unit_identity"))
+		return false
+
+	# F02: Strict T1a (idle) or T1b (ConstructOrder on this exact CANCELLED site, not transacting).
+	if _current_order != null and _current_order.is_active():
+		if not (_current_order is ConstructOrder):
+			_last_order_rejection_reason = "unit_busy_for_recovery"
+			return false
+		var c_order: ConstructOrder = _current_order as ConstructOrder
+		if (
+			c_order.site == null
+			or not is_instance_valid(c_order.site)
+			or c_order.site.site_id != record.site_id
+			or c_order.site.get_site_state() != ConstructionSite.SiteState.CANCELLED
+			or c_order.is_transfer_executing_readonly()
+		):
+			_last_order_rejection_reason = "unit_busy_for_recovery"
+			return false
+	elif _state != State.IDLE:
+		_last_order_rejection_reason = "unit_not_idle"
+		return false
+
+	_last_order_rejection_reason = ""
+	return _install_admitted_order(order, UnitOrder.OrderOrigin.SYSTEM_RECOVERY)
+
+
+func _clear_current_order_for_null_issue() -> bool:
 	_order_revision += 1
 	var issued_revision := _order_revision
 	if _current_order != null and _current_order.is_active():
 		var previous_order: UnitOrder = _current_order
 		_current_order = null
 		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
+		if not previous_order.is_finished():
+			if _current_order == null and _order_revision == issued_revision:
+				_current_order = previous_order
+			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+			return false
+		order_finished.emit(previous_order)
+		if _order_revision != issued_revision:
+			return false
+	if _movement != null:
+		_movement.stop_movement()
+	_set_state(State.IDLE)
+	return true
+
+
+func _install_admitted_order(order: UnitOrder, origin: UnitOrder.OrderOrigin) -> bool:
+	_order_revision += 1
+	var issued_revision := _order_revision
+	if _current_order != null and _current_order.is_active():
+		var previous_order: UnitOrder = _current_order
+		_current_order = null
+		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
+		if not previous_order.is_finished():
+			if _current_order == null and _order_revision == issued_revision:
+				_current_order = previous_order
+			order.mark_cancelled(UnitOrder.REASON_REPLACED)
+			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+			return false
 		order_finished.emit(previous_order)
 		if _order_revision != issued_revision:
 			# A callback accepted a newer command. Do not stop or overwrite its movement.
-			if order != null:
-				order.mark_cancelled(UnitOrder.REASON_REPLACED)
-			return
+			order.mark_cancelled(UnitOrder.REASON_REPLACED)
+			_last_order_rejection_reason = UnitOrder.REASON_REPLACED
+			return false
 
-	if order == null:
-		if _movement != null:
-			_movement.stop_movement()
-		_set_state(State.IDLE)
-		return
-
+	order._set_order_origin(origin)
 	if _world_navigation == null and _movement != null:
 		_world_navigation = _movement.get_world_navigation()
 
@@ -274,17 +429,21 @@ func issue_order(order: UnitOrder) -> void:
 	_order_state_explicit = false
 	order.start(self, _movement, _world_navigation)
 	if _order_revision != issued_revision or _current_order != order:
-		return
+		return false
 
 	if order.is_finished():
 		var finished_order: UnitOrder = _current_order
 		_current_order = null
 		_set_state(State.IDLE)
 		order_finished.emit(finished_order)
-		return
+		if finished_order.is_succeeded():
+			return true
+		_last_order_rejection_reason = finished_order.failure_reason
+		return false
 
 	if not _order_state_explicit:
 		_set_state(State.MOVING)
+	return true
 
 
 func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:

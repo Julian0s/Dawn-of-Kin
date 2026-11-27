@@ -606,6 +606,9 @@ func _create_worker_definition(
 	def.primary_color = primary
 	def.secondary_color = secondary
 	def.base_carry_capacity = 20
+	def.house_affiliation = CharacterDefinition.HouseAffiliation.COMMUNITY
+	def.founding_house_origin = CharacterDefinition.FoundingHouseOrigin.NONE
+	def.age_stage = CharacterDefinition.AgeStage.ADULT
 	return def
 
 

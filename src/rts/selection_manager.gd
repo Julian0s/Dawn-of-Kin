@@ -187,7 +187,12 @@ func _emit_selection_changed() -> void:
 
 
 static func _is_selectable_unit(unit: Unit) -> bool:
-	return unit != null and is_instance_valid(unit) and unit.is_inside_tree()
+	return (
+		unit != null
+		and is_instance_valid(unit)
+		and unit.is_inside_tree()
+		and UnitControlPermissions.can_be_selected_visually(unit)
+	)
 
 
 static func _arrays_match(a: Array[Unit], b: Array[Unit]) -> bool:

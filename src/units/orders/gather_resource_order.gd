@@ -196,6 +196,10 @@ func get_active_gather_session() -> GatherTransferSession:
 	return _active_gather_session
 
 
+func get_tree_cut_authorization() -> CutAuthorization:
+	return _tree_cut_authorization
+
+
 func is_provenance_transfer_executing() -> bool:
 	if not use_provenance_transactions or status != Status.RUNNING:
 		return false

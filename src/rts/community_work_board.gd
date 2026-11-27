@@ -7,15 +7,84 @@ signal task_registered(task: WorkTask)
 signal task_updated(task: WorkTask)
 signal task_closed(task: WorkTask)
 
+
+class DispatchLease extends RefCounted:
+	enum State {
+		ACTIVE,
+		INSTALLING,
+		COMMITTED,
+		ABORTED,
+		REVOKED,
+	}
+
+	var _lease_id: int = 0
+	var _board_ref: WeakRef = null
+	var _task_ref: WeakRef = null
+	var _task_id: int = 0
+	var _unit_ref: WeakRef = null
+	var _source_ref: WeakRef = null
+	var _region_id: StringName = &""
+	var _resource_id: StringName = &""
+	var _task_kind: WorkTask.Kind = WorkTask.Kind.GATHER_WOOD
+	var _cut_authorization: GatherResourceOrder.CutAuthorization = null
+	var _expected_unit_revision: int = -1
+	var _state: State = State.REVOKED
+
+	func get_lease_id() -> int:
+		return _lease_id
+
+	func get_board() -> CommunityWorkBoard:
+		return (_board_ref.get_ref() as CommunityWorkBoard) if _board_ref != null else null
+
+	func get_task() -> WorkTask:
+		return (_task_ref.get_ref() as WorkTask) if _task_ref != null else null
+
+	func get_task_id() -> int:
+		return _task_id
+
+	func get_unit() -> Unit:
+		return (_unit_ref.get_ref() as Unit) if _unit_ref != null else null
+
+	func get_source() -> ResourceSource:
+		return (_source_ref.get_ref() as ResourceSource) if _source_ref != null else null
+
+	func get_region_id() -> StringName:
+		return _region_id
+
+	func get_resource_id() -> StringName:
+		return _resource_id
+
+	func get_task_kind() -> WorkTask.Kind:
+		return _task_kind
+
+	func get_cut_authorization() -> GatherResourceOrder.CutAuthorization:
+		return _cut_authorization
+
+	func get_expected_unit_revision() -> int:
+		return _expected_unit_revision
+
+	func get_state() -> State:
+		return _state
+
+	func is_active() -> bool:
+		return _state == State.ACTIVE
+
+	func is_installing() -> bool:
+		return _state == State.INSTALLING
+
+
 const SUPPORTED_RESOURCE_IDS: Array[StringName] = [&"wood", &"stone", &"food"]
 
 var _region_id: StringName = &"default"
 var _expected_world_ref: WeakRef = null
 var _next_task_id: int = 1
 var _next_group_id: int = 1
+var _next_lease_id: int = 1
 var _tasks: Array[WorkTask] = []
 var _active_by_source_id: Dictionary = {}
 var _source_callbacks: Dictionary = {}
+var _pending_leases_by_task_id: Dictionary = {}
+var _active_leases_by_id: Dictionary = {}
 
 
 func _ready() -> void:
@@ -28,6 +97,12 @@ func _exit_tree() -> void:
 
 
 func teardown() -> void:
+	for lease_var: Variant in _active_leases_by_id.values():
+		var lease: DispatchLease = lease_var as DispatchLease
+		if lease != null:
+			lease._state = DispatchLease.State.REVOKED
+	_active_leases_by_id.clear()
+	_pending_leases_by_task_id.clear()
 	var previous_tasks: Array[WorkTask] = _tasks.duplicate()
 	for source_id_key: Variant in _source_callbacks.keys():
 		var sid: int = int(source_id_key)
@@ -276,6 +351,197 @@ func get_all_tasks() -> Array[WorkTask]:
 	return _tasks.duplicate()
 
 
+func get_active_task_for_unit(unit: Unit) -> WorkTask:
+	if unit == null or not is_instance_valid(unit):
+		return null
+	for task: WorkTask in _tasks:
+		if (
+			task != null
+			and task.state == WorkTask.State.IN_PROGRESS
+			and task.assigned_unit == unit
+			and task.assigned_order != null
+			and task.assigned_order.is_active()
+		):
+			return task
+	return null
+
+
+func has_pending_dispatch_lease(task_id: int) -> bool:
+	return _pending_leases_by_task_id.has(task_id)
+
+
+func begin_task_dispatch(task: WorkTask, unit: Unit) -> DispatchLease:
+	if not is_inside_tree() or task == null or not _tasks.has(task):
+		return null
+	if task.state != WorkTask.State.PENDING_WORKERS or task.assigned_unit != null or task.assigned_order != null:
+		return null
+	if _pending_leases_by_task_id.has(task.task_id):
+		return null
+	if not task.is_source_usable() or task.region_id != _region_id or not is_source_in_region_domain(task.source):
+		return null
+	if task.kind == WorkTask.Kind.GATHER_WOOD:
+		if task.tree_cut_authorization == null or not task.tree_cut_authorization.is_valid_for(task.source):
+			return null
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return null
+	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
+		return null
+	if unit.get_current_order() != null or unit.get_state() != Unit.State.IDLE:
+		return null
+	if task.excluded_unit_ids.has(unit.get_instance_id()):
+		return null
+	if unit.get_world_3d() != task.source.get_world_3d():
+		return null
+	if _unit_has_pending_lease(unit):
+		return null
+
+	var lease := DispatchLease.new()
+	lease._lease_id = _next_lease_id
+	_next_lease_id += 1
+	lease._board_ref = weakref(self)
+	lease._task_ref = weakref(task)
+	lease._task_id = task.task_id
+	lease._unit_ref = weakref(unit)
+	lease._source_ref = weakref(task.source)
+	lease._region_id = _region_id
+	lease._resource_id = task.resource_id
+	lease._task_kind = task.kind
+	lease._cut_authorization = task.tree_cut_authorization
+	lease._expected_unit_revision = unit.get_order_revision()
+	lease._state = DispatchLease.State.ACTIVE
+
+	_pending_leases_by_task_id[task.task_id] = lease
+	_active_leases_by_id[lease._lease_id] = lease
+	return lease
+
+
+func validate_dispatch_lease_for_installation(
+	lease: DispatchLease,
+	unit: Unit,
+	order: GatherResourceOrder
+) -> bool:
+	if lease == null or not is_inside_tree():
+		return false
+	if lease.get_board() != self:
+		return false
+	if _active_leases_by_id.get(lease._lease_id) != lease:
+		return false
+	if lease._state != DispatchLease.State.ACTIVE:
+		return false
+	var task: WorkTask = lease.get_task()
+	if task == null or not _tasks.has(task) or _pending_leases_by_task_id.get(task.task_id) != lease:
+		return false
+	if task.state != WorkTask.State.PENDING_WORKERS or task.assigned_unit != null or task.assigned_order != null:
+		return false
+	if not task.is_source_usable() or task.region_id != _region_id or lease._region_id != _region_id or not is_source_in_region_domain(task.source):
+		return false
+	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
+		return false
+	if lease.get_unit() != unit:
+		return false
+	if unit.get_order_revision() != lease._expected_unit_revision:
+		return false
+	if unit.get_current_order() != null or unit.get_state() != Unit.State.IDLE:
+		return false
+	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
+		return false
+	if order == null or order.status != UnitOrder.Status.PENDING:
+		return false
+	if order.source == null or order.source != task.source or order.source != lease.get_source():
+		return false
+	if order.source.get_resource_id() != task.resource_id or task.resource_id != lease._resource_id:
+		return false
+	if not UnitControlPermissions.can_participate_in_community_work_for_order(unit, order):
+		return false
+	if unit.get_world_3d() != task.source.get_world_3d():
+		return false
+	if order.use_provenance_transactions:
+		if order.region_id != _region_id:
+			return false
+		if unit.has_meta(&"region_id") and unit.get_meta(&"region_id") != _region_id:
+			return false
+	if task.kind == WorkTask.Kind.GATHER_WOOD:
+		if (
+			task.tree_cut_authorization == null
+			or task.tree_cut_authorization != lease._cut_authorization
+			or order.get_tree_cut_authorization() != task.tree_cut_authorization
+			or not task.tree_cut_authorization.is_valid_for(task.source)
+		):
+			return false
+	return true
+
+
+func mark_dispatch_lease_installing(lease: DispatchLease) -> bool:
+	if lease == null or _active_leases_by_id.get(lease._lease_id) != lease:
+		return false
+	if lease._state != DispatchLease.State.ACTIVE:
+		return false
+	lease._state = DispatchLease.State.INSTALLING
+	return true
+
+
+func is_dispatch_lease_valid_for_commit(lease: DispatchLease) -> bool:
+	if lease == null or not is_inside_tree():
+		return false
+	if lease.get_board() != self or _active_leases_by_id.get(lease._lease_id) != lease:
+		return false
+	if lease._state != DispatchLease.State.INSTALLING:
+		return false
+	var task: WorkTask = lease.get_task()
+	if task == null or not _tasks.has(task) or _pending_leases_by_task_id.get(task.task_id) != lease:
+		return false
+	if task.state != WorkTask.State.PENDING_WORKERS or task.assigned_unit != null or task.assigned_order != null:
+		return false
+	if task.region_id != _region_id or lease._region_id != _region_id:
+		return false
+	if task.kind == WorkTask.Kind.GATHER_WOOD:
+		if task.tree_cut_authorization == null or task.tree_cut_authorization != lease._cut_authorization:
+			return false
+	return true
+
+
+func commit_task_dispatch(lease: DispatchLease) -> bool:
+	if not is_dispatch_lease_valid_for_commit(lease):
+		return false
+	lease._state = DispatchLease.State.COMMITTED
+	if _pending_leases_by_task_id.get(lease._task_id) == lease:
+		_pending_leases_by_task_id.erase(lease._task_id)
+	_active_leases_by_id.erase(lease._lease_id)
+	return true
+
+
+func abort_task_dispatch(lease: DispatchLease) -> void:
+	if lease == null:
+		return
+	if _active_leases_by_id.get(lease._lease_id) != lease:
+		return
+	if lease._state == DispatchLease.State.ACTIVE or lease._state == DispatchLease.State.INSTALLING:
+		lease._state = DispatchLease.State.ABORTED
+	if _pending_leases_by_task_id.get(lease._task_id) == lease:
+		_pending_leases_by_task_id.erase(lease._task_id)
+	_active_leases_by_id.erase(lease._lease_id)
+
+
+func _revoke_pending_lease_for_task(task: WorkTask) -> void:
+	if task == null:
+		return
+	if not _pending_leases_by_task_id.has(task.task_id):
+		return
+	var lease: DispatchLease = _pending_leases_by_task_id[task.task_id] as DispatchLease
+	_pending_leases_by_task_id.erase(task.task_id)
+	if lease != null:
+		lease._state = DispatchLease.State.REVOKED
+		_active_leases_by_id.erase(lease._lease_id)
+
+
+func _unit_has_pending_lease(unit: Unit) -> bool:
+	for lease_var: Variant in _active_leases_by_id.values():
+		var lease: DispatchLease = lease_var as DispatchLease
+		if lease != null and (lease._state == DispatchLease.State.ACTIVE or lease._state == DispatchLease.State.INSTALLING) and lease.get_unit() == unit:
+			return true
+	return false
+
+
 func get_cancellable_tasks_for_sources(
 	sources: Array[ResourceSource],
 	resource_id: StringName
@@ -327,6 +593,7 @@ func reauthorize_gather_task(task: WorkTask) -> Dictionary:
 	if not is_source_in_region_domain(task.source):
 		return {"ok": false, "reauthorized": false, "task": task, "reason": "region_mismatch"}
 
+	_revoke_pending_lease_for_task(task)
 	task.excluded_unit_ids.clear()
 	task.state = WorkTask.State.PENDING_WORKERS
 	task.last_reason = ""
@@ -338,6 +605,7 @@ func reauthorize_gather_task(task: WorkTask) -> Dictionary:
 func block_for_reauthorization(task: WorkTask) -> void:
 	if task == null or task.state != WorkTask.State.PENDING_WORKERS or not _tasks.has(task):
 		return
+	_revoke_pending_lease_for_task(task)
 	task.state = WorkTask.State.BLOCKED_REAUTHORIZATION
 	task.last_reason = WorkTask.REASON_ALL_WORKERS_EXCLUDED
 	task.revoke_tree_cut()
@@ -351,6 +619,7 @@ func close_task(task: WorkTask, final_state: WorkTask.State, reason: String = ""
 	if final_state != WorkTask.State.COMPLETED and final_state != WorkTask.State.FAILED and final_state != WorkTask.State.CANCELLED:
 		return
 
+	_revoke_pending_lease_for_task(task)
 	var sid: int = _find_source_id_for_task(task)
 	if sid != 0:
 		_active_by_source_id.erase(sid)

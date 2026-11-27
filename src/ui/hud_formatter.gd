@@ -35,6 +35,37 @@ static func format_unit_name(unit: Unit) -> String:
 	return "Personagem"
 
 
+static func format_resource_label(resource_id: StringName) -> String:
+	match resource_id:
+		&"wood":
+			return "Madeira"
+		&"stone":
+			return "Pedra"
+		&"food":
+			return "Alimentos"
+		_:
+			return String(resource_id)
+
+
+static func format_unit_inspection_meta(unit: Unit, community_board: CommunityWorkBoard = null) -> String:
+	if not UnitControlPermissions.is_read_only_community_unit(unit):
+		return ""
+	var base_text: String = "Morador — somente leitura"
+	if community_board != null and is_instance_valid(community_board):
+		var active_task: WorkTask = community_board.get_active_task_for_unit(unit)
+		if active_task != null:
+			return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(active_task.resource_id)]
+	var active_order: UnitOrder = unit.get_current_order()
+	if active_order is RecoveryOrder:
+		return "%s · Recuperação de materiais" % base_text
+	if active_order is GatherResourceOrder and active_order.get_order_origin() == UnitOrder.OrderOrigin.COMMUNITY:
+		var gather_order: GatherResourceOrder = active_order as GatherResourceOrder
+		var src: ResourceSource = gather_order.source
+		if src != null and is_instance_valid(src):
+			return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(src.get_resource_id())]
+	return base_text
+
+
 static func compute_display_percentage(current_weight: int, effective_capacity: int, raw_percentage: float) -> int:
 	if current_weight <= 0:
 		return 0

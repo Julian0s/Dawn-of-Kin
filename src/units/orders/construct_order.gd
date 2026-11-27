@@ -256,13 +256,17 @@ func _carry_admission_failure() -> String:
 
 
 func _defer_transfer_replan() -> bool:
-	if _provenance_transfer == null:
-		return false
-	var sub_executing: bool = _deliver_suborder != null and _deliver_suborder.is_selective_transfer_executing()
-	if not _provenance_transfer.is_executing and not sub_executing and (not is_instance_valid(site) or not site._is_preparing_or_transacting):
+	if not is_transfer_executing_readonly():
 		return false
 	_replan_requested = true
 	return true
+
+
+func is_transfer_executing_readonly() -> bool:
+	if _provenance_transfer == null:
+		return false
+	var sub_executing: bool = _deliver_suborder != null and _deliver_suborder.is_selective_transfer_executing()
+	return _provenance_transfer.is_executing or sub_executing or (is_instance_valid(site) and site._is_preparing_or_transacting)
 
 
 func _handle_provenance_transfer_result(kind: ConstructionTransferSession.Kind, result: Dictionary) -> void:

@@ -78,6 +78,8 @@ func _ready() -> void:
 			_settlement_inventory, _camp_storage_zone, _economy_region_id,
 			use_provenance_economy, _economy_admission_reason
 		)
+		if not _command_controller.command_rejected.is_connected(_on_command_rejected):
+			_command_controller.command_rejected.connect(_on_command_rejected)
 
 	if _economy_admission_reason.is_empty():
 		_setup_placement(world_nav)
@@ -105,7 +107,13 @@ func _ready() -> void:
 				legacy_unit_panel.visible = false
 		_setup_d2_hud()
 	elif _resource_hud != null:
-		_resource_hud.configure(_settlement_inventory, _selection_manager, _camp_storage_zone, _ground_pile_manager)
+		_resource_hud.configure(
+			_settlement_inventory,
+			_selection_manager,
+			_camp_storage_zone,
+			_ground_pile_manager,
+			_community_work_board
+		)
 
 
 func _setup_d2_hud() -> void:
@@ -311,9 +319,22 @@ func _on_placement_confirmed(
 		_construction_manager.try_create_site_from_placement(definition, world_position)
 
 
+func _on_command_rejected(_pick: PickResult, reason: String) -> void:
+	if _autonomous_gather_feedback == null or not is_instance_valid(_autonomous_gather_feedback):
+		return
+	match reason:
+		UnitControlPermissions.REASON_PERSONAL_CONTROL_DENIED:
+			_autonomous_gather_feedback.show_message("Moradores da comunidade não recebem comandos diretos.")
+		UnitControlPermissions.REASON_AGE_RESTRICTED_TASK:
+			_autonomous_gather_feedback.show_message("Esta unidade não pode executar esta tarefa pesada.")
+
+
 func _exit_tree() -> void:
 	_teardown_community_work()
 	_community_extra_sources_root = null
+	if _command_controller != null and is_instance_valid(_command_controller):
+		if _command_controller.command_rejected.is_connected(_on_command_rejected):
+			_command_controller.command_rejected.disconnect(_on_command_rejected)
 	if _placement_controller != null and is_instance_valid(_placement_controller):
 		if _placement_controller.placement_confirmed.is_connected(_on_placement_confirmed):
 			_placement_controller.placement_confirmed.disconnect(_on_placement_confirmed)

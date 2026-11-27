@@ -36,6 +36,12 @@ func get_order_name() -> String:
 	return "RecoveryOrder"
 
 
+func get_dispatcher() -> CancellationRecoveryDispatcher:
+	if _dispatcher == null:
+		return null
+	return _dispatcher.get_ref() as CancellationRecoveryDispatcher
+
+
 func get_reserved_target() -> Vector3:
 	if _delegate != null:
 		return _delegate.get("resolved_target") as Vector3

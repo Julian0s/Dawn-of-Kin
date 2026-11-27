@@ -23,7 +23,8 @@ func configure(
 	settlement_inventory: SettlementInventory,
 	selection_manager: SelectionManager,
 	camp_storage_zone: CampStorageZone = null,
-	ground_pile_manager: GroundPileManager = null
+	ground_pile_manager: GroundPileManager = null,
+	community_work_board: CommunityWorkBoard = null
 ) -> void:
 	if _selection_manager != selection_manager:
 		_disconnect_selection_manager()
@@ -35,6 +36,7 @@ func configure(
 		_stockpile_panel.configure(settlement_inventory, camp_storage_zone, ground_pile_manager)
 
 	if _selected_unit_panel != null:
+		_selected_unit_panel.set_community_work_board(community_work_board)
 		var initial_units: Array[Unit] = _selection_manager.get_selected_units() if _selection_manager != null else []
 		_selected_unit_panel.set_selected_units(initial_units)
 
