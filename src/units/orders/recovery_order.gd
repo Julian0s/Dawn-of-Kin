@@ -219,9 +219,20 @@ func _notify_progress() -> void:
 		dispatcher.call_deferred("notify_progress", cancel_id)
 
 
+func can_cancel_now() -> bool:
+	if _unit != null and is_instance_valid(_unit) and _unit._is_reserved_withdrawal_locked():
+		return false
+	if _delegate != null and _delegate.is_active() and not _delegate.can_cancel_now():
+		return false
+	return true
+
+
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if is_finished():
 		return
+	if not can_cancel_now():
+		return
+	var entry_rev: int = _unit.get_order_revision() if (_unit != null and is_instance_valid(_unit)) else -1
 	manual_interruption = reason == REASON_REPLACED or reason == REASON_CANCELLED
 	if _delegate != null and _delegate.is_active():
 		_delegate.cancel(movement, reason)
@@ -229,4 +240,12 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	var record := _record()
 	if record != null and record.state != ConstructionCancellationMath.State.SETTLED:
 		ReservedWithdrawalCoordinator.transition_custody_record(record, ConstructionCancellationMath.State.RETURN_BLOCKED, "manual_override" if manual_interruption else reason)
-	super.cancel(movement, reason)
+	var owns_movement: bool = (
+		_unit == null
+		or not is_instance_valid(_unit)
+		or (
+			(entry_rev < 0 or _unit.get_order_revision() == entry_rev)
+			and (_unit.get_current_order() == self or _unit.get_current_order() == null)
+		)
+	)
+	super.cancel(movement if owns_movement else null, reason)

@@ -18,6 +18,14 @@ enum OrderOrigin {
 	SYSTEM_RECOVERY,
 }
 
+enum InterruptionCause {
+	NONE = 0,
+	PERSONAL_MOVE = 1,
+	PERSONAL_OTHER = 2,
+	SYSTEM_RECOVERY = 3,
+	ADMIN_CANCEL = 4,
+}
+
 const REASON_NONE: String = ""
 const REASON_CANCELLED: String = "cancelled"
 const REASON_REPLACED: String = "replaced"
@@ -33,6 +41,8 @@ const REASON_UNIT_EXITED: String = "unit_exited"
 var status: Status = Status.PENDING
 var failure_reason: String = REASON_NONE
 var _order_origin: OrderOrigin = OrderOrigin.NONE
+var _finished_notified: bool = false
+var _interruption_cause: InterruptionCause = InterruptionCause.NONE
 
 
 func get_order_origin() -> OrderOrigin:
@@ -41,6 +51,28 @@ func get_order_origin() -> OrderOrigin:
 
 func _set_order_origin(origin: OrderOrigin) -> void:
 	_order_origin = origin
+
+
+func can_cancel_now() -> bool:
+	return true
+
+
+func was_finished_notified() -> bool:
+	return _finished_notified
+
+
+func mark_finished_notified() -> void:
+	_finished_notified = true
+
+
+func get_interruption_cause() -> InterruptionCause:
+	return _interruption_cause
+
+
+func set_interruption_cause(cause: InterruptionCause) -> void:
+	if _interruption_cause != InterruptionCause.NONE or cause == InterruptionCause.NONE:
+		return
+	_interruption_cause = cause
 
 
 func get_order_name() -> String:

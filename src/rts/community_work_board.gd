@@ -386,7 +386,7 @@ func begin_task_dispatch(task: WorkTask, unit: Unit) -> DispatchLease:
 		return null
 	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
 		return null
-	if unit.get_current_order() != null or unit.get_state() != Unit.State.IDLE:
+	if not unit.is_community_dispatch_eligible():
 		return null
 	if task.excluded_unit_ids.has(unit.get_instance_id()):
 		return null
@@ -445,7 +445,7 @@ func validate_dispatch_lease_for_installation(
 		return false
 	if unit.get_order_revision() != lease._expected_unit_revision:
 		return false
-	if unit.get_current_order() != null or unit.get_state() != Unit.State.IDLE:
+	if not unit.is_community_dispatch_eligible():
 		return false
 	if order == null or order.status != UnitOrder.Status.PENDING:
 		return false

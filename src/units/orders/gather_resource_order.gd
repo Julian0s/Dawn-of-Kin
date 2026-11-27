@@ -200,6 +200,10 @@ func get_tree_cut_authorization() -> CutAuthorization:
 	return _tree_cut_authorization
 
 
+func can_cancel_now() -> bool:
+	return not (use_provenance_transactions and is_provenance_transfer_executing())
+
+
 func is_provenance_transfer_executing() -> bool:
 	if not use_provenance_transactions or status != Status.RUNNING:
 		return false

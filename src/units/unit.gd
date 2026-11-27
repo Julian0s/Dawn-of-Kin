@@ -15,6 +15,7 @@ enum State {
 
 signal state_changed(new_state: State, previous_state: State)
 signal order_finished(order: UnitOrder)
+signal control_mode_changed(new_mode: UnitControlState.ControlMode, previous_mode: UnitControlState.ControlMode)
 
 @export var definition: CharacterDefinition = null:
 	set(value):
@@ -42,6 +43,13 @@ signal order_finished(order: UnitOrder)
 var _state: State = State.IDLE
 var _current_order: UnitOrder = null
 var _order_revision: int = 0
+var _control_state: UnitControlState = UnitControlState.new()
+var _transition_seq: int = 0
+var _pending_transition_seq: int = 0
+var _pending_target_mode: UnitControlState.ControlMode = UnitControlState.ControlMode.COMMUNITY_FREE
+var _pending_target_origin: UnitOrder.OrderOrigin = UnitOrder.OrderOrigin.NONE
+var _cancelling_order: UnitOrder = null
+var _is_exiting_tree: bool = false
 var _last_order_rejection_reason: String = ""
 ## A contribution follows the worker even when its active order changes sites.
 var _last_construction_work_frame: int = -1
@@ -53,6 +61,10 @@ var _is_hovered: bool = false
 var _visual_base_transform: Transform3D = Transform3D.IDENTITY
 var _has_visual_base_transform: bool = false
 var _visual_cycle_time: float = 0.0
+
+
+func _enter_tree() -> void:
+	_is_exiting_tree = false
 
 
 func _ready() -> void:
@@ -90,23 +102,36 @@ func _physics_process(delta: float) -> void:
 		_movement.step_movement(delta)
 
 	if _current_order != null:
-		_current_order.physics_update(_movement, delta)
-		if _current_order != null and _current_order.is_finished():
-			var finished_order: UnitOrder = _current_order
-			_current_order = null
-			_set_state(State.IDLE)
-			order_finished.emit(finished_order)
+		var active_order: UnitOrder = _current_order
+		var active_rev: int = _order_revision
+		active_order.physics_update(_movement, delta)
+		if active_order.is_finished():
+			_finalize_order_completion(active_order, active_rev)
 
 	_update_work_and_load_visuals(delta)
 
 
 func _exit_tree() -> void:
+	_is_exiting_tree = true
+	_transition_seq += 1
+	_pending_transition_seq = 0
 	if _current_order != null and _current_order.is_active():
 		var exiting_order: UnitOrder = _current_order
 		_current_order = null
+		_cancelling_order = exiting_order
 		exiting_order.cancel(_movement, UnitOrder.REASON_UNIT_EXITED)
+		if _cancelling_order == exiting_order:
+			_cancelling_order = null
+		if exiting_order.status == UnitOrder.Status.CANCELLED:
+			exiting_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_order_revision += 1
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_set_state(State.IDLE)
-		order_finished.emit(exiting_order)
+		_publish_control_mode_if_changed()
+		_emit_order_finished_once(exiting_order)
+	else:
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		_publish_control_mode_if_changed()
 	reset_work_visuals()
 
 
@@ -140,6 +165,22 @@ func _sync_definition() -> void:
 		)
 
 	_apply_visual_definition(definition)
+	_reconcile_active_order_after_definition_change()
+
+
+func _reconcile_active_order_after_definition_change() -> void:
+	if _is_exiting_tree or not is_inside_tree() or _current_order == null or not _current_order.is_active():
+		return
+	var incompatible: bool = false
+	match _current_order.get_order_origin():
+		UnitOrder.OrderOrigin.PERSONAL:
+			incompatible = not UnitControlPermissions.can_receive_personal_order_for_order(self, _current_order)
+		UnitOrder.OrderOrigin.COMMUNITY:
+			incompatible = not UnitControlPermissions.can_participate_in_community_work_for_order(self, _current_order)
+		UnitOrder.OrderOrigin.SYSTEM_RECOVERY:
+			incompatible = not UnitControlPermissions.can_perform_recovery_order(self)
+	if incompatible:
+		cancel_current_order("definition_permission_changed")
 
 
 func set_world_navigation(world_nav: WorldNavigation) -> void:
@@ -201,6 +242,36 @@ func get_order_revision() -> int:
 	return _order_revision
 
 
+func get_control_mode() -> UnitControlState.ControlMode:
+	return _control_state.get_mode()
+
+
+func get_control_mode_name() -> String:
+	return _control_state.get_mode_name()
+
+
+func get_active_order_origin() -> UnitOrder.OrderOrigin:
+	return _control_state.get_active_origin()
+
+
+func has_pending_control_transition() -> bool:
+	return _pending_transition_seq != 0
+
+
+func is_community_dispatch_eligible() -> bool:
+	return (
+		is_inside_tree()
+		and not _is_exiting_tree
+		and not is_queued_for_deletion()
+		and _pending_transition_seq == 0
+		and _cancelling_order == null
+		and _control_state.get_mode() == UnitControlState.ControlMode.COMMUNITY_FREE
+		and _current_order == null
+		and _state == State.IDLE
+		and not _is_reserved_withdrawal_locked()
+	)
+
+
 func get_last_order_rejection_reason() -> String:
 	return _last_order_rejection_reason
 
@@ -254,12 +325,18 @@ func issue_order(order: UnitOrder) -> bool:
 		if _is_reserved_withdrawal_locked():
 			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 			return false
+		if _current_order != null and _current_order.is_active() and not _current_order.can_cancel_now():
+			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+			return false
 		_last_order_rejection_reason = ""
 		return _clear_current_order_for_null_issue()
 	return issue_personal_order(order)
 
 
 func issue_personal_order(order: UnitOrder) -> bool:
+	if _is_exiting_tree or not is_inside_tree() or is_queued_for_deletion():
+		_last_order_rejection_reason = UnitOrder.REASON_UNIT_NOT_IN_TREE
+		return false
 	if _is_reserved_withdrawal_locked():
 		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 		return false
@@ -273,6 +350,9 @@ func issue_personal_order(order: UnitOrder) -> bool:
 	if not reject_reason.is_empty():
 		_last_order_rejection_reason = reject_reason
 		return false
+	if _current_order != null and _current_order.is_active() and not _current_order.can_cancel_now():
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
 	_last_order_rejection_reason = ""
 	return _install_admitted_order(order, UnitOrder.OrderOrigin.PERSONAL)
 
@@ -281,8 +361,14 @@ func issue_community_order(
 	order: GatherResourceOrder,
 	dispatch_lease: CommunityWorkBoard.DispatchLease
 ) -> bool:
+	if _is_exiting_tree or not is_inside_tree() or is_queued_for_deletion():
+		_last_order_rejection_reason = UnitOrder.REASON_UNIT_NOT_IN_TREE
+		return false
 	if _is_reserved_withdrawal_locked():
 		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+	if not is_community_dispatch_eligible():
+		_last_order_rejection_reason = "unit_not_community_free"
 		return false
 	if order == null or dispatch_lease == null:
 		_last_order_rejection_reason = "invalid_dispatch_lease"
@@ -309,14 +395,17 @@ func issue_recovery_order(
 	expected_revision: int,
 	explicit: bool = false
 ) -> bool:
+	if _is_exiting_tree or not is_inside_tree() or is_queued_for_deletion():
+		_last_order_rejection_reason = UnitOrder.REASON_UNIT_NOT_IN_TREE
+		return false
 	if _is_reserved_withdrawal_locked():
 		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 		return false
+	if _pending_transition_seq != 0 or _cancelling_order != null:
+		_last_order_rejection_reason = "transition_in_progress"
+		return false
 	if order == null or order.status != UnitOrder.Status.PENDING:
 		_last_order_rejection_reason = "invalid_recovery_order"
-		return false
-	if not is_inside_tree() or is_queued_for_deletion():
-		_last_order_rejection_reason = UnitOrder.REASON_UNIT_NOT_IN_TREE
 		return false
 	if not UnitControlPermissions.can_perform_recovery_order(self):
 		_last_order_rejection_reason = UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
@@ -359,7 +448,7 @@ func issue_recovery_order(
 		_last_order_rejection_reason = String(id_check.get("reason", "ambiguous_unit_identity"))
 		return false
 
-	# F02: Strict T1a (idle) or T1b (ConstructOrder on this exact CANCELLED site, not transacting).
+	# F02: Strict T1a (COMMUNITY_FREE + IDLE) or T1b (ConstructOrder on this exact CANCELLED site, cancelable).
 	if _current_order != null and _current_order.is_active():
 		if not (_current_order is ConstructOrder):
 			_last_order_rejection_reason = "unit_busy_for_recovery"
@@ -370,59 +459,251 @@ func issue_recovery_order(
 			or not is_instance_valid(c_order.site)
 			or c_order.site.site_id != record.site_id
 			or c_order.site.get_site_state() != ConstructionSite.SiteState.CANCELLED
-			or c_order.is_transfer_executing_readonly()
+			or not c_order.can_cancel_now()
 		):
 			_last_order_rejection_reason = "unit_busy_for_recovery"
 			return false
-	elif _state != State.IDLE:
+	elif _state != State.IDLE or _control_state.get_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
 		_last_order_rejection_reason = "unit_not_idle"
 		return false
 
 	_last_order_rejection_reason = ""
-	return _install_admitted_order(order, UnitOrder.OrderOrigin.SYSTEM_RECOVERY)
+	var recovery_ctx: Dictionary = {
+		"dispatcher": dispatcher,
+		"explicit": explicit,
+		"world": world,
+		"region_id": order.region_id,
+		"cancel_id": order.cancel_id,
+	}
+	return _install_admitted_order(order, UnitOrder.OrderOrigin.SYSTEM_RECOVERY, recovery_ctx)
+
+
+func _has_mutation_authority(my_seq: int, issued_revision: int) -> bool:
+	return (
+		_transition_seq == my_seq
+		and _order_revision == issued_revision
+		and is_inside_tree()
+		and not _is_exiting_tree
+		and not is_queued_for_deletion()
+	)
+
+
+func _emit_order_finished_once(order: UnitOrder) -> void:
+	if order == null or order.was_finished_notified():
+		return
+	order.mark_finished_notified()
+	order_finished.emit(order)
+
+
+func _publish_control_mode_if_changed() -> void:
+	var delta: Dictionary = _control_state._commit_published_mode()
+	if bool(delta["changed"]):
+		control_mode_changed.emit(
+			delta["new_mode"] as UnitControlState.ControlMode,
+			delta["previous_mode"] as UnitControlState.ControlMode
+		)
+
+
+static func _interruption_cause_for(order: UnitOrder, origin: UnitOrder.OrderOrigin) -> UnitOrder.InterruptionCause:
+	if origin == UnitOrder.OrderOrigin.SYSTEM_RECOVERY:
+		return UnitOrder.InterruptionCause.SYSTEM_RECOVERY
+	if origin == UnitOrder.OrderOrigin.PERSONAL:
+		if order is MoveOrder:
+			return UnitOrder.InterruptionCause.PERSONAL_MOVE
+		return UnitOrder.InterruptionCause.PERSONAL_OTHER
+	return UnitOrder.InterruptionCause.ADMIN_CANCEL
+
+
+func _finalize_order_completion(finished_order: UnitOrder, expected_rev: int) -> void:
+	if finished_order == null:
+		return
+	var owns_active: bool = (
+		_current_order == finished_order
+		and _order_revision == expected_rev
+		and _pending_transition_seq == 0
+	)
+	if owns_active:
+		_current_order = null
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		_set_state(State.IDLE)
+		if (
+			_order_revision == expected_rev
+			and _current_order == null
+			and _pending_transition_seq == 0
+			and is_inside_tree()
+			and not _is_exiting_tree
+			and not is_queued_for_deletion()
+		):
+			_publish_control_mode_if_changed()
+	_emit_order_finished_once(finished_order)
 
 
 func _clear_current_order_for_null_issue() -> bool:
-	_order_revision += 1
-	var issued_revision := _order_revision
+	return _perform_administrative_cancel(UnitOrder.REASON_REPLACED)
+
+
+func _perform_administrative_cancel(reason: String) -> bool:
+	if _is_reserved_withdrawal_locked():
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+	if _current_order != null and _current_order.is_active() and not _current_order.can_cancel_now():
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+
+	# Reentrant administrative cancel while an outer transition is already cancelling an order:
+	# supersede the outer transition cleanly without recursively invoking cancel() on the same order.
+	if _current_order == null and _cancelling_order != null:
+		_transition_seq += 1
+		var my_reent_seq: int = _transition_seq
+		_pending_transition_seq = 0
+		_cancelling_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_order_revision += 1
+		var reent_rev: int = _order_revision
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		if _movement != null:
+			_movement.stop_movement()
+		_set_state(State.IDLE)
+		reset_work_visuals()
+		if _has_mutation_authority(my_reent_seq, reent_rev) and _current_order == null:
+			_publish_control_mode_if_changed()
+		return true
+
+	if _current_order == null:
+		_transition_seq += 1
+		var my_idle_seq: int = _transition_seq
+		_pending_transition_seq = 0
+		var idle_rev: int = _order_revision
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		if _movement != null:
+			_movement.stop_movement()
+		_set_state(State.IDLE)
+		reset_work_visuals()
+		if _has_mutation_authority(my_idle_seq, idle_rev) and _current_order == null:
+			_publish_control_mode_if_changed()
+		return true
+
+	# Stage 1: silent reservation via _transition_seq (do NOT increment _order_revision yet).
+	_transition_seq += 1
+	var my_seq: int = _transition_seq
+	_pending_transition_seq = my_seq
+	_pending_target_mode = UnitControlState.ControlMode.COMMUNITY_FREE
+	_pending_target_origin = UnitOrder.OrderOrigin.NONE
+
+	# Stage 2: cancel active order while _order_revision still belongs to cancelled_order.
+	var cancelled_order: UnitOrder = _current_order
+	_current_order = null
+	_cancelling_order = cancelled_order
+	cancelled_order.cancel(_movement, reason)
+	if _cancelling_order == cancelled_order:
+		_cancelling_order = null
+
+	if not cancelled_order.is_finished():
+		if _transition_seq == my_seq:
+			if _current_order == null:
+				_current_order = cancelled_order
+			if _pending_transition_seq == my_seq:
+				_pending_transition_seq = 0
+		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
+		return false
+
+	var committed_rev: int = _order_revision
+	if _transition_seq == my_seq:
+		cancelled_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_order_revision += 1
+		committed_rev = _order_revision
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		if _pending_transition_seq == my_seq:
+			_pending_transition_seq = 0
+		if _movement != null:
+			_movement.stop_movement()
+		_set_state(State.IDLE)
+		reset_work_visuals()
+		if _has_mutation_authority(my_seq, committed_rev) and _current_order == null:
+			_publish_control_mode_if_changed()
+	elif _pending_transition_seq == my_seq:
+		_pending_transition_seq = 0
+
+	# Always deliver legitimate single-shot order_finished even if a callback installed a successor.
+	_emit_order_finished_once(cancelled_order)
+	return _transition_seq == my_seq and _order_revision == committed_rev
+
+
+func _install_admitted_order(
+	order: UnitOrder,
+	origin: UnitOrder.OrderOrigin,
+	recovery_ctx: Dictionary = {}
+) -> bool:
+	var target_mode: UnitControlState.ControlMode = UnitControlState.mode_for_origin(origin)
+
+	# Stage 1: silent internal reservation via _transition_seq (never bump _order_revision before cancel succeeds).
+	_transition_seq += 1
+	var my_seq: int = _transition_seq
+	_pending_transition_seq = my_seq
+	_pending_target_mode = target_mode
+	_pending_target_origin = origin
+
+	# If this personal order was admitted reentrantly during an outer previous_order.cancel(),
+	# commit the real interruption cause onto _cancelling_order immediately (write-once).
+	if _current_order == null and _cancelling_order != null:
+		_cancelling_order.set_interruption_cause(_interruption_cause_for(order, origin))
+
+	var issued_revision: int = _order_revision
+
+	# Stage 2: cancel previous active order (while _order_revision still belongs to previous_order).
 	if _current_order != null and _current_order.is_active():
 		var previous_order: UnitOrder = _current_order
 		_current_order = null
+		_cancelling_order = previous_order
 		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
-		if not previous_order.is_finished():
-			if _current_order == null and _order_revision == issued_revision:
-				_current_order = previous_order
-			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
-			return false
-		order_finished.emit(previous_order)
-		if _order_revision != issued_revision:
-			return false
-	if _movement != null:
-		_movement.stop_movement()
-	_set_state(State.IDLE)
-	return true
+		if _cancelling_order == previous_order:
+			_cancelling_order = null
 
-
-func _install_admitted_order(order: UnitOrder, origin: UnitOrder.OrderOrigin) -> bool:
-	_order_revision += 1
-	var issued_revision := _order_revision
-	if _current_order != null and _current_order.is_active():
-		var previous_order: UnitOrder = _current_order
-		_current_order = null
-		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
 		if not previous_order.is_finished():
-			if _current_order == null and _order_revision == issued_revision:
-				_current_order = previous_order
+			# Stage 2A: refusal preserves _order_revision and all external consumers 100% intact.
+			if _transition_seq == my_seq:
+				if _current_order == null:
+					_current_order = previous_order
+				if _pending_transition_seq == my_seq:
+					_pending_transition_seq = 0
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)
 			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 			return false
-		order_finished.emit(previous_order)
-		if _order_revision != issued_revision:
-			# A callback accepted a newer command. Do not stop or overwrite its movement.
+
+		# Stage 2B: previous_order finished -> commit cause, advance _order_revision if still owner,
+		# and guarantee single-shot order_finished(previous_order) regardless of reentrant successor.
+		if _transition_seq == my_seq:
+			previous_order.set_interruption_cause(_interruption_cause_for(order, origin))
+			_order_revision += 1
+			issued_revision = _order_revision
+			_control_state._apply_internal(target_mode, origin)
+
+		_emit_order_finished_once(previous_order)
+
+		if not _has_mutation_authority(my_seq, issued_revision):
+			if _pending_transition_seq == my_seq:
+				_pending_transition_seq = 0
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)
 			_last_order_rejection_reason = UnitOrder.REASON_REPLACED
 			return false
 
+		# Revalidate F02 recovery authority after callbacks during T1b cancellation/order_finished.
+		if origin == UnitOrder.OrderOrigin.SYSTEM_RECOVERY and not _revalidate_recovery_authority_post_cancel(order, recovery_ctx):
+			if _pending_transition_seq == my_seq:
+				_pending_transition_seq = 0
+			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+			_set_state(State.IDLE)
+			if _has_mutation_authority(my_seq, issued_revision) and _current_order == null:
+				_publish_control_mode_if_changed()
+			order.mark_cancelled(UnitOrder.REASON_REPLACED)
+			_last_order_rejection_reason = "unadmitted_recovery_order"
+			return false
+	else:
+		# No active previous order -> commit revision & internal target state directly.
+		_order_revision += 1
+		issued_revision = _order_revision
+		_control_state._apply_internal(target_mode, origin)
+
+	# Stage 3: install order and execute start().
 	order._set_order_origin(origin)
 	if _world_navigation == null and _movement != null:
 		_world_navigation = _movement.get_world_navigation()
@@ -431,49 +712,66 @@ func _install_admitted_order(order: UnitOrder, origin: UnitOrder.OrderOrigin) ->
 	_current_order = order
 	_order_state_explicit = false
 	order.start(self, _movement, _world_navigation)
-	if _order_revision != issued_revision or _current_order != order:
+
+	if not _has_mutation_authority(my_seq, issued_revision) or _current_order != order:
+		if _pending_transition_seq == my_seq:
+			_pending_transition_seq = 0
+		if order.is_finished():
+			_emit_order_finished_once(order)
 		return false
 
+	# Stage 4: stabilize final state and publish control_mode_changed at most once.
+	if _pending_transition_seq == my_seq:
+		_pending_transition_seq = 0
+
 	if order.is_finished():
-		var finished_order: UnitOrder = _current_order
 		_current_order = null
+		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_set_state(State.IDLE)
-		order_finished.emit(finished_order)
-		if finished_order.is_succeeded():
+		if _has_mutation_authority(my_seq, issued_revision) and _current_order == null and _pending_transition_seq == 0:
+			_publish_control_mode_if_changed()
+		_emit_order_finished_once(order)
+		if order.is_succeeded():
 			return true
-		_last_order_rejection_reason = finished_order.failure_reason
+		_last_order_rejection_reason = order.failure_reason
 		return false
 
 	if not _order_state_explicit:
 		_set_state(State.MOVING)
+	if _has_mutation_authority(my_seq, issued_revision) and _current_order == order and _pending_transition_seq == 0:
+		_publish_control_mode_if_changed()
 	return true
 
 
-func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
+func _revalidate_recovery_authority_post_cancel(order: UnitOrder, recovery_ctx: Dictionary) -> bool:
 	if _is_reserved_withdrawal_locked():
-		return
-	_order_revision += 1
-	var cancelled_revision := _order_revision
-	if _current_order == null:
-		if _movement != null:
-			_movement.stop_movement()
-		_set_state(State.IDLE)
-		reset_work_visuals()
-		return
+		return false
+	var rec_order: RecoveryOrder = order as RecoveryOrder
+	if rec_order == null:
+		return false
+	var dispatcher: CancellationRecoveryDispatcher = recovery_ctx.get("dispatcher") as CancellationRecoveryDispatcher
+	var explicit: bool = bool(recovery_ctx.get("explicit", false))
+	if dispatcher == null or not is_instance_valid(dispatcher) or not dispatcher.is_inside_tree():
+		return false
+	if not dispatcher.is_admitting_recovery(self, rec_order, explicit):
+		return false
+	var world: World3D = get_world_3d()
+	if world == null or world != recovery_ctx.get("world"):
+		return false
+	var region_id: StringName = recovery_ctx.get("region_id", &"") as StringName
+	var cancel_id: StringName = recovery_ctx.get("cancel_id", &"") as StringName
+	if ReservedWithdrawalCoordinator.is_region_transaction_active_readonly(world, region_id):
+		return false
+	var record: ReservedWithdrawalCoordinator.CancellationCustodyRecord = CancellationRecoveryTransaction._record(
+		world,
+		region_id,
+		cancel_id
+	)
+	return record != null and record.has_unsettled_custody()
 
-	var cancelled_order: UnitOrder = _current_order
-	_current_order = null
-	cancelled_order.cancel(_movement, reason)
-	if _order_revision != cancelled_revision:
-		order_finished.emit(cancelled_order)
-		return
-	if not cancelled_order.is_finished():
-		if _current_order == null:
-			_current_order = cancelled_order
-		return
-	_set_state(State.IDLE)
-	reset_work_visuals()
-	order_finished.emit(cancelled_order)
+
+func cancel_current_order(reason: String = UnitOrder.REASON_CANCELLED) -> void:
+	_perform_administrative_cancel(reason)
 
 
 func reset_work_visuals() -> void:

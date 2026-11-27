@@ -227,9 +227,14 @@ func physics_update(movement: UnitMovement, delta: float) -> void:
 			_update_waiting_for_peer_supply(movement)
 
 
+func can_cancel_now() -> bool:
+	return not is_transfer_executing_readonly()
+
+
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if _defer_transfer_replan():
 		return
+	var entry_rev: int = _unit.get_order_revision() if (_unit != null and is_instance_valid(_unit)) else -1
 	if _deliver_suborder != null and _deliver_suborder.is_active():
 		_deliver_suborder.cancel(movement, reason)
 	_deliver_suborder = null
@@ -239,9 +244,19 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if site != null and is_instance_valid(site) and _unit != null and is_instance_valid(_unit):
 		site.release_pickup_claim(_unit)
 		site.unregister_worker(_unit, self)
-	if movement != null:
+	var owns_movement: bool = (
+		_unit == null
+		or not is_instance_valid(_unit)
+		or (
+			(entry_rev < 0 or _unit.get_order_revision() == entry_rev)
+			and (_unit.get_current_order() == self or _unit.get_current_order() == null)
+		)
+	)
+	if movement != null and owns_movement:
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
-	super.cancel(movement, reason)
+		super.cancel(movement, reason)
+	else:
+		super.cancel(null, reason)
 
 
 func _carry_admission_failure() -> String:

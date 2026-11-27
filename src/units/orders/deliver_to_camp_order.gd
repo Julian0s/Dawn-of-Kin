@@ -415,9 +415,14 @@ func _execute_selective_delivery(movement: UnitMovement) -> void:
 	_finish_selective_failed(reason)
 
 
+func can_cancel_now() -> bool:
+	return not (use_selective_provenance and is_selective_transfer_executing())
+
+
 func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 	if use_selective_provenance and is_selective_transfer_executing():
 		return
+	var entry_rev: int = _unit.get_order_revision() if (_unit != null and is_instance_valid(_unit)) else -1
 	_disconnect_navigation_signals()
 	if use_selective_provenance and _selective_session != null:
 		var recovered: Dictionary = _selective_session.cancel_intent(inventory, camp_zone, _unit, region_id)
@@ -430,9 +435,19 @@ func cancel(movement: UnitMovement, reason: String = REASON_CANCELLED) -> void:
 			last_replayed = true
 			last_delivered_units = 0
 	resolved_target = Vector3(INF, INF, INF)
-	if movement != null:
+	var owns_movement: bool = (
+		_unit == null
+		or not is_instance_valid(_unit)
+		or (
+			(entry_rev < 0 or _unit.get_order_revision() == entry_rev)
+			and (_unit.get_current_order() == self or _unit.get_current_order() == null)
+		)
+	)
+	if movement != null and owns_movement:
 		movement.set_speed_context(UnitMovement.SpeedContext.NORMAL)
-	super.cancel(movement, reason)
+		super.cancel(movement, reason)
+	else:
+		super.cancel(null, reason)
 
 
 func _execute_delivery() -> void:

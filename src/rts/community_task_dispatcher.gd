@@ -276,14 +276,17 @@ func _bind_unit(unit: Unit) -> void:
 		return
 	var on_finished: Callable = Callable(self, "_on_unit_order_finished").bind(uid)
 	var on_state: Callable = Callable(self, "_on_unit_state_changed").bind(uid)
+	var on_control_mode: Callable = Callable(self, "_on_unit_control_mode_changed").bind(uid)
 	var on_exit: Callable = Callable(self, "_on_unit_tree_exited").bind(uid)
 	unit.order_finished.connect(on_finished)
 	unit.state_changed.connect(on_state)
+	unit.control_mode_changed.connect(on_control_mode)
 	unit.tree_exited.connect(on_exit)
 	_unit_callbacks[uid] = {
 		"unit_ref": weakref(unit),
 		"on_finished": on_finished,
 		"on_state": on_state,
+		"on_control_mode": on_control_mode,
 		"on_exit": on_exit,
 	}
 
@@ -305,11 +308,14 @@ func _disconnect_unit_entry(unit: Unit, entry: Dictionary) -> void:
 		return
 	var on_finished: Callable = entry.get("on_finished", Callable()) as Callable
 	var on_state: Callable = entry.get("on_state", Callable()) as Callable
+	var on_control_mode: Callable = entry.get("on_control_mode", Callable()) as Callable
 	var on_exit: Callable = entry.get("on_exit", Callable()) as Callable
 	if on_finished.is_valid() and unit.order_finished.is_connected(on_finished):
 		unit.order_finished.disconnect(on_finished)
 	if on_state.is_valid() and unit.state_changed.is_connected(on_state):
 		unit.state_changed.disconnect(on_state)
+	if on_control_mode.is_valid() and unit.control_mode_changed.is_connected(on_control_mode):
+		unit.control_mode_changed.disconnect(on_control_mode)
 	if on_exit.is_valid() and unit.tree_exited.is_connected(on_exit):
 		unit.tree_exited.disconnect(on_exit)
 
@@ -370,6 +376,15 @@ func _on_inventory_changed() -> void:
 
 func _on_unit_state_changed(new_state: Unit.State, _previous_state: Unit.State, _uid: int) -> void:
 	if new_state == Unit.State.IDLE:
+		request_dispatch()
+
+
+func _on_unit_control_mode_changed(
+	new_mode: UnitControlState.ControlMode,
+	_previous_mode: UnitControlState.ControlMode,
+	_uid: int
+) -> void:
+	if new_mode == UnitControlState.ControlMode.COMMUNITY_FREE:
 		request_dispatch()
 
 
@@ -653,6 +668,10 @@ func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String
 		return "invalid_unit"
 	if not UnitControlPermissions.can_be_community_worker_base(unit):
 		return "community_work_denied"
+	if unit.has_pending_control_transition() or unit.get_control_mode() == UnitControlState.ControlMode.PERSONAL_ACTIVE:
+		return "personal_control_active"
+	if unit.get_control_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
+		return "busy"
 	if unit.get_current_order() != null and unit.get_current_order().is_active():
 		return "busy"
 	if unit.get_state() != Unit.State.IDLE:
@@ -788,18 +807,77 @@ func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
 	task.state = WorkTask.State.IN_PROGRESS
 	task.last_reason = ""
 	owner_board.notify_task_updated(task)
-	if (
-		_is_tearing_down or _config_epoch != owner_epoch or _board != owner_board
-		or task.state != WorkTask.State.IN_PROGRESS or task.assigned_order != order
-		or task.tree_cut_authorization != authorization or not is_instance_valid(chosen_unit)
-		or chosen_unit.get_current_order() != order or chosen_unit.get_order_revision() != installed_revision
+	if not _reconcile_committed_assignment_after_signal(
+		owner_board, owner_cmd, owner_epoch, task, chosen_unit, order, installed_revision, authorization
 	):
 		return false
 	task_assigned.emit(task, chosen_unit, order)
+	if not _reconcile_committed_assignment_after_signal(
+		owner_board, owner_cmd, owner_epoch, task, chosen_unit, order, installed_revision, authorization
+	):
+		return false
 
 	var unit_label: String = chosen_unit.get_definition().display_name if chosen_unit.get_definition() != null else String(chosen_unit.get_character_id())
 	task_feedback.emit(_dispatch_feedback(task.resource_id, unit_label))
 	return true
+
+
+func _reconcile_committed_assignment_after_signal(
+	owner_board: CommunityWorkBoard,
+	owner_cmd: CommandController,
+	owner_epoch: int,
+	task: WorkTask,
+	chosen_unit: Unit,
+	order: GatherResourceOrder,
+	installed_revision: int,
+	authorization: GatherResourceOrder.CutAuthorization
+) -> bool:
+	var context_ok: bool = (
+		not _is_tearing_down
+		and _config_epoch == owner_epoch
+		and _board == owner_board
+		and _command_controller == owner_cmd
+		and owner_board != null
+		and is_instance_valid(owner_board)
+		and owner_board.is_inside_tree()
+	)
+	var unit_alive: bool = (
+		chosen_unit != null
+		and is_instance_valid(chosen_unit)
+		and chosen_unit.is_inside_tree()
+		and not chosen_unit.is_queued_for_deletion()
+	)
+	var unit_owns_exact_order: bool = (
+		unit_alive
+		and order != null
+		and order.is_active()
+		and chosen_unit.get_current_order() == order
+		and chosen_unit.get_order_revision() == installed_revision
+	)
+	var assignment_still_valid: bool = (
+		context_ok
+		and task != null
+		and task.is_active()
+		and task.state == WorkTask.State.IN_PROGRESS
+		and task.assigned_unit == chosen_unit
+		and task.assigned_order == order
+		and task.assigned_order_revision == installed_revision
+		and task.tree_cut_authorization == authorization
+		and unit_owns_exact_order
+	)
+	if assignment_still_valid:
+		return true
+
+	# Clean up strictly this committed assignment if operational context or unit/task became invalid.
+	if task != null and task.assigned_order == order and task.assigned_order_revision == installed_revision:
+		task.clear_assignment()
+		if task.is_active() and task.state == WorkTask.State.IN_PROGRESS:
+			task.state = WorkTask.State.PENDING_WORKERS
+			if context_ok and not task.is_source_usable():
+				owner_board.close_task(task, WorkTask.State.FAILED, "invalid_source")
+	if unit_owns_exact_order:
+		_apply_community_cancel_to_order(chosen_unit, order)
+	return false
 
 
 func _evaluate_unassigned_task(task: WorkTask) -> void:
@@ -834,7 +912,7 @@ func _evaluate_unassigned_task(task: WorkTask) -> void:
 		if not pre_reason.is_empty():
 			if pre_reason == "manually_overridden":
 				excluded_count += 1
-			elif pre_reason in ["busy", "not_idle", "transaction_locked", "no_worker_slot", "reserved_or_recovery_cargo"]:
+			elif pre_reason in ["busy", "not_idle", "personal_control_active", "transaction_locked", "no_worker_slot", "reserved_or_recovery_cargo"]:
 				has_temporary_wait = true
 			if first_reason.is_empty():
 				first_reason = pre_reason
@@ -861,7 +939,7 @@ func _evaluate_unassigned_task(task: WorkTask) -> void:
 		return
 
 	var wait_reason: String = first_reason if not first_reason.is_empty() else "no_eligible_worker"
-	var wait_msg: String = "Aguardando trabalhador disponível." if wait_reason in ["busy", "not_idle", "no_worker_slot"] else ""
+	var wait_msg: String = "Aguardando trabalhador disponível." if wait_reason in ["busy", "not_idle", "personal_control_active", "no_worker_slot"] else ""
 	_mark_task_waiting(task, wait_reason, wait_msg)
 
 
