@@ -567,37 +567,14 @@ func test_b2_r2_a02_controlled_teardown_reconciliation_and_destruction() -> void
 	assert_true(main3.is_inside_tree(), "A02-R03a: MainScene preserved intact")
 	assert_eq(la3.get_current_order(), rec3, "A02-R03a: RecoveryOrder preserved intact")
 
-	# A02-R03b: Wait until custody legitimately settles while RecoveryOrder is still active before its next tick!
+	# A02-R03b: Settle custody legitimately, then confirm clean controlled teardown after natural completion.
 	assert_true(await _until(func() -> bool: return rec_record3.state == ConstructionCancellationMath.State.SETTLED, 4800), "A02-R03b: recovery legitimately settles custody")
 	var snap3_w_after := Audit.capture(get_tree(), world3, region3, &"wood", inv3)
 	assert_true(bool(Audit.verify_conservation(snap3_w_before, snap3_w_after).get("ok", false)), "A02-R03b: D0-A04 wood conservation after settlement")
-
-	# Check whether rec3 is still active on the exact settlement frame; if it already completed on the same frame,
-	# verify that a second helper RecoveryOrder on the now-settled record is still cleanly reconciled across teardown locks!
-	var target_rec: RecoveryOrder = rec3
-	var rec3_was_still_active: bool = target_rec.is_active() and la3.get_current_order() == target_rec
-	if not rec3_was_still_active:
-		# Wait for la3 to be idle and verify preflight allows clean teardown after settlement.
-		await _until(func() -> bool: return la3.get_current_order() == null, 60)
-		var td3_post: Dictionary = main3.request_controlled_teardown()
-		assert_true(bool(td3_post.get("ok", false)), "A02-R03b: teardown succeeds cleanly once custody is settled")
-		assert_true(bool(main3._last_domain_release_result.get("ok", false)))
-	else:
-		var rec_rev_before: int = la3.get_order_revision()
-		var rec_fin_count := [0]
-		la3.order_finished.connect(func(o: UnitOrder) -> void:
-			if o == target_rec:
-				rec_fin_count[0] += 1
-		)
-		var td3_ok: Dictionary = main3.request_controlled_teardown()
-		assert_true(bool(td3_ok.get("ok", false)), "A02-R03b: teardown allowed once custody is settled even if RecoveryOrder still active")
-		assert_true(target_rec.is_finished(), "A02-R03b: RecoveryOrder finalized after teardown lock release")
-		assert_null(la3.get_current_order())
-		assert_eq(la3.get_order_revision(), rec_rev_before + 1)
-		assert_eq(la3.get_control_mode(), UnitControlState.ControlMode.COMMUNITY_FREE)
-		assert_eq(target_rec.get_interruption_cause(), UnitOrder.InterruptionCause.ADMIN_CANCEL)
-		assert_eq(rec_fin_count[0], 1, "A02-R03b: RecoveryOrder notified EXACTLY ONCE")
-		assert_true(bool(main3._last_domain_release_result.get("ok", false)))
+	assert_true(await _until(func() -> bool: return la3.get_current_order() == null, 60), "A02-R03b: single worker finishes RecoveryOrder cleanly")
+	var td3_post: Dictionary = main3.request_controlled_teardown()
+	assert_true(bool(td3_post.get("ok", false)), "A02-R03b: teardown succeeds cleanly once custody is settled")
+	assert_true(bool(main3._last_domain_release_result.get("ok", false)))
 
 	var vp3: SubViewport = ctx3["vp"] as SubViewport
 	await wait_process_frames(3)
@@ -606,4 +583,89 @@ func test_b2_r2_a02_controlled_teardown_reconciliation_and_destruction() -> void
 		if vp3.get_parent() != null:
 			vp3.get_parent().remove_child(vp3)
 		vp3.queue_free()
+	await wait_process_frames(2)
+
+	# --- A02-R03c (B2-R3-A02): Deterministic two-worker RecoveryOrder still ACTIVE when custody reaches SETTLED ---
+	# Proves the exact deferred-lock finalization path for RecoveryOrder without conditional branching!
+	var ctx3c := await _boot_isolated_main(true)
+	var main3c: MainScene = ctx3c["main"] as MainScene
+	var inv3c: SettlementInventory = ctx3c["inv"] as SettlementInventory
+	var cm3c: ConstructionManager = ctx3c["cm"] as ConstructionManager
+	var cmd3c: CommandController = ctx3c["cmd"] as CommandController
+	var la3c: Unit = ctx3c["leader_a"] as Unit
+	var lb3c: Unit = ctx3c["leader_b"] as Unit
+	var world3c: World3D = main3c.get_world_3d()
+	var region3c: StringName = ctx3c["region_id"] as StringName
+
+	assert_true(inv3c.deposit(&"wood", 12))
+	assert_true(inv3c.deposit(&"stone", 6))
+	var snap3c_w_before := Audit.capture(get_tree(), world3c, region3c, &"wood", inv3c)
+	var site3c_res := cm3c.try_create_site_from_placement(SHELTER_DEF, Vector3(-6.0, 0.0, 1.5))
+	assert_true(bool(site3c_res.get("ok", false)))
+	var site3c: ConstructionSite = site3c_res["site"] as ConstructionSite
+	assert_true(cmd3c.command_units_to_site(site3c, [la3c, lb3c]))
+	assert_true(await _until(func() -> bool:
+		return site3c.get_delivered_buffer_amount(&"wood") > 0 and site3c._assigned_workers.has(la3c.get_instance_id()) and site3c._assigned_workers.has(lb3c.get_instance_id())
+	, 3600), "A02-R03c: both founders assigned to site with delivered custody")
+
+	var cancel3c := ReservedWithdrawalCoordinator.execute_site_cancellation(site3c, &"a02_r03c_cancel")
+	assert_true(cancel3c.ok)
+	var cancel_id3c: StringName = cancel3c.receipt.cancel_id
+	cm3c._recovery_dispatcher._flush()
+	var rec_a3c := la3c.get_current_order() as RecoveryOrder
+	var rec_b3c := lb3c.get_current_order() as RecoveryOrder
+	assert_not_null(rec_a3c, "A02-R03c: LeaderA holds active RecoveryOrder")
+	assert_not_null(rec_b3c, "A02-R03c: LeaderB holds active RecoveryOrder")
+	var rec_record3c := CancellationRecoveryTransaction._record(world3c, region3c, cancel_id3c)
+
+	assert_true(await _until(func() -> bool:
+		if rec_record3c.state != ConstructionCancellationMath.State.SETTLED:
+			return false
+		var a_act: bool = rec_a3c.is_active() and la3c.get_current_order() == rec_a3c
+		var b_act: bool = rec_b3c.is_active() and lb3c.get_current_order() == rec_b3c
+		return a_act or b_act
+	, 4800), "A02-R03c: custody settles while peer RecoveryOrder is still legitimately active")
+
+	var snap3c_w_after := Audit.capture(get_tree(), world3c, region3c, &"wood", inv3c)
+	assert_true(bool(Audit.verify_conservation(snap3c_w_before, snap3c_w_after).get("ok", false)), "A02-R03c: D0-A04 wood conservation")
+	var pre3c: Dictionary = main3c.preflight_economic_teardown()
+	assert_true(bool(pre3c.get("ok", false)), "A02-R03c: preflight_economic_teardown permits teardown once settled")
+
+	var peer_unit: Unit = la3c if (rec_a3c.is_active() and la3c.get_current_order() == rec_a3c) else lb3c
+	var peer_rec: RecoveryOrder = rec_a3c if peer_unit == la3c else rec_b3c
+	assert_true(peer_rec.is_active(), "A02-R03c: peer RecoveryOrder MUST still be active right before teardown")
+	var peer_rev_before: int = peer_unit.get_order_revision()
+	var peer_fin_count := [0]
+	var peer_cause_count := [0]
+	peer_unit.order_finished.connect(func(o: UnitOrder) -> void:
+		if o == peer_rec:
+			peer_fin_count[0] += 1
+	)
+	peer_unit.order_interruption_cause_committed.connect(func(o: UnitOrder, _c: UnitOrder.InterruptionCause) -> void:
+		if o == peer_rec:
+			peer_cause_count[0] += 1
+	)
+
+	var td3c: Dictionary = main3c.request_controlled_teardown()
+	assert_true(bool(td3c.get("ok", false)), "A02-R03c: teardown finalizes settled peer RecoveryOrder after unlock")
+	assert_true(peer_rec.is_finished(), "A02-R03c: peer RecoveryOrder reached terminal state")
+	assert_eq(peer_rec.status, UnitOrder.Status.CANCELLED)
+	assert_eq(peer_rec.failure_reason, UnitOrder.REASON_UNIT_EXITED)
+	assert_eq(peer_rec.get_interruption_cause(), UnitOrder.InterruptionCause.ADMIN_CANCEL)
+	assert_null(peer_unit.get_current_order(), "A02-R03c: no remaining active order on unit")
+	assert_eq(peer_unit.get_order_revision(), peer_rev_before + 1, "A02-R03c: revision incremented once")
+	assert_eq(peer_unit.get_control_mode(), UnitControlState.ControlMode.COMMUNITY_FREE)
+	assert_eq(peer_unit.get_state(), Unit.State.IDLE)
+	assert_eq(peer_fin_count[0], 1, "A02-R03c: RecoveryOrder notified EXACTLY ONCE")
+	assert_eq(peer_cause_count[0], 1, "A02-R03c: interruption cause committed EXACTLY ONCE")
+	assert_true(bool(main3c._last_domain_release_result.get("ok", false)), "A02-R03c: regional domain released legitimately")
+
+	var vp3c: SubViewport = ctx3c["vp"] as SubViewport
+	await wait_process_frames(3)
+	assert_false(is_instance_valid(main3c), "A02-R03c: MainScene truly destroyed after queue_free()")
+	assert_false(is_instance_valid(peer_unit), "A02-R03c: peer Unit truly destroyed after queue_free()")
+	if is_instance_valid(vp3c):
+		if vp3c.get_parent() != null:
+			vp3c.get_parent().remove_child(vp3c)
+		vp3c.queue_free()
 	await wait_process_frames(2)

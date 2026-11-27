@@ -177,14 +177,16 @@ func _finalize_controlled_teardown_order(
 ) -> bool:
 	if token == null or _controlled_teardown_token != token:
 		return false
-	_controlled_teardown_token = null
 	if not _is_exiting_tree or is_inside_tree():
 		return false
 	if expected_order == null or _current_order != expected_order or _order_revision != expected_revision:
 		return false
 	if not expected_order.is_active():
+		_controlled_teardown_token = null
 		return false
 	if _is_reserved_withdrawal_locked() or not expected_order.can_cancel_now():
+		# Recoverable transactional lock: keep _controlled_teardown_token intact so
+		# MainScene can still finalize once the lock is released.
 		return false
 
 	_transition_seq += 1
@@ -199,6 +201,7 @@ func _finalize_controlled_teardown_order(
 		_current_order = expected_order
 		return false
 
+	_controlled_teardown_token = null
 	if expected_order.status == UnitOrder.Status.CANCELLED:
 		_commit_interruption_cause(expected_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 	_order_revision += 1

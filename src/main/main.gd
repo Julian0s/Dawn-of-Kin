@@ -47,6 +47,7 @@ var _economy_domain_owner_token: RefCounted = null
 var _economy_world_ref: WeakRef = null
 var _economy_region_id: StringName = &"default"
 var _last_domain_release_result: Dictionary = {}
+var _pending_controlled_teardown: Dictionary = {}
 var _economy_admission_reason: String = ""
 var _d2_hud_root: D2HudRoot = null
 
@@ -274,6 +275,7 @@ func request_controlled_teardown() -> Dictionary:
 	if authority != null and (authority.storage == null or authority.storage.get_ref() != storage or authority.has_active_operation()):
 		return {"ok": false, "reason": "ambiguous_or_busy_economic_domain"}
 	var teardown_token := RefCounted.new()
+	var units_snapshot: Array[Unit] = get_units()
 	var loads: Array[UnitCarryLoad] = []
 	var orders: Array[Dictionary] = []
 	if authority != null:
@@ -282,7 +284,7 @@ func request_controlled_teardown() -> Dictionary:
 	storage._is_preparing_withdrawal = true
 	if is_instance_valid(camp):
 		camp._coordinator_transaction_locked = true
-	for unit: Unit in get_units():
+	for unit: Unit in units_snapshot:
 		var load := unit.get_carry_load()
 		loads.append(load)
 		var teardown_entry: Dictionary = unit._begin_controlled_teardown(teardown_token)
@@ -301,22 +303,146 @@ func request_controlled_teardown() -> Dictionary:
 	inventory._is_delivering = false
 	if authority != null:
 		authority.is_executing = false
-	# A transfer delegate may conservatively defer cancellation while locked.
-	# Reconcile remaining active orders centrally through Unit so ownership, revision,
-	# ControlMode, InterruptionCause, and single-shot order_finished stay coherent.
-	for entry: Dictionary in orders:
+	return _reconcile_controlled_teardown({
+		"token": teardown_token,
+		"units": units_snapshot,
+		"orders": orders,
+		"storage": storage,
+		"inventory": inventory,
+		"world": world,
+		"tree": tree,
+		"domain_owner": domain_owner,
+		"region": region,
+	})
+
+
+func complete_pending_controlled_teardown() -> Dictionary:
+	if _pending_controlled_teardown.is_empty():
+		return {"ok": false, "reason": "no_pending_teardown", "failures": []}
+	return _reconcile_controlled_teardown(_pending_controlled_teardown)
+
+
+func _reconcile_controlled_teardown(ctx: Dictionary) -> Dictionary:
+	var teardown_token: RefCounted = ctx.get("token") as RefCounted
+	var units_snapshot: Array = ctx.get("units", []) as Array
+	var orders: Array = ctx.get("orders", []) as Array
+	var storage: GroundPileManager = ctx.get("storage") as GroundPileManager
+	var inventory: SettlementInventory = ctx.get("inventory") as SettlementInventory
+	var world: World3D = ctx.get("world") as World3D
+	var tree: SceneTree = ctx.get("tree") as SceneTree
+	var domain_owner: RefCounted = ctx.get("domain_owner") as RefCounted
+	var region: StringName = ctx.get("region", &"") as StringName
+
+	var failures: Array[Dictionary] = []
+	var failed_unit_ids: Dictionary = {}
+	for raw_entry: Variant in orders:
+		var entry: Dictionary = raw_entry as Dictionary
 		var teardown_unit: Unit = entry.get("unit") as Unit
 		var teardown_order: UnitOrder = entry.get("order") as UnitOrder
 		var teardown_rev: int = int(entry.get("revision", -1))
-		if is_instance_valid(teardown_unit):
-			if teardown_order != null and teardown_order.is_active():
-				teardown_unit._finalize_controlled_teardown_order(teardown_token, teardown_order, teardown_rev)
+		if teardown_order == null:
+			continue
+		if not is_instance_valid(teardown_unit):
+			if teardown_order.is_active():
+				failures.append({"classification": "order_still_active", "reason": "unit_invalid_with_active_order", "order": teardown_order})
+			elif not _is_order_terminally_reconciled(teardown_order, null):
+				failures.append({"classification": "unreconciled_terminal_record", "reason": "unit_invalid_unreconciled_order", "order": teardown_order})
+			continue
+
+		if teardown_order.is_active():
+			var finalized: bool = teardown_unit._finalize_controlled_teardown_order(teardown_token, teardown_order, teardown_rev)
+			if finalized:
+				if not _is_unit_reconciled_after_teardown(teardown_unit, teardown_order, teardown_rev):
+					failures.append({"classification": "unreconciled_terminal_record", "reason": "teardown_postcondition_failed", "unit": teardown_unit, "order": teardown_order})
+					failed_unit_ids[teardown_unit.get_instance_id()] = true
 			else:
-				teardown_unit._clear_controlled_teardown_token(teardown_token)
-	storage.cleanup()
+				if _is_unit_reconciled_after_teardown(teardown_unit, teardown_order, teardown_rev):
+					teardown_unit._clear_controlled_teardown_token(teardown_token)
+				else:
+					var failure := _classify_teardown_finalization_failure(teardown_unit, teardown_order, teardown_token, teardown_rev)
+					failures.append(failure)
+					failed_unit_ids[teardown_unit.get_instance_id()] = true
+		else:
+			teardown_unit._clear_controlled_teardown_token(teardown_token)
+			if not _is_unit_reconciled_after_teardown(teardown_unit, teardown_order, teardown_rev):
+				failures.append({"classification": "unreconciled_terminal_record", "reason": "terminal_order_unreconciled", "unit": teardown_unit, "order": teardown_order})
+				failed_unit_ids[teardown_unit.get_instance_id()] = true
+
+	for raw_unit: Variant in units_snapshot:
+		var unit: Unit = raw_unit as Unit
+		if not is_instance_valid(unit):
+			continue
+		var remaining: UnitOrder = unit.get_current_order()
+		if remaining != null and not failed_unit_ids.has(unit.get_instance_id()):
+			failures.append({
+				"classification": "order_still_active" if remaining.is_active() else "unreconciled_terminal_record",
+				"reason": "remaining_unit_order",
+				"unit": unit,
+				"order": remaining,
+			})
+
+	if not failures.is_empty():
+		var primary_reason: String = String(failures[0].get("reason", "teardown_finalization_failed"))
+		var pending := ctx.duplicate()
+		pending["failures"] = failures
+		pending["reason"] = primary_reason
+		_pending_controlled_teardown = pending
+		return {"ok": false, "reason": primary_reason, "failures": failures}
+
+	if storage != null:
+		storage.cleanup()
 	_last_domain_release_result = ReservedWithdrawalCoordinator.release_regional_domain(world, region, storage, domain_owner, tree, inventory)
+	if not bool(_last_domain_release_result.get("ok", false)):
+		var release_reason: String = String(_last_domain_release_result.get("reason", "domain_release_failed"))
+		var release_failures: Array[Dictionary] = [{"classification": "domain_release_failed", "reason": release_reason}]
+		var pending_rel := ctx.duplicate()
+		pending_rel["failures"] = release_failures
+		pending_rel["reason"] = release_reason
+		_pending_controlled_teardown = pending_rel
+		return {"ok": false, "reason": release_reason, "failures": release_failures}
+
+	_pending_controlled_teardown = {}
 	queue_free()
-	return {"ok": true, "reason": ""}
+	return {"ok": true, "reason": "", "failures": []}
+
+
+static func _is_order_terminally_reconciled(order: UnitOrder, unit: Unit) -> bool:
+	if order == null or not order.is_finished() or not order.was_finished_notified():
+		return false
+	if order.status == UnitOrder.Status.CANCELLED and order.get_interruption_cause() == UnitOrder.InterruptionCause.NONE:
+		return false
+	if unit != null and is_instance_valid(unit) and unit.get_current_order() != null:
+		return false
+	return true
+
+
+static func _is_unit_reconciled_after_teardown(unit: Unit, order: UnitOrder, initial_rev: int) -> bool:
+	if not is_instance_valid(unit):
+		return _is_order_terminally_reconciled(order, null)
+	if not _is_order_terminally_reconciled(order, unit):
+		return false
+	if unit.get_control_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
+		return false
+	if order.status == UnitOrder.Status.CANCELLED and initial_rev >= 0 and unit.get_order_revision() <= initial_rev:
+		return false
+	return true
+
+
+static func _classify_teardown_finalization_failure(
+	unit: Unit,
+	order: UnitOrder,
+	token: RefCounted,
+	expected_rev: int
+) -> Dictionary:
+	if unit.is_inside_tree() or not unit._is_exiting_tree:
+		return {"classification": "incompatible_context", "reason": "unit_not_exiting_tree", "unit": unit, "order": order}
+	if unit._controlled_teardown_token != token:
+		return {"classification": "incompatible_identity", "reason": "teardown_token_mismatch", "unit": unit, "order": order}
+	if unit.get_current_order() != order or unit.get_order_revision() != expected_rev:
+		return {"classification": "incompatible_identity", "reason": "order_or_revision_mismatch", "unit": unit, "order": order}
+	if unit._is_reserved_withdrawal_locked() or not order.can_cancel_now() or order.is_active():
+		return {"classification": "transactional_finalization_refused", "reason": "order_still_active_locked", "unit": unit, "order": order}
+	return {"classification": "unreconciled_terminal_record", "reason": "teardown_finalization_failed", "unit": unit, "order": order}
 
 
 func _on_placement_confirmed(
