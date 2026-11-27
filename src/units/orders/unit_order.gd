@@ -43,6 +43,7 @@ var failure_reason: String = REASON_NONE
 var _order_origin: OrderOrigin = OrderOrigin.NONE
 var _finished_notified: bool = false
 var _interruption_cause: InterruptionCause = InterruptionCause.NONE
+var _interruption_cause_notified: bool = false
 
 
 func get_order_origin() -> OrderOrigin:
@@ -63,6 +64,14 @@ func was_finished_notified() -> bool:
 
 func mark_finished_notified() -> void:
 	_finished_notified = true
+
+
+func was_interruption_cause_notified() -> bool:
+	return _interruption_cause_notified
+
+
+func mark_interruption_cause_notified() -> void:
+	_interruption_cause_notified = true
 
 
 func get_interruption_cause() -> InterruptionCause:

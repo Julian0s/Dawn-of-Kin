@@ -273,6 +273,7 @@ func request_controlled_teardown() -> Dictionary:
 	var authority := CancellationRecoveryTransaction._authority(world, region)
 	if authority != null and (authority.storage == null or authority.storage.get_ref() != storage or authority.has_active_operation()):
 		return {"ok": false, "reason": "ambiguous_or_busy_economic_domain"}
+	var teardown_token := RefCounted.new()
 	var loads: Array[UnitCarryLoad] = []
 	var orders: Array[Dictionary] = []
 	if authority != null:
@@ -284,10 +285,11 @@ func request_controlled_teardown() -> Dictionary:
 	for unit: Unit in get_units():
 		var load := unit.get_carry_load()
 		loads.append(load)
+		var teardown_entry: Dictionary = unit._begin_controlled_teardown(teardown_token)
+		if not teardown_entry.is_empty():
+			orders.append(teardown_entry)
 		load._coordinator_transaction_locked = true
 		load._provenance_busy = true
-		if unit.get_current_order() != null:
-			orders.append({"order": unit.get_current_order(), "movement": unit.get_movement()})
 	_teardown_community_work()
 	get_parent().remove_child(self)
 	for load: UnitCarryLoad in loads:
@@ -300,10 +302,17 @@ func request_controlled_teardown() -> Dictionary:
 	if authority != null:
 		authority.is_executing = false
 	# A transfer delegate may conservatively defer cancellation while locked.
-	# The detached scene cannot accept new work; finish unbinding those delegates.
+	# Reconcile remaining active orders centrally through Unit so ownership, revision,
+	# ControlMode, InterruptionCause, and single-shot order_finished stay coherent.
 	for entry: Dictionary in orders:
-		if entry.order.is_active():
-			entry.order.cancel(entry.movement, UnitOrder.REASON_UNIT_EXITED)
+		var teardown_unit: Unit = entry.get("unit") as Unit
+		var teardown_order: UnitOrder = entry.get("order") as UnitOrder
+		var teardown_rev: int = int(entry.get("revision", -1))
+		if is_instance_valid(teardown_unit):
+			if teardown_order != null and teardown_order.is_active():
+				teardown_unit._finalize_controlled_teardown_order(teardown_token, teardown_order, teardown_rev)
+			else:
+				teardown_unit._clear_controlled_teardown_token(teardown_token)
 	storage.cleanup()
 	_last_domain_release_result = ReservedWithdrawalCoordinator.release_regional_domain(world, region, storage, domain_owner, tree, inventory)
 	queue_free()

@@ -15,6 +15,7 @@ enum State {
 
 signal state_changed(new_state: State, previous_state: State)
 signal order_finished(order: UnitOrder)
+signal order_interruption_cause_committed(order: UnitOrder, cause: UnitOrder.InterruptionCause)
 signal control_mode_changed(new_mode: UnitControlState.ControlMode, previous_mode: UnitControlState.ControlMode)
 
 @export var definition: CharacterDefinition = null:
@@ -49,6 +50,8 @@ var _pending_transition_seq: int = 0
 var _pending_target_mode: UnitControlState.ControlMode = UnitControlState.ControlMode.COMMUNITY_FREE
 var _pending_target_origin: UnitOrder.OrderOrigin = UnitOrder.OrderOrigin.NONE
 var _cancelling_order: UnitOrder = null
+var _awaiting_interruption_cause_order: UnitOrder = null
+var _controlled_teardown_token: RefCounted = null
 var _is_exiting_tree: bool = false
 var _last_order_rejection_reason: String = ""
 ## A contribution follows the worker even when its active order changes sites.
@@ -65,6 +68,7 @@ var _visual_cycle_time: float = 0.0
 
 func _enter_tree() -> void:
 	_is_exiting_tree = false
+	_controlled_teardown_token = null
 
 
 func _ready() -> void:
@@ -115,6 +119,11 @@ func _exit_tree() -> void:
 	_is_exiting_tree = true
 	_transition_seq += 1
 	_pending_transition_seq = 0
+	if _awaiting_interruption_cause_order != null and _awaiting_interruption_cause_order.is_finished():
+		var pending_cause_order: UnitOrder = _awaiting_interruption_cause_order
+		_commit_interruption_cause(pending_cause_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_emit_interruption_cause_committed_once(pending_cause_order)
+	_awaiting_interruption_cause_order = null
 	if _current_order != null and _current_order.is_active():
 		var exiting_order: UnitOrder = _current_order
 		_current_order = null
@@ -123,21 +132,83 @@ func _exit_tree() -> void:
 		if _cancelling_order == exiting_order:
 			_cancelling_order = null
 		if exiting_order.is_finished():
+			_controlled_teardown_token = null
 			if exiting_order.status == UnitOrder.Status.CANCELLED:
-				exiting_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+				_commit_interruption_cause(exiting_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 			_order_revision += 1
 			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 			_set_state(State.IDLE)
 			_publish_control_mode_if_changed()
 			_emit_order_finished_once(exiting_order)
+			_emit_interruption_cause_committed_once(exiting_order)
 		else:
-			# Cancellation was refused by an active transactional lock/transfer: preserve revision
-			# and ownership without emitting a false order_finished or marking _finished_notified.
+			# Cancellation was refused by an active transactional lock/transfer: preserve revision,
+			# ownership, and any controlled teardown token without emitting a false order_finished.
 			_current_order = exiting_order
 	else:
+		_controlled_teardown_token = null
 		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_publish_control_mode_if_changed()
 	reset_work_visuals()
+
+
+func _begin_controlled_teardown(token: RefCounted) -> Dictionary:
+	if token == null or _is_exiting_tree or not is_inside_tree() or is_queued_for_deletion():
+		return {}
+	if _current_order == null or not _current_order.is_active():
+		return {}
+	_controlled_teardown_token = token
+	return {
+		"unit": self,
+		"order": _current_order,
+		"revision": _order_revision,
+	}
+
+
+func _clear_controlled_teardown_token(token: RefCounted) -> void:
+	if token != null and _controlled_teardown_token == token:
+		_controlled_teardown_token = null
+
+
+func _finalize_controlled_teardown_order(
+	token: RefCounted,
+	expected_order: UnitOrder,
+	expected_revision: int
+) -> bool:
+	if token == null or _controlled_teardown_token != token:
+		return false
+	_controlled_teardown_token = null
+	if not _is_exiting_tree or is_inside_tree():
+		return false
+	if expected_order == null or _current_order != expected_order or _order_revision != expected_revision:
+		return false
+	if not expected_order.is_active():
+		return false
+	if _is_reserved_withdrawal_locked() or not expected_order.can_cancel_now():
+		return false
+
+	_transition_seq += 1
+	_pending_transition_seq = 0
+	_current_order = null
+	_cancelling_order = expected_order
+	expected_order.cancel(_movement, UnitOrder.REASON_UNIT_EXITED)
+	if _cancelling_order == expected_order:
+		_cancelling_order = null
+
+	if not expected_order.is_finished():
+		_current_order = expected_order
+		return false
+
+	if expected_order.status == UnitOrder.Status.CANCELLED:
+		_commit_interruption_cause(expected_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
+	_order_revision += 1
+	_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+	_set_state(State.IDLE)
+	reset_work_visuals()
+	_publish_control_mode_if_changed()
+	_emit_order_finished_once(expected_order)
+	_emit_interruption_cause_committed_once(expected_order)
+	return true
 
 
 func apply_definition(def: CharacterDefinition) -> void:
@@ -500,6 +571,26 @@ func _emit_order_finished_once(order: UnitOrder) -> void:
 	order_finished.emit(order)
 
 
+func _commit_interruption_cause(target: UnitOrder, cause: UnitOrder.InterruptionCause) -> void:
+	if target == null or cause == UnitOrder.InterruptionCause.NONE:
+		return
+	target.set_interruption_cause(cause)
+	if _awaiting_interruption_cause_order == target:
+		_awaiting_interruption_cause_order = null
+
+
+func _emit_interruption_cause_committed_once(order: UnitOrder) -> void:
+	if (
+		order == null
+		or not order.is_finished()
+		or order.get_interruption_cause() == UnitOrder.InterruptionCause.NONE
+		or order.was_interruption_cause_notified()
+	):
+		return
+	order.mark_interruption_cause_notified()
+	order_interruption_cause_committed.emit(order, order.get_interruption_cause())
+
+
 func _publish_control_mode_if_changed() -> void:
 	var delta: Dictionary = _control_state._commit_published_mode()
 	if bool(delta["changed"]):
@@ -555,13 +646,14 @@ func _perform_administrative_cancel(reason: String) -> bool:
 		_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 		return false
 
-	# Reentrant administrative cancel while an outer transition is already cancelling an order:
+	# Reentrant administrative cancel while an outer transition is cancelling or finalizing an order:
 	# supersede the outer transition cleanly without recursively invoking cancel() on the same order.
-	if _current_order == null and _cancelling_order != null:
+	if _current_order == null and (_cancelling_order != null or _awaiting_interruption_cause_order != null):
+		var target_cause_order: UnitOrder = _awaiting_interruption_cause_order if _awaiting_interruption_cause_order != null else _cancelling_order
 		_transition_seq += 1
 		var my_reent_seq: int = _transition_seq
 		_pending_transition_seq = 0
-		_cancelling_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_commit_interruption_cause(target_cause_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 		_order_revision += 1
 		var reent_rev: int = _order_revision
 		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
@@ -571,6 +663,8 @@ func _perform_administrative_cancel(reason: String) -> bool:
 		reset_work_visuals()
 		if _has_mutation_authority(my_reent_seq, reent_rev) and _current_order == null:
 			_publish_control_mode_if_changed()
+		if target_cause_order != null and target_cause_order.is_finished():
+			_emit_interruption_cause_committed_once(target_cause_order)
 		return true
 
 	if _current_order == null:
@@ -613,7 +707,7 @@ func _perform_administrative_cancel(reason: String) -> bool:
 
 	var committed_rev: int = _order_revision
 	if _transition_seq == my_seq:
-		cancelled_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+		_commit_interruption_cause(cancelled_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 		_order_revision += 1
 		committed_rev = _order_revision
 		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
@@ -630,6 +724,9 @@ func _perform_administrative_cancel(reason: String) -> bool:
 
 	# Always deliver legitimate single-shot order_finished even if a callback installed a successor.
 	_emit_order_finished_once(cancelled_order)
+	if cancelled_order.get_interruption_cause() == UnitOrder.InterruptionCause.NONE:
+		_commit_interruption_cause(cancelled_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
+	_emit_interruption_cause_committed_once(cancelled_order)
 	return _transition_seq == my_seq and _order_revision == committed_rev
 
 
@@ -648,24 +745,23 @@ func _install_admitted_order(
 	_pending_target_mode = target_mode
 	_pending_target_origin = origin
 
-	# If this personal order was admitted reentrantly during an outer previous_order.cancel(),
-	# commit the real interruption cause onto _cancelling_order immediately (write-once).
-	if _current_order == null and _cancelling_order != null:
-		_cancelling_order.set_interruption_cause(_interruption_cause_for(order, origin))
-
 	var issued_revision: int = _order_revision
+	var cause_target: UnitOrder = null
 
 	# Stage 2: cancel previous active order (while _order_revision still belongs to previous_order).
 	if _current_order != null and _current_order.is_active():
 		var previous_order: UnitOrder = _current_order
 		_current_order = null
 		_cancelling_order = previous_order
+		_awaiting_interruption_cause_order = previous_order
 		previous_order.cancel(_movement, UnitOrder.REASON_REPLACED)
 		if _cancelling_order == previous_order:
 			_cancelling_order = null
 
 		if not previous_order.is_finished():
 			# Stage 2A: refusal preserves _order_revision and all external consumers 100% intact.
+			if _awaiting_interruption_cause_order == previous_order:
+				_awaiting_interruption_cause_order = null
 			if _transition_seq == my_seq:
 				if _current_order == null:
 					_current_order = previous_order
@@ -675,18 +771,17 @@ func _install_admitted_order(
 			_last_order_rejection_reason = CommandController.REASON_UNIT_TRANSACTION_LOCKED
 			return false
 
-		# Check Point 1 (B2-A01): Revalidate permissions/locks/authority before stamping InterruptionCause,
-		# so a rejected MoveOrder invalidated during cancel() never stamps InterruptionCause.PERSONAL_MOVE.
+		# Check Point 1 (B2-A01): Revalidate permissions/locks/authority immediately after cancel().
+		# Do NOT commit PERSONAL_MOVE/PERSONAL_OTHER yet: keep cause uncommitted until Check Point 2 passes.
 		var pre_reval_reason: String = ""
 		if _transition_seq == my_seq:
 			pre_reval_reason = _revalidate_admitted_order_before_install(order, origin, recovery_ctx, dispatch_lease)
 			if pre_reval_reason.is_empty():
-				previous_order.set_interruption_cause(_interruption_cause_for(order, origin))
 				_order_revision += 1
 				issued_revision = _order_revision
 				_control_state._apply_internal(target_mode, origin)
 			else:
-				previous_order.set_interruption_cause(UnitOrder.InterruptionCause.ADMIN_CANCEL)
+				_commit_interruption_cause(previous_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 				_order_revision += 1
 				issued_revision = _order_revision
 				_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
@@ -696,6 +791,7 @@ func _install_admitted_order(
 				if _has_mutation_authority(my_seq, issued_revision) and _current_order == null:
 					_publish_control_mode_if_changed()
 				_emit_order_finished_once(previous_order)
+				_emit_interruption_cause_committed_once(previous_order)
 				order.mark_cancelled(UnitOrder.REASON_REPLACED)
 				_last_order_rejection_reason = pre_reval_reason
 				return false
@@ -705,30 +801,45 @@ func _install_admitted_order(
 		if not _has_mutation_authority(my_seq, issued_revision):
 			if _pending_transition_seq == my_seq:
 				_pending_transition_seq = 0
+			if previous_order.get_interruption_cause() == UnitOrder.InterruptionCause.NONE:
+				_commit_interruption_cause(previous_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
+			_emit_interruption_cause_committed_once(previous_order)
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)
 			_last_order_rejection_reason = UnitOrder.REASON_REPLACED
 			return false
 
-		# Check Point 2 (B2-A01): Revalidate current permissions, locks, and F01/F02 authority
-		# immediately before effective installation after order_finished callbacks.
+		# Check Point 2 (B2-A01 / B2-R2-A01): Revalidate current permissions, locks, and F01/F02 authority
+		# immediately before effective installation. Only after Check Point 2 approves is the replacement
+		# interruption cause definitively committed (write-once).
 		var post_reval_reason: String = _revalidate_admitted_order_before_install(order, origin, recovery_ctx, dispatch_lease)
 		if not post_reval_reason.is_empty():
 			if _pending_transition_seq == my_seq:
 				_pending_transition_seq = 0
+			_commit_interruption_cause(previous_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 			_set_state(State.IDLE)
 			if _has_mutation_authority(my_seq, issued_revision) and _current_order == null:
 				_publish_control_mode_if_changed()
+			_emit_interruption_cause_committed_once(previous_order)
 			order.mark_cancelled(UnitOrder.REASON_REPLACED)
 			_last_order_rejection_reason = post_reval_reason
 			return false
+
+		cause_target = previous_order
 	else:
 		# No active previous order -> commit revision & internal target state directly.
+		# If admitted reentrantly during an outer cancel() or order_finished(), this order becomes
+		# the definitive interruption cause of the outer awaiting order at Stage 3 entry.
 		_order_revision += 1
 		issued_revision = _order_revision
 		_control_state._apply_internal(target_mode, origin)
+		if _awaiting_interruption_cause_order != null:
+			cause_target = _awaiting_interruption_cause_order
 
-	# Stage 3: install order and execute start().
+	# Stage 3: point of no return — commit definitive write-once InterruptionCause, install order, and start().
+	if cause_target != null:
+		_commit_interruption_cause(cause_target, _interruption_cause_for(order, origin))
+
 	order._set_order_origin(origin)
 	if _world_navigation == null and _movement != null:
 		_world_navigation = _movement.get_world_navigation()
@@ -743,6 +854,8 @@ func _install_admitted_order(
 			_pending_transition_seq = 0
 		if order.is_finished():
 			_emit_order_finished_once(order)
+		if cause_target != null and cause_target.is_finished():
+			_emit_interruption_cause_committed_once(cause_target)
 		return false
 
 	# Stage 4: stabilize final state and publish control_mode_changed at most once.
@@ -756,6 +869,8 @@ func _install_admitted_order(
 		if _has_mutation_authority(my_seq, issued_revision) and _current_order == null and _pending_transition_seq == 0:
 			_publish_control_mode_if_changed()
 		_emit_order_finished_once(order)
+		if cause_target != null and cause_target.is_finished():
+			_emit_interruption_cause_committed_once(cause_target)
 		if order.is_succeeded():
 			return true
 		_last_order_rejection_reason = order.failure_reason
@@ -765,6 +880,8 @@ func _install_admitted_order(
 		_set_state(State.MOVING)
 	if _has_mutation_authority(my_seq, issued_revision) and _current_order == order and _pending_transition_seq == 0:
 		_publish_control_mode_if_changed()
+	if cause_target != null and cause_target.is_finished():
+		_emit_interruption_cause_committed_once(cause_target)
 	return true
 
 
