@@ -555,7 +555,9 @@ func test_b8_manual_priority_interrupts_group_work_safely() -> void:
 	assert_eq(interrupted_leader.get_carry_load().get_amount(&"wood"), carried_before, "Carried wood preserved")
 	assert_true(interrupted_leader.get_carry_load().validate_provenance(), "Provenance valid after interruption")
 	if interrupted_task != null:
-		assert_true(interrupted_task.excluded_unit_ids.has(interrupted_leader.get_instance_id()), "Interrupted task marks leader excluded")
+		# Reconciled for R-03B B3 (B0-Q05 B): personal MoveOrder takes priority without adding permanent exclusion.
+		assert_false(interrupted_task.excluded_unit_ids.has(interrupted_leader.get_instance_id()), "B0-Q05 B: Personal MoveOrder does not permanently exclude leader")
+		assert_eq(interrupted_leader.get_control_mode(), UnitControlState.ControlMode.PERSONAL_ACTIVE, "Interrupted leader is under active personal control")
 	assert_not_null(colleague.get_current_order(), "Colleague continues working in the group")
 
 	var delivered: int = inventory.get_physical_amount(&"wood") - stock_before
@@ -756,27 +758,24 @@ func test_b12_blocked_reauthorization_never_auto_dispatches_on_new_worker_or_eve
 		await _teardown_fixture(view)
 		return
 
-	# Exclude both existing leaders via manual moves.
+	# Reconciled for R-03B B3 (B0-Q05 B): exclude both existing leaders via administrative cancel
+	# (MoveOrder alone no longer creates permanent task exclusion).
 	var u1: Unit = blocked_task.assigned_unit
 	var u2: Unit = leader_b if u1 == leader_a else leader_a
-	u1.issue_order(MoveOrder.new(u1.global_position + Vector3(0.8, 0.0, 0.8), u1.global_position + Vector3(0.8, 0.0, 0.8), false))
+	u1.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(3)
 	await wait_physics_frames(1)
 	assert_eq(blocked_task.assigned_unit, u2, "Second leader took over before exclusion")
 
-	u2.issue_order(MoveOrder.new(u2.global_position + Vector3(-0.8, 0.0, 0.8), u2.global_position + Vector3(-0.8, 0.0, 0.8), false))
-	Engine.time_scale = 3.0
-	for _i: int in range(600):
-		if leader_a.get_current_order() == null and leader_b.get_current_order() == null:
-			break
-		await wait_physics_frames(1)
-	Engine.time_scale = 1.0
+	u2.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(3)
+	await wait_physics_frames(1)
 
 	assert_eq(blocked_task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "Task entered BLOCKED_REAUTHORIZATION")
 
 	# Trigger multiple dispatcher events:
-	# Event 1: Leader finishes another activity (a short move).
+	# Event 1: Leader finishes another activity (a short move with timerless wait=0.0 returning to COMMUNITY_FREE).
+	leader_a.personal_post_move_wait_sec = 0.0
 	leader_a.issue_order(MoveOrder.new(leader_a.global_position + Vector3(0.6, 0.0, 0.0), leader_a.global_position + Vector3(0.6, 0.0, 0.0), false))
 	Engine.time_scale = 3.0
 	for _i: int in range(300):

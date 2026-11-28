@@ -771,16 +771,14 @@ func test_d1_09_d1c_explicit_reauthorization_vs_incidental_events_and_personal_o
 	var original_group_id: int = task.group_id
 	assert_not_null(task.assigned_unit, "An idle worker is assigned to t1")
 
-	# Player manually overrides the first assigned worker, then the second worker when reassigned,
-	# driving the task naturally into BLOCKED_REAUTHORIZATION.
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel persistently excludes each assigned worker,
+	# driving the task naturally into BLOCKED_REAUTHORIZATION (MoveOrder alone now returns after D-05 wait).
 	for override_idx: int in range(2):
 		if task.is_blocked_reauthorization():
 			break
 		var w: Unit = task.assigned_unit
 		if w != null:
-			selection.select_single(w)
-			var dest := Vector3(4.0 + float(override_idx) * 2.0, 0.0, 12.0)
-			assert_true(cmd.command_at(PickResult.from_ground(dest, Vector3.UP)), "Manual override #%d issued" % (override_idx + 1))
+			w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 			await wait_process_frames(4)
 			await wait_physics_frames(2)
 
@@ -1052,14 +1050,13 @@ func test_d1_14_t01a_reauthorization_refused_under_blocked_admission_preserves_s
 		await _teardown_fixture(view)
 		return
 
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel records persistent worker exclusion.
 	for override_idx: int in range(2):
 		if task.is_blocked_reauthorization():
 			break
 		var w: Unit = task.assigned_unit
 		if w != null:
-			selection.select_single(w)
-			var dest := Vector3(4.0 + float(override_idx) * 2.0, 0.0, 12.0)
-			assert_true(cmd.command_at(PickResult.from_ground(dest, Vector3.UP)), "T01-A: Personal override #%d issued" % (override_idx + 1))
+			w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 			await wait_process_frames(4)
 			await wait_physics_frames(2)
 
@@ -1179,13 +1176,13 @@ func test_d1_15_t01b_reauthorization_during_regional_tx_and_selective_scope() ->
 		await _teardown_fixture(view)
 		return
 
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel drives wood & stone tasks into BLOCKED_REAUTHORIZATION.
 	for override_idx: int in range(2):
 		if wood_task.is_blocked_reauthorization():
 			break
 		var w: Unit = wood_task.assigned_unit
 		if w != null:
-			selection.select_single(w)
-			cmd.command_at(PickResult.from_ground(Vector3(3.0 + float(override_idx) * 2.0, 0.0, 10.0), Vector3.UP))
+			w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 			await wait_process_frames(4)
 			await wait_physics_frames(2)
 	leader_a.cancel_current_order(UnitOrder.REASON_CANCELLED)
@@ -1208,8 +1205,7 @@ func test_d1_15_t01b_reauthorization_during_regional_tx_and_selective_scope() ->
 			break
 		var w: Unit = stone_task.assigned_unit
 		if w != null:
-			selection.select_single(w)
-			cmd.command_at(PickResult.from_ground(Vector3(-3.0 - float(override_idx) * 2.0, 0.0, 10.0), Vector3.UP))
+			w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 			await wait_process_frames(4)
 			await wait_physics_frames(2)
 
@@ -1792,14 +1788,14 @@ func test_r2_hv03_work_marker_lifecycle_pending_blocked_depletion_removal_and_pi
 	if task_w != null:
 		var orig_w_task_id: int = task_w.task_id
 		var orig_w_group_id: int = task_w.group_id
+		# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel drives task_w deterministically into BLOCKED_REAUTHORIZATION.
 		for override_idx: int in range(2):
 			if task_w.is_blocked_reauthorization():
 				break
 			var w: Unit = task_w.assigned_unit
 			assert_not_null(w, "R2-T01: Assigned worker present for override #%d" % (override_idx + 1))
 			if w != null:
-				selection.select_single(w)
-				cmd.command_at(PickResult.from_ground(Vector3(3.0 + float(override_idx) * 2.0, 0.0, 12.0), Vector3.UP))
+				w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 				await wait_process_frames(4)
 				await wait_physics_frames(2)
 		assert_true(task_w.is_blocked_reauthorization(), "R2-T01: task_w must reach BLOCKED_REAUTHORIZATION deterministically")
@@ -1897,15 +1893,15 @@ func test_r3_r2t01_blocked_marker_lifecycle_and_reauthorization_invariants() -> 
 	var orig_task_id: int = task.task_id
 	var orig_group_id: int = task.group_id
 
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel excludes both leaders persistently,
+	# then both leaders receive real personal orders so HUD reauth preservation checks remain 100% intact.
 	for override_idx: int in range(2):
 		if task.is_blocked_reauthorization():
 			break
 		var w: Unit = task.assigned_unit
-		assert_not_null(w, "R2-T01 isolated: Legitimate assignment prior to personal override #%d" % (override_idx + 1))
+		assert_not_null(w, "R2-T01 isolated: Legitimate assignment prior to override #%d" % (override_idx + 1))
 		if w != null:
-			selection.select_single(w)
-			var dest := Vector3(4.0 + float(override_idx) * 2.5, 0.0, 12.0)
-			assert_true(cmd.command_at(PickResult.from_ground(dest, Vector3.UP)), "R2-T01 isolated: Personal override #%d issued" % (override_idx + 1))
+			w.cancel_current_order(UnitOrder.REASON_CANCELLED)
 			await wait_process_frames(4)
 			await wait_physics_frames(2)
 
@@ -1918,6 +1914,12 @@ func test_r3_r2t01_blocked_marker_lifecycle_and_reauthorization_invariants() -> 
 	assert_not_null(blocked_marker, "R2-T01 isolated: Work marker exists in blocked state")
 	if blocked_marker != null:
 		assert_eq(String(blocked_marker.get_meta(&"work_marker_state")), "blocked", "R2-T01 isolated: Marker visual state is blocked")
+
+	selection.select_single(leader_a)
+	assert_true(cmd.command_at(PickResult.from_ground(Vector3(4.0, 0.0, 12.0), Vector3.UP)), "R2-T01 isolated: LeaderA personal move active")
+	selection.select_single(leader_b)
+	assert_true(cmd.command_at(PickResult.from_ground(Vector3(6.5, 0.0, 12.0), Vector3.UP)), "R2-T01 isolated: LeaderB personal move active")
+	await wait_process_frames(2)
 
 	model.select_single(t1)
 	await wait_process_frames(2)

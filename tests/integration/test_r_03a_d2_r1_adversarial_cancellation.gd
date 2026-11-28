@@ -329,6 +329,8 @@ func test_r1_t01a_personal_order_sovereignty_and_reentrant_callbacks() -> void:
 	# --- A01-R3A (immediate empty), A01-R3B (RETRY_SCHEDULED empty), A01-R3C (deferred _finish_cancelled), A01-R4 (active residual delivery), A01-R5A (transactional lock) ---
 	var view3 := await _fixture()
 	var main3 := view3.get_child(0) as MainScene
+	# Technical wait=0.0 so A01-R3C can reuse workers immediately after A01-R3A/A01-R3B personal moves finish.
+	main3.set_experimental_personal_post_move_wait_sec(0.0)
 	var board3 := main3.get_community_work_board()
 	var model3 := main3.get_source_selection_model()
 	var agi3 := main3.get_input_controller() as AutonomousGatherInput

@@ -523,27 +523,18 @@ func test_a8_manual_exclusion_block_detectable_without_silent_reassignment() -> 
 		await _teardown_fixture(view)
 		return
 
-	# Interrupt first assigned leader with a personal move -> second leader automatically picks up task.
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel creates persistent manual exclusion
+	# (MoveOrder alone now allows automatic return after D-05 wait).
 	var first_unit: Unit = task.assigned_unit
 	var second_unit: Unit = leader_b if first_unit == leader_a else leader_a
-	first_unit.issue_order(MoveOrder.new(first_unit.global_position + Vector3(1.0, 0.0, 1.0), first_unit.global_position + Vector3(1.0, 0.0, 1.0), false))
+	first_unit.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(3)
 	await wait_physics_frames(1)
 
 	assert_eq(task.assigned_unit, second_unit, "Second non-excluded leader should pick up stone task")
 
-	# Interrupt second leader as well -> now ALL workers are manually excluded!
-	second_unit.issue_order(MoveOrder.new(second_unit.global_position + Vector3(-1.0, 0.0, 1.0), second_unit.global_position + Vector3(-1.0, 0.0, 1.0), false))
-	await wait_process_frames(3)
-	await wait_physics_frames(1)
-
-	# Let both short moves finish so both leaders are genuinely IDLE.
-	Engine.time_scale = 3.0
-	for _i: int in range(600):
-		if leader_a.get_current_order() == null and leader_b.get_current_order() == null:
-			break
-		await wait_physics_frames(1)
-	Engine.time_scale = 1.0
+	# Exclude second leader as well -> now ALL workers are manually excluded!
+	second_unit.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(4)
 	await wait_physics_frames(4)
 

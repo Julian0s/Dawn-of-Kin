@@ -22,11 +22,17 @@ var _use_provenance: bool = true
 var _economy_admission_reason: String = ""
 
 var _unit_callbacks: Dictionary = {}
+## Pending order-level correlations awaiting Unit.order_interruption_cause_committed (ratified B2-R2 two-event contract).
+var _pending_interruption_classifications: Dictionary = {}
 var _flush_queued: bool = false
 var _dispatching: bool = false
 var _cancelling_batch_depth: int = 0
 var _is_tearing_down: bool = false
 var _config_epoch: int = 0
+
+
+func get_pending_interruption_classification_count() -> int:
+	return _pending_interruption_classifications.size()
 
 
 func _ready() -> void:
@@ -266,6 +272,7 @@ func _unbind_all() -> void:
 		var unit: Unit = (unit_ref.get_ref() as Unit) if unit_ref != null else null
 		_disconnect_unit_entry(unit, entry)
 	_unit_callbacks.clear()
+	_pending_interruption_classifications.clear()
 
 
 func _bind_unit(unit: Unit) -> void:
@@ -275,16 +282,19 @@ func _bind_unit(unit: Unit) -> void:
 	if _unit_callbacks.has(uid):
 		return
 	var on_finished: Callable = Callable(self, "_on_unit_order_finished").bind(uid)
+	var on_cause_committed: Callable = Callable(self, "_on_unit_order_interruption_cause_committed").bind(uid)
 	var on_state: Callable = Callable(self, "_on_unit_state_changed").bind(uid)
 	var on_control_mode: Callable = Callable(self, "_on_unit_control_mode_changed").bind(uid)
 	var on_exit: Callable = Callable(self, "_on_unit_tree_exited").bind(uid)
 	unit.order_finished.connect(on_finished)
+	unit.order_interruption_cause_committed.connect(on_cause_committed)
 	unit.state_changed.connect(on_state)
 	unit.control_mode_changed.connect(on_control_mode)
 	unit.tree_exited.connect(on_exit)
 	_unit_callbacks[uid] = {
 		"unit_ref": weakref(unit),
 		"on_finished": on_finished,
+		"on_cause_committed": on_cause_committed,
 		"on_state": on_state,
 		"on_control_mode": on_control_mode,
 		"on_exit": on_exit,
@@ -307,17 +317,44 @@ func _disconnect_unit_entry(unit: Unit, entry: Dictionary) -> void:
 	if unit == null or not is_instance_valid(unit):
 		return
 	var on_finished: Callable = entry.get("on_finished", Callable()) as Callable
+	var on_cause_committed: Callable = entry.get("on_cause_committed", Callable()) as Callable
 	var on_state: Callable = entry.get("on_state", Callable()) as Callable
 	var on_control_mode: Callable = entry.get("on_control_mode", Callable()) as Callable
 	var on_exit: Callable = entry.get("on_exit", Callable()) as Callable
 	if on_finished.is_valid() and unit.order_finished.is_connected(on_finished):
 		unit.order_finished.disconnect(on_finished)
+	if on_cause_committed.is_valid() and unit.order_interruption_cause_committed.is_connected(on_cause_committed):
+		unit.order_interruption_cause_committed.disconnect(on_cause_committed)
 	if on_state.is_valid() and unit.state_changed.is_connected(on_state):
 		unit.state_changed.disconnect(on_state)
 	if on_control_mode.is_valid() and unit.control_mode_changed.is_connected(on_control_mode):
 		unit.control_mode_changed.disconnect(on_control_mode)
 	if on_exit.is_valid() and unit.tree_exited.is_connected(on_exit):
 		unit.tree_exited.disconnect(on_exit)
+
+
+func _purge_pending_classifications_for_task(task: WorkTask) -> void:
+	if task == null or _pending_interruption_classifications.is_empty():
+		return
+	var to_erase: Array = []
+	for oid_key: Variant in _pending_interruption_classifications.keys():
+		var rec: Dictionary = _pending_interruption_classifications[oid_key] as Dictionary
+		if rec.get("task") == task:
+			to_erase.append(oid_key)
+	for oid_key: Variant in to_erase:
+		_pending_interruption_classifications.erase(oid_key)
+
+
+func _purge_pending_classifications_for_unit(uid: int) -> void:
+	if _pending_interruption_classifications.is_empty():
+		return
+	var to_erase: Array = []
+	for oid_key: Variant in _pending_interruption_classifications.keys():
+		var rec: Dictionary = _pending_interruption_classifications[oid_key] as Dictionary
+		if int(rec.get("uid", -1)) == uid:
+			to_erase.append(oid_key)
+	for oid_key: Variant in to_erase:
+		_pending_interruption_classifications.erase(oid_key)
 
 
 func _on_units_child_entered(child: Node) -> void:
@@ -339,6 +376,7 @@ func _on_unit_tree_exited(uid: int) -> void:
 
 
 func _handle_unit_unavailable(uid: int) -> void:
+	_purge_pending_classifications_for_unit(uid)
 	if _board == null or not is_instance_valid(_board):
 		return
 	for task: WorkTask in _board.get_active_tasks():
@@ -357,12 +395,24 @@ func _on_board_task_registered(_task: WorkTask) -> void:
 
 
 func _on_board_task_updated(task: WorkTask) -> void:
-	if task != null and task.is_blocked_reauthorization():
-		return
+	if task != null:
+		if task.is_blocked_reauthorization():
+			_purge_pending_classifications_for_task(task)
+			return
+		# Purge stale pending correlations if CutAuthorization changed (e.g., reauthorization).
+		if not _pending_interruption_classifications.is_empty():
+			var stale_keys: Array = []
+			for oid_key: Variant in _pending_interruption_classifications.keys():
+				var rec: Dictionary = _pending_interruption_classifications[oid_key] as Dictionary
+				if rec.get("task") == task and rec.get("authorization") != task.tree_cut_authorization:
+					stale_keys.append(oid_key)
+			for oid_key: Variant in stale_keys:
+				_pending_interruption_classifications.erase(oid_key)
 	request_dispatch()
 
 
-func _on_board_task_closed(_task: WorkTask) -> void:
+func _on_board_task_closed(task: WorkTask) -> void:
+	_purge_pending_classifications_for_task(task)
 	request_dispatch()
 
 
@@ -398,7 +448,78 @@ func _on_unit_order_finished(finished_order: UnitOrder, uid: int) -> void:
 	request_dispatch()
 
 
+func _on_unit_order_interruption_cause_committed(
+	order: UnitOrder,
+	cause: UnitOrder.InterruptionCause,
+	uid: int
+) -> void:
+	if order == null:
+		return
+	var oid: int = order.get_instance_id()
+	if not _pending_interruption_classifications.has(oid):
+		return
+	var rec: Dictionary = _pending_interruption_classifications[oid] as Dictionary
+	_pending_interruption_classifications.erase(oid)
+	if _is_tearing_down:
+		return
+	if int(rec.get("uid", -1)) != uid:
+		return
+	if int(rec.get("config_epoch", -1)) != _config_epoch:
+		return
+	var rec_board: CommunityWorkBoard = rec.get("board") as CommunityWorkBoard
+	if rec_board == null or rec_board != _board or not is_instance_valid(_board):
+		return
+	var task: WorkTask = rec.get("task") as WorkTask
+	if task == null or not task.is_active() or task.is_blocked_reauthorization():
+		return
+	if task.tree_cut_authorization != rec.get("authorization"):
+		return
+	if task.assigned_order == order:
+		return
+	var failure_reason: String = String(rec.get("failure_reason", order.failure_reason))
+	_apply_interruption_cause_classification(task, cause, failure_reason, uid)
+	request_dispatch()
+
+
+func _apply_interruption_cause_classification(
+	task: WorkTask,
+	cause: UnitOrder.InterruptionCause,
+	failure_reason: String,
+	uid: int
+) -> void:
+	if task == null or not task.is_active() or task.is_blocked_reauthorization():
+		return
+	match cause:
+		UnitOrder.InterruptionCause.PERSONAL_MOVE:
+			# B0-Q05 B: Personal MoveOrder does NOT add permanent manual exclusion; preserves CutAuthorization.
+			if task.assigned_unit == null and task.state == WorkTask.State.PENDING_WORKERS:
+				task.last_reason = "personal_move_interrupted"
+		UnitOrder.InterruptionCause.PERSONAL_OTHER:
+			# Productive personal redirect adds manual exclusion on the interrupted task.
+			task.excluded_unit_ids[uid] = true
+		UnitOrder.InterruptionCause.ADMIN_CANCEL:
+			# Structural removal, definition permission downgrade, or cooperative community cancel
+			# does NOT record permanent manual exclusion; genuine administrative cancels DO.
+			if not _is_non_excluding_admin_cancel_reason(failure_reason):
+				task.excluded_unit_ids[uid] = true
+		UnitOrder.InterruptionCause.SYSTEM_RECOVERY:
+			# Economic recovery is not a player manual task exclusion.
+			pass
+
+
+static func _is_non_excluding_admin_cancel_reason(failure_reason: String) -> bool:
+	return failure_reason in [
+		UnitOrder.REASON_UNIT_EXITED,
+		"definition_permission_changed",
+		"temporary_worker_removed",
+		GatherResourceOrder.REASON_COMMUNITY_WORK_CANCELLED,
+	]
+
+
 func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, uid: int) -> void:
+	var oid: int = finished_order.get_instance_id()
+	_pending_interruption_classifications.erase(oid)
+	var auth_snapshot: GatherResourceOrder.CutAuthorization = task.tree_cut_authorization
 	task.clear_assignment()
 
 	if finished_order.is_succeeded():
@@ -412,14 +533,30 @@ func _handle_assigned_order_finished(task: WorkTask, finished_order: UnitOrder, 
 		return
 
 	if finished_order.status == UnitOrder.Status.CANCELLED:
-		if finished_order.failure_reason == UnitOrder.REASON_REPLACED or finished_order.failure_reason == UnitOrder.REASON_CANCELLED:
-			task.excluded_unit_ids[uid] = true
-		if task.is_source_usable():
-			task.state = WorkTask.State.PENDING_WORKERS
-			task.last_reason = finished_order.failure_reason
-			_board.notify_task_updated(task)
-		else:
+		if not task.is_source_usable():
 			_board.close_task(task, WorkTask.State.FAILED, "invalid_source")
+			return
+		var committed_cause: UnitOrder.InterruptionCause = finished_order.get_interruption_cause()
+		task.state = WorkTask.State.PENDING_WORKERS
+		task.last_reason = finished_order.failure_reason
+		if committed_cause != UnitOrder.InterruptionCause.NONE:
+			_apply_interruption_cause_classification(task, committed_cause, finished_order.failure_reason, uid)
+		elif (
+			not _is_non_excluding_admin_cancel_reason(finished_order.failure_reason)
+			and (finished_order.failure_reason == UnitOrder.REASON_REPLACED or finished_order.failure_reason == UnitOrder.REASON_CANCELLED)
+		):
+			# Ratified B2-R2 two-event contract: cause is NOT yet committed at Stage 2 order_finished.
+			# Record order-identity correlation and wait for order_interruption_cause_committed.
+			_pending_interruption_classifications[oid] = {
+				"order_ref": weakref(finished_order),
+				"uid": uid,
+				"task": task,
+				"board": _board,
+				"config_epoch": _config_epoch,
+				"authorization": auth_snapshot,
+				"failure_reason": finished_order.failure_reason,
+			}
+		_board.notify_task_updated(task)
 		return
 
 	var reason: String = finished_order.failure_reason
@@ -663,14 +800,38 @@ func _collect_active_scene_units() -> Array[Unit]:
 	return units
 
 
-func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String:
+func _check_unit_structural_eligibility(unit: Unit, expected_world: World3D) -> String:
 	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
 		return "invalid_unit"
 	if not UnitControlPermissions.can_be_community_worker_base(unit):
 		return "community_work_denied"
-	if unit.has_pending_control_transition() or unit.get_control_mode() == UnitControlState.ControlMode.PERSONAL_ACTIVE:
+	var carry_load: UnitCarryLoad = unit.get_carry_load()
+	if carry_load == null:
+		return "invalid_carry_load"
+	if _use_provenance:
+		if not carry_load.is_provenance_enabled() or not carry_load.validate_provenance():
+			return "unreconciled_cargo"
+		if unit.get_meta(&"region_id", &"") != _region_id:
+			return "unit_not_admitted"
+		if expected_world == null or unit.get_world_3d() != expected_world:
+			return "world_mismatch"
+		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
+			expected_world, _region_id, unit, carry_load, get_tree()
+		)
+		if not bool(id_check.get("ok", false)):
+			return String(id_check.get("reason", "ambiguous_unit_identity"))
+	return ""
+
+
+func _check_unit_temporary_eligibility(unit: Unit) -> String:
+	var mode: UnitControlState.ControlMode = unit.get_control_mode()
+	if (
+		unit.has_pending_control_transition()
+		or mode == UnitControlState.ControlMode.PERSONAL_ACTIVE
+		or mode == UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT
+	):
 		return "personal_control_active"
-	if unit.get_control_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
+	if mode != UnitControlState.ControlMode.COMMUNITY_FREE:
 		return "busy"
 	if unit.get_current_order() != null and unit.get_current_order().is_active():
 		return "busy"
@@ -683,21 +844,16 @@ func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String
 		return "invalid_carry_load"
 	if carry_load.is_transaction_busy():
 		return "transaction_locked"
-	if _use_provenance:
-		if not carry_load.is_provenance_enabled() or not carry_load.validate_provenance():
-			return "unreconciled_cargo"
-		if _has_non_free_provenance_lots(carry_load):
-			return "reserved_or_recovery_cargo"
-		if unit.get_meta(&"region_id", &"") != _region_id:
-			return "unit_not_admitted"
-		if expected_world == null or unit.get_world_3d() != expected_world:
-			return "world_mismatch"
-		var id_check: Dictionary = ReservedWithdrawalCoordinator.validate_unit_identity_in_domain_readonly(
-			expected_world, _region_id, unit, carry_load, get_tree()
-		)
-		if not bool(id_check.get("ok", false)):
-			return String(id_check.get("reason", "ambiguous_unit_identity"))
+	if _use_provenance and _has_non_free_provenance_lots(carry_load):
+		return "reserved_or_recovery_cargo"
 	return ""
+
+
+func _check_unit_base_eligibility(unit: Unit, expected_world: World3D) -> String:
+	var structural: String = _check_unit_structural_eligibility(unit, expected_world)
+	if not structural.is_empty():
+		return structural
+	return _check_unit_temporary_eligibility(unit)
 
 
 func _try_dispatch_unit_to_task(task: WorkTask, chosen_unit: Unit) -> bool:
@@ -983,9 +1139,7 @@ func _collect_sorted_candidates(target_pos: Vector3) -> Array[Unit]:
 	return units
 
 
-func _check_task_specific_eligibility(unit: Unit, task: WorkTask) -> String:
-	if task.excluded_unit_ids.has(unit.get_instance_id()):
-		return "manually_overridden"
+func _check_task_structural_eligibility(unit: Unit, task: WorkTask) -> String:
 	if not UnitControlPermissions.can_participate_in_community_work(unit, task.kind):
 		return UnitControlPermissions.REASON_AGE_RESTRICTED_TASK
 	var carry_load: UnitCarryLoad = unit.get_carry_load()
@@ -994,21 +1148,41 @@ func _check_task_specific_eligibility(unit: Unit, task: WorkTask) -> String:
 		return "invalid_carry_load"
 	if carry_load.get_effective_capacity() < def.unit_weight:
 		return "insufficient_carry_capacity"
+	return ""
+
+
+func _check_task_specific_eligibility(unit: Unit, task: WorkTask) -> String:
+	var structural: String = _check_task_structural_eligibility(unit, task)
+	if not structural.is_empty():
+		return structural
+	if task.excluded_unit_ids.has(unit.get_instance_id()):
+		return "manually_overridden"
 	if not task.source.has_worker_slot(unit):
 		return "no_worker_slot"
 	return ""
 
 
 func _check_pre_nav_eligibility(unit: Unit, task: WorkTask) -> String:
-	if unit == null or not is_instance_valid(unit) or not unit.is_inside_tree() or unit.is_queued_for_deletion():
-		return "invalid_unit"
+	# Strict 4-category precedence (R-03B B3 / D4-R2 A02-02):
+	# 1. Structural unit + task incompatibility (never counts as temporary wait)
+	# 2. Explicit manual exclusion (evaluated before busy/personal temporary wait)
+	# 3. Temporary unavailability (personal control / wait / busy / lock / recovery cargo / no slot)
+	# 4. Eligible for navigation check
+	var expected_world: World3D = task.source.get_world_3d() if task.source != null else null
+	var unit_structural: String = _check_unit_structural_eligibility(unit, expected_world)
+	if not unit_structural.is_empty():
+		return unit_structural
+	var task_structural: String = _check_task_structural_eligibility(unit, task)
+	if not task_structural.is_empty():
+		return task_structural
 	if task.excluded_unit_ids.has(unit.get_instance_id()):
 		return "manually_overridden"
-	var expected_world: World3D = task.source.get_world_3d() if task.source != null else null
-	var base_reason: String = _check_unit_base_eligibility(unit, expected_world)
-	if not base_reason.is_empty():
-		return base_reason
-	return _check_task_specific_eligibility(unit, task)
+	var unit_temporary: String = _check_unit_temporary_eligibility(unit)
+	if not unit_temporary.is_empty():
+		return unit_temporary
+	if not task.source.has_worker_slot(unit):
+		return "no_worker_slot"
+	return ""
 
 
 func _is_economy_busy(source: ResourceSource) -> bool:

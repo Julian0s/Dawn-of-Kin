@@ -63,9 +63,9 @@ func test_c01_unit_control_state_enums_defaults_and_mode_mapping() -> void:
 	assert_true(cs.is_community_free())
 	assert_false(cs.is_personal_active())
 
-	# Confirm B2/B3 boundary: ControlMode has exactly the 3 B2 states (no PERSONAL_POST_MOVE_WAIT).
-	assert_eq(UnitControlState.ControlMode.size(), 3, "B2 must expose strictly 3 ControlMode states")
-	assert_false(UnitControlState.ControlMode.has("PERSONAL_POST_MOVE_WAIT"), "B3 state must NOT exist in B2")
+	# B3 introduces PERSONAL_POST_MOVE_WAIT as the 4th ControlMode while preserving 0..2 ordinals.
+	assert_eq(UnitControlState.ControlMode.size(), 4, "B3 exposes the 4 canonical ControlMode states")
+	assert_true(UnitControlState.ControlMode.has("PERSONAL_POST_MOVE_WAIT"), "B3 adds PERSONAL_POST_MOVE_WAIT")
 
 	assert_eq(UnitControlState.mode_for_origin(UnitOrder.OrderOrigin.NONE), UnitControlState.ControlMode.COMMUNITY_FREE)
 	assert_eq(UnitControlState.mode_for_origin(UnitOrder.OrderOrigin.COMMUNITY), UnitControlState.ControlMode.COMMUNITY_WORKING)

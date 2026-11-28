@@ -17,6 +17,12 @@ const BUSH_SOURCE_SCENE: PackedScene = preload("res://src/economy/sources/bush_s
 @export var use_d2_2_hud: bool = false
 ## Explicit R-03A playable multi-source grove on MainScene (preserves TestMap's 6 canonical sources).
 @export var include_playable_community_grove: bool = true
+## Experimental provisional D-05 personal post-move wait duration (3 / 8 / 15 s candidates; 8.0 s provisional).
+@export var experimental_personal_post_move_wait_sec: float = Unit.DEFAULT_EXPERIMENTAL_POST_MOVE_WAIT_SEC:
+	set(value):
+		experimental_personal_post_move_wait_sec = maxf(value, 0.0) if is_finite(value) else 0.0
+		if is_node_ready():
+			set_experimental_personal_post_move_wait_sec(experimental_personal_post_move_wait_sec)
 
 @onready var _test_map: TestMap = $TestMap
 @onready var _camera_rig: RtsCameraRig = $RtsCameraRig
@@ -60,7 +66,9 @@ func _ready() -> void:
 	if world_nav != null and _units_root != null:
 		for child: Node in _units_root.get_children():
 			if child is Unit:
-				(child as Unit).set_world_navigation(world_nav)
+				var unit_node: Unit = child as Unit
+				unit_node.set_world_navigation(world_nav)
+				unit_node.personal_post_move_wait_sec = experimental_personal_post_move_wait_sec
 
 	_setup_playable_community_grove(world_nav)
 	_setup_economy(world_nav)
@@ -234,6 +242,15 @@ func _setup_construction(world_nav: WorldNavigation) -> void:
 	)
 	if use_provenance_economy and automatic_cancellation_recovery:
 		_construction_manager.enable_cancellation_recovery()
+
+
+func set_experimental_personal_post_move_wait_sec(seconds: float) -> void:
+	var clamped: float = maxf(seconds, 0.0) if is_finite(seconds) else 0.0
+	if _units_root == null or not is_instance_valid(_units_root):
+		return
+	for child: Node in _units_root.get_children():
+		if child is Unit and is_instance_valid(child):
+			(child as Unit).personal_post_move_wait_sec = clamped
 
 
 func preflight_economic_teardown() -> Dictionary:

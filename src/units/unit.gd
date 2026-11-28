@@ -5,6 +5,9 @@ extends CharacterBody3D
 ## Does not read player input or compute navigation queries directly.
 
 const GROUP_SELECTABLE_UNITS: StringName = &"selectable_units"
+## Experimental provisional D-05 wait candidates (B4 human testing will evaluate 3 / 8 / 15 s).
+const EXPERIMENTAL_POST_MOVE_WAIT_OPTIONS_SEC: Array[float] = [3.0, 8.0, 15.0]
+const DEFAULT_EXPERIMENTAL_POST_MOVE_WAIT_SEC: float = 8.0
 
 enum State {
 	IDLE,
@@ -32,6 +35,11 @@ signal control_mode_changed(new_mode: UnitControlState.ControlMode, previous_mod
 			_sync_definition()
 
 @export var world_navigation_path: NodePath = NodePath()
+## Experimental provisional D-05 post-MoveOrder wait duration in seconds (default 8.0 s, NOT definitive).
+## Changing this value affects ONLY future waits; 0.0 is reserved as a technical timerless configuration.
+@export var personal_post_move_wait_sec: float = DEFAULT_EXPERIMENTAL_POST_MOVE_WAIT_SEC:
+	set(value):
+		personal_post_move_wait_sec = maxf(value, 0.0) if is_finite(value) else 0.0
 
 @onready var _movement: UnitMovement = $UnitMovement
 @onready var _agent: NavigationAgent3D = $NavigationAgent3D
@@ -54,6 +62,9 @@ var _awaiting_interruption_cause_order: UnitOrder = null
 var _controlled_teardown_token: RefCounted = null
 var _is_exiting_tree: bool = false
 var _last_order_rejection_reason: String = ""
+var _wait_timer: Timer = null
+var _wait_timer_callback: Callable = Callable()
+var _wait_token_id: int = 0
 ## A contribution follows the worker even when its active order changes sites.
 var _last_construction_work_frame: int = -1
 var _world_navigation: WorldNavigation = null
@@ -119,6 +130,7 @@ func _exit_tree() -> void:
 	_is_exiting_tree = true
 	_transition_seq += 1
 	_pending_transition_seq = 0
+	_cancel_personal_post_move_wait()
 	if _awaiting_interruption_cause_order != null and _awaiting_interruption_cause_order.is_finished():
 		var pending_cause_order: UnitOrder = _awaiting_interruption_cause_order
 		_commit_interruption_cause(pending_cause_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
@@ -248,7 +260,20 @@ func _sync_definition() -> void:
 
 
 func _reconcile_active_order_after_definition_change() -> void:
-	if _is_exiting_tree or not is_inside_tree() or _current_order == null or not _current_order.is_active():
+	if _is_exiting_tree or not is_inside_tree():
+		return
+	if _current_order == null or not _current_order.is_active():
+		if _control_state.is_personal_post_move_wait():
+			if not UnitControlPermissions.can_receive_personal_order(self, UnitControlPermissions.PersonalCommandKind.MOVE):
+				_transition_seq += 1
+				var my_def_seq: int = _transition_seq
+				_pending_transition_seq = 0
+				_order_revision += 1
+				var def_rev: int = _order_revision
+				_cancel_personal_post_move_wait()
+				_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+				if _has_mutation_authority(my_def_seq, def_rev) and _current_order == null:
+					_publish_control_mode_if_changed()
 		return
 	var incompatible: bool = false
 	match _current_order.get_order_origin():
@@ -335,6 +360,99 @@ func get_active_order_origin() -> UnitOrder.OrderOrigin:
 
 func has_pending_control_transition() -> bool:
 	return _pending_transition_seq != 0
+
+
+func is_personal_post_move_wait() -> bool:
+	return _control_state.is_personal_post_move_wait()
+
+
+func has_personal_wait_timer() -> bool:
+	return _wait_timer != null and is_instance_valid(_wait_timer)
+
+
+func is_personal_wait_timer_active() -> bool:
+	return (
+		has_personal_wait_timer()
+		and not _wait_timer.is_stopped()
+		and _control_state.is_personal_post_move_wait()
+	)
+
+
+func get_personal_wait_time_left() -> float:
+	if not is_personal_wait_timer_active():
+		return 0.0
+	return _wait_timer.time_left
+
+
+func get_personal_wait_token_id() -> int:
+	return _wait_token_id
+
+
+func _can_enter_personal_post_move_wait(finished_order: UnitOrder, finished_origin: UnitOrder.OrderOrigin) -> bool:
+	return (
+		finished_order is MoveOrder
+		and finished_order.is_succeeded()
+		and finished_origin == UnitOrder.OrderOrigin.PERSONAL
+		and personal_post_move_wait_sec > 0.0
+		and is_inside_tree()
+		and not _is_exiting_tree
+		and not is_queued_for_deletion()
+		and UnitControlPermissions.can_receive_personal_order(self, UnitControlPermissions.PersonalCommandKind.MOVE)
+	)
+
+
+func _arm_personal_post_move_wait(expected_revision: int) -> bool:
+	if not is_inside_tree() or _is_exiting_tree or is_queued_for_deletion() or personal_post_move_wait_sec <= 0.0:
+		return false
+	if _wait_timer == null or not is_instance_valid(_wait_timer):
+		_wait_timer = Timer.new()
+		_wait_timer.name = "PersonalPostMoveWaitTimer"
+		_wait_timer.one_shot = true
+		_wait_timer.autostart = false
+		_wait_timer.process_mode = Node.PROCESS_MODE_PAUSABLE
+		_wait_timer.ignore_time_scale = false
+		add_child(_wait_timer)
+	_wait_timer.stop()
+	if _wait_timer_callback.is_valid() and _wait_timer.timeout.is_connected(_wait_timer_callback):
+		_wait_timer.timeout.disconnect(_wait_timer_callback)
+	_wait_token_id += 1
+	var event_token: int = _wait_token_id
+	var event_revision: int = expected_revision
+	_wait_timer_callback = _on_personal_wait_timeout.bind(event_token, event_revision)
+	_wait_timer.timeout.connect(_wait_timer_callback)
+	_wait_timer.start(personal_post_move_wait_sec)
+	return true
+
+
+func _cancel_personal_post_move_wait() -> void:
+	_wait_token_id += 1
+	if _wait_timer != null and is_instance_valid(_wait_timer):
+		_wait_timer.stop()
+		if _wait_timer_callback.is_valid() and _wait_timer.timeout.is_connected(_wait_timer_callback):
+			_wait_timer.timeout.disconnect(_wait_timer_callback)
+	_wait_timer_callback = Callable()
+
+
+func _on_personal_wait_timeout(event_token: int, event_revision: int) -> void:
+	if _control_state.get_mode() != UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT:
+		return
+	if event_token != _wait_token_id:
+		return
+	if event_revision != _order_revision:
+		return
+	if not is_inside_tree() or _is_exiting_tree or is_queued_for_deletion():
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null or tree.paused:
+		return
+	if _pending_transition_seq != 0:
+		return
+	if _current_order != null:
+		return
+
+	_cancel_personal_post_move_wait()
+	_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+	_publish_control_mode_if_changed()
 
 
 func is_community_dispatch_eligible() -> bool:
@@ -527,7 +645,8 @@ func issue_recovery_order(
 		_last_order_rejection_reason = String(id_check.get("reason", "ambiguous_unit_identity"))
 		return false
 
-	# F02: Strict T1a (COMMUNITY_FREE + IDLE) or T1b (ConstructOrder on this exact CANCELLED site, cancelable).
+	# F02 + B3 T1c: Strict T1a (COMMUNITY_FREE + IDLE), T1b (ConstructOrder on this exact CANCELLED site),
+	# or T1c (PERSONAL_POST_MOVE_WAIT + IDLE ONLY when explicit == true).
 	if _current_order != null and _current_order.is_active():
 		if not (_current_order is ConstructOrder):
 			_last_order_rejection_reason = "unit_busy_for_recovery"
@@ -542,7 +661,14 @@ func issue_recovery_order(
 		):
 			_last_order_rejection_reason = "unit_busy_for_recovery"
 			return false
-	elif _state != State.IDLE or _control_state.get_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
+	elif _state != State.IDLE:
+		_last_order_rejection_reason = "unit_not_idle"
+		return false
+	elif _control_state.get_mode() == UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT:
+		if not explicit:
+			_last_order_rejection_reason = "personal_wait_blocks_auto_recovery"
+			return false
+	elif _control_state.get_mode() != UnitControlState.ControlMode.COMMUNITY_FREE:
 		_last_order_rejection_reason = "unit_not_idle"
 		return false
 
@@ -623,7 +749,13 @@ func _finalize_order_completion(finished_order: UnitOrder, expected_rev: int) ->
 	)
 	if owns_active:
 		_current_order = null
-		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		var enter_wait: bool = _can_enter_personal_post_move_wait(finished_order, finished_order.get_order_origin())
+		if enter_wait:
+			_control_state._apply_internal(UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT, UnitOrder.OrderOrigin.NONE)
+			_arm_personal_post_move_wait(expected_rev)
+		else:
+			_cancel_personal_post_move_wait()
+			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_set_state(State.IDLE)
 		if (
 			_order_revision == expected_rev
@@ -633,7 +765,12 @@ func _finalize_order_completion(finished_order: UnitOrder, expected_rev: int) ->
 			and not _is_exiting_tree
 			and not is_queued_for_deletion()
 		):
+			if _control_state.is_personal_post_move_wait() and not UnitControlPermissions.can_receive_personal_order(self, UnitControlPermissions.PersonalCommandKind.MOVE):
+				_cancel_personal_post_move_wait()
+				_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 			_publish_control_mode_if_changed()
+		elif not is_inside_tree() or _is_exiting_tree or is_queued_for_deletion():
+			_cancel_personal_post_move_wait()
 	_emit_order_finished_once(finished_order)
 
 
@@ -656,6 +793,7 @@ func _perform_administrative_cancel(reason: String) -> bool:
 		_transition_seq += 1
 		var my_reent_seq: int = _transition_seq
 		_pending_transition_seq = 0
+		_cancel_personal_post_move_wait()
 		_commit_interruption_cause(target_cause_order, UnitOrder.InterruptionCause.ADMIN_CANCEL)
 		_order_revision += 1
 		var reent_rev: int = _order_revision
@@ -671,10 +809,14 @@ func _perform_administrative_cancel(reason: String) -> bool:
 		return true
 
 	if _current_order == null:
+		var was_waiting: bool = _control_state.is_personal_post_move_wait()
 		_transition_seq += 1
 		var my_idle_seq: int = _transition_seq
 		_pending_transition_seq = 0
+		if was_waiting:
+			_order_revision += 1
 		var idle_rev: int = _order_revision
+		_cancel_personal_post_move_wait()
 		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		if _movement != null:
 			_movement.stop_movement()
@@ -839,7 +981,8 @@ func _install_admitted_order(
 		if _awaiting_interruption_cause_order != null:
 			cause_target = _awaiting_interruption_cause_order
 
-	# Stage 3: point of no return — commit definitive write-once InterruptionCause, install order, and start().
+	# Stage 3: point of no return — commit definitive write-once InterruptionCause, cancel any wait timer, install order, and start().
+	_cancel_personal_post_move_wait()
 	if cause_target != null:
 		_commit_interruption_cause(cause_target, _interruption_cause_for(order, origin))
 
@@ -867,10 +1010,21 @@ func _install_admitted_order(
 
 	if order.is_finished():
 		_current_order = null
-		_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
+		var enter_wait_sync: bool = _can_enter_personal_post_move_wait(order, origin)
+		if enter_wait_sync:
+			_control_state._apply_internal(UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT, UnitOrder.OrderOrigin.NONE)
+			_arm_personal_post_move_wait(issued_revision)
+		else:
+			_cancel_personal_post_move_wait()
+			_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 		_set_state(State.IDLE)
 		if _has_mutation_authority(my_seq, issued_revision) and _current_order == null and _pending_transition_seq == 0:
+			if _control_state.is_personal_post_move_wait() and not UnitControlPermissions.can_receive_personal_order(self, UnitControlPermissions.PersonalCommandKind.MOVE):
+				_cancel_personal_post_move_wait()
+				_control_state._apply_internal(UnitControlState.ControlMode.COMMUNITY_FREE, UnitOrder.OrderOrigin.NONE)
 			_publish_control_mode_if_changed()
+		elif not is_inside_tree() or _is_exiting_tree or is_queued_for_deletion():
+			_cancel_personal_post_move_wait()
 		_emit_order_finished_once(order)
 		if cause_target != null and cause_target.is_finished():
 			_emit_interruption_cause_committed_once(cause_target)

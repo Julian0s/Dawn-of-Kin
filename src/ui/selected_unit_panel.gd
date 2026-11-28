@@ -194,7 +194,10 @@ func is_multi_summary_visible() -> bool:
 func is_bound_to_unit(unit: Unit) -> bool:
 	if unit == null or not is_instance_valid(unit) or _tracked_unit != unit:
 		return false
-	return unit.state_changed.is_connected(_on_unit_state_changed)
+	return (
+		unit.state_changed.is_connected(_on_unit_state_changed)
+		and unit.control_mode_changed.is_connected(_on_unit_control_mode_changed)
+	)
 
 
 func _bind_single_unit(unit: Unit) -> void:
@@ -204,6 +207,8 @@ func _bind_single_unit(unit: Unit) -> void:
 	_tracked_unit = unit
 	if not _tracked_unit.state_changed.is_connected(_on_unit_state_changed):
 		_tracked_unit.state_changed.connect(_on_unit_state_changed)
+	if not _tracked_unit.control_mode_changed.is_connected(_on_unit_control_mode_changed):
+		_tracked_unit.control_mode_changed.connect(_on_unit_control_mode_changed)
 	if not _tracked_unit.tree_exited.is_connected(_on_tracked_unit_tree_exited):
 		_tracked_unit.tree_exited.connect(_on_tracked_unit_tree_exited)
 
@@ -219,6 +224,8 @@ func _unbind_tracked_unit() -> void:
 	if _tracked_unit != null and is_instance_valid(_tracked_unit):
 		if _tracked_unit.state_changed.is_connected(_on_unit_state_changed):
 			_tracked_unit.state_changed.disconnect(_on_unit_state_changed)
+		if _tracked_unit.control_mode_changed.is_connected(_on_unit_control_mode_changed):
+			_tracked_unit.control_mode_changed.disconnect(_on_unit_control_mode_changed)
 		if _tracked_unit.tree_exited.is_connected(_on_tracked_unit_tree_exited):
 			_tracked_unit.tree_exited.disconnect(_on_tracked_unit_tree_exited)
 	if _tracked_carry_load != null:
@@ -247,6 +254,13 @@ func _on_board_task_changed(_task: WorkTask) -> void:
 
 
 func _on_unit_state_changed(_new_state: Unit.State, _previous_state: Unit.State) -> void:
+	_render_current()
+
+
+func _on_unit_control_mode_changed(
+	_new_mode: UnitControlState.ControlMode,
+	_previous_mode: UnitControlState.ControlMode
+) -> void:
 	_render_current()
 
 

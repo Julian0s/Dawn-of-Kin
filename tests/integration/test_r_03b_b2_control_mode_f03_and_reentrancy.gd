@@ -156,29 +156,33 @@ func test_c01_control_mode_transitions_personal_priority_and_event_return() -> v
 	assert_eq(move1.get_interruption_cause(), UnitOrder.InterruptionCause.PERSONAL_MOVE)
 	assert_eq(transitions.size(), 2, "T5 PERSONAL_ACTIVE -> PERSONAL_ACTIVE must NOT emit redundant signal")
 
-	# T6b: Personal MoveOrder finishes SUCCEEDED -> in B2 returns directly to COMMUNITY_FREE (no D-05 wait)
-	# and event-driven control_mode_changed notifies CommunityTaskDispatcher to pick up rock!
+	# Configure timerless technical wait (0.0) so this B2 state-machine test isolates direct T6b transitions
+	# (D-05 timed wait is covered exhaustively in the dedicated B3 suites).
+	leader_a.personal_post_move_wait_sec = 0.0
+
+	# T6b: Personal MoveOrder finishes SUCCEEDED with wait=0.0 -> returns directly to COMMUNITY_FREE
+	# and event-driven control_mode_changed notifies CommunityTaskDispatcher.
+	# Under B0-Q05 B, MoveOrder did NOT exclude leader_a from task_tree (Group 1 FIFO), so leader_a returns to task_tree!
 	assert_true(await _until(func() -> bool: return not move2.is_active(), 1800), "Move2 must complete")
 	assert_true(move2.is_succeeded())
 	assert_eq(move2.get_interruption_cause(), UnitOrder.InterruptionCause.NONE, "Natural completion keeps InterruptionCause.NONE")
 	await wait_process_frames(3)
-	# LeaderA returned to COMMUNITY_FREE and event-driven dispatcher picked up task_rock -> COMMUNITY_WORKING!
 	assert_true(transitions.size() >= 3, "T6b must emit PERSONAL_ACTIVE -> COMMUNITY_FREE")
 	assert_eq(transitions[2]["prev"], UnitControlState.ControlMode.PERSONAL_ACTIVE)
 	assert_eq(transitions[2]["new"], UnitControlState.ControlMode.COMMUNITY_FREE)
-	assert_eq(task_rock.assigned_unit, leader_a, "Event-driven return to COMMUNITY_FREE must dispatch eligible pending task without polling")
+	assert_false(task_tree.excluded_unit_ids.has(leader_a.get_instance_id()), "B0-Q05 B: MoveOrder interruption must NOT permanently exclude leader_a")
+	assert_eq(task_tree.assigned_unit, leader_a, "B0-Q05 B: Event-driven return to COMMUNITY_FREE dispatches back to FIFO task_tree")
 	assert_eq(leader_a.get_control_mode(), UnitControlState.ControlMode.COMMUNITY_WORKING)
 
-	# T3 / T9: cancel_current_order -> COMMUNITY_FREE + InterruptionCause.ADMIN_CANCEL
-	var rock_order: UnitOrder = leader_a.get_current_order()
+	# T3 / T9: cancel_current_order -> COMMUNITY_FREE + InterruptionCause.ADMIN_CANCEL (which DOES exclude task_tree)
+	var resumed_order: UnitOrder = leader_a.get_current_order()
 	leader_a.cancel_current_order()
 	assert_eq(leader_a.get_control_mode(), UnitControlState.ControlMode.COMMUNITY_FREE)
 	assert_eq(leader_a.get_active_order_origin(), UnitOrder.OrderOrigin.NONE)
-	assert_eq(rock_order.get_interruption_cause(), UnitOrder.InterruptionCause.ADMIN_CANCEL)
-	assert_true(rock_order.was_finished_notified())
-	# Preserve historical Q05 exclusion in B2 (do NOT anticipate Q05-B!).
-	assert_true(task_tree.excluded_unit_ids.has(leader_a.get_instance_id()), "B2 must preserve historical Q05 exclusion behavior")
-	assert_true(task_rock.excluded_unit_ids.has(leader_a.get_instance_id()), "Admin cancel must keep historical exclusion")
+	assert_eq(resumed_order.get_interruption_cause(), UnitOrder.InterruptionCause.ADMIN_CANCEL)
+	assert_true(resumed_order.was_finished_notified())
+	assert_true(task_tree.excluded_unit_ids.has(leader_a.get_instance_id()), "Admin cancel must keep persistent exclusion on task_tree")
+	assert_false(task_rock.excluded_unit_ids.has(leader_a.get_instance_id()), "Untouched task_rock keeps empty exclusions")
 
 	await _teardown_isolated_main(ctx)
 
@@ -344,8 +348,9 @@ func test_c02_05_to_10_reentrant_callbacks_single_notification_and_committed_cau
 	assert_eq(leader_a.get_movement().get_move_state(), UnitMovement.MoveState.MOVING, "Successor C movement must NOT be stopped")
 	assert_eq(int(fin_counts.get(succ_gather.get_instance_id(), 0)), 1, "C02-07: succ_gather notified EXACTLY ONCE")
 
-	# Case 3 (C02-08): Synchronous completion of personal MoveOrder (already at target) -> COMMUNITY_FREE,
+	# Case 3 (C02-08): Synchronous completion of personal MoveOrder (already at target) with wait=0.0 -> COMMUNITY_FREE,
 	# single order_finished, NO spurious PERSONAL_ACTIVE emission when starting from COMMUNITY_FREE.
+	leader_a.personal_post_move_wait_sec = 0.0
 	leader_a.cancel_current_order()
 	var mode_events_sync: Array[Dictionary] = []
 	leader_a.control_mode_changed.connect(func(n: UnitControlState.ControlMode, p: UnitControlState.ControlMode) -> void:
@@ -463,6 +468,7 @@ func test_e02_and_c02_12_recovery_control_mode_transactional_block_and_conservat
 	leader_a.get_carry_load()._coordinator_transaction_locked = false
 
 	# E02: Personal MoveOrder interrupts RecoveryOrder -> PERSONAL_ACTIVE, manual_interruption=true, entry.manual=true, single notification.
+	leader_a.personal_post_move_wait_sec = 0.0
 	var rec_fin_count := [0]
 	var on_rec_fin := func(o: UnitOrder) -> void:
 		if o == rec_order:
@@ -533,7 +539,10 @@ func test_b2_ar01_to_ar05_post_commit_dispatcher_callbacks() -> void:
 	assert_eq(la1.get_current_order(), succ1, "B2-AR01: personal successor preserved")
 	assert_eq(la1.get_control_mode(), UnitControlState.ControlMode.PERSONAL_ACTIVE)
 	assert_null(task1.assigned_unit, "B2-AR01: old assignment cleaned")
-	assert_eq(fb1.size(), 0, "B2-AR01: ZERO obsolete task_feedback emitted after personal takeover")
+	# Under B0-Q05 B, MoveOrder leaves task1 legitimately waiting (personal_control_active) instead of manually_overridden;
+	# assert strictly ZERO obsolete dispatch feedback ("indo colher") is emitted after personal takeover.
+	for fb_msg: String in fb1:
+		assert_false(fb_msg.contains("indo colher"), "B2-AR01: ZERO obsolete dispatch feedback emitted after personal takeover (got '%s')" % fb_msg)
 	await _teardown_isolated_main(ctx1)
 
 	# --- B2-AR02: task_assigned callback triggers dispatcher.teardown() ---

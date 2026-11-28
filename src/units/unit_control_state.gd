@@ -1,13 +1,14 @@
 class_name UnitControlState
 extends RefCounted
-## Lightweight authority state component owned exclusively by Unit (R-03B B2).
+## Lightweight authority state component owned exclusively by Unit (R-03B B2/B3).
 ## Distinguishes control authority (ControlMode) from physical operational state (Unit.State).
-## Mutated solely by Unit through its F03 order lifecycle; external consumers are read-only.
+## Mutated solely by Unit through its F03 order lifecycle and D-05 pausable wait timer; external consumers are read-only.
 
 enum ControlMode {
 	COMMUNITY_FREE = 0,
 	COMMUNITY_WORKING = 1,
 	PERSONAL_ACTIVE = 2,
+	PERSONAL_POST_MOVE_WAIT = 3,
 }
 
 var _mode: ControlMode = ControlMode.COMMUNITY_FREE
@@ -27,6 +28,8 @@ func get_mode_name() -> String:
 			return "COMMUNITY_WORKING"
 		ControlMode.PERSONAL_ACTIVE:
 			return "PERSONAL_ACTIVE"
+		ControlMode.PERSONAL_POST_MOVE_WAIT:
+			return "PERSONAL_POST_MOVE_WAIT"
 		_:
 			return "COMMUNITY_FREE"
 
@@ -45,6 +48,14 @@ func is_community_free() -> bool:
 
 func is_personal_active() -> bool:
 	return _mode == ControlMode.PERSONAL_ACTIVE
+
+
+func is_personal_post_move_wait() -> bool:
+	return _mode == ControlMode.PERSONAL_POST_MOVE_WAIT
+
+
+func is_personal_controlled() -> bool:
+	return _mode == ControlMode.PERSONAL_ACTIVE or _mode == ControlMode.PERSONAL_POST_MOVE_WAIT
 
 
 func _apply_internal(new_mode: ControlMode, new_origin: UnitOrder.OrderOrigin) -> void:

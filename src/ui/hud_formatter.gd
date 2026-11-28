@@ -48,22 +48,38 @@ static func format_resource_label(resource_id: StringName) -> String:
 
 
 static func format_unit_inspection_meta(unit: Unit, community_board: CommunityWorkBoard = null) -> String:
-	if not UnitControlPermissions.is_read_only_community_unit(unit):
+	if unit == null or not is_instance_valid(unit):
 		return ""
-	var base_text: String = "Morador — somente leitura"
-	if community_board != null and is_instance_valid(community_board):
-		var active_task: WorkTask = community_board.get_active_task_for_unit(unit)
-		if active_task != null:
-			return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(active_task.resource_id)]
-	var active_order: UnitOrder = unit.get_current_order()
-	if active_order is RecoveryOrder:
-		return "%s · Recuperação de materiais" % base_text
-	if active_order is GatherResourceOrder and active_order.get_order_origin() == UnitOrder.OrderOrigin.COMMUNITY:
-		var gather_order: GatherResourceOrder = active_order as GatherResourceOrder
-		var src: ResourceSource = gather_order.source
-		if src != null and is_instance_valid(src):
-			return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(src.get_resource_id())]
-	return base_text
+	if UnitControlPermissions.is_read_only_community_unit(unit):
+		var base_text: String = "Morador — somente leitura"
+		if community_board != null and is_instance_valid(community_board):
+			var active_task: WorkTask = community_board.get_active_task_for_unit(unit)
+			if active_task != null:
+				return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(active_task.resource_id)]
+		var active_order: UnitOrder = unit.get_current_order()
+		if active_order is RecoveryOrder:
+			return "%s · Recuperação de materiais" % base_text
+		if active_order is GatherResourceOrder and active_order.get_order_origin() == UnitOrder.OrderOrigin.COMMUNITY:
+			var gather_order: GatherResourceOrder = active_order as GatherResourceOrder
+			var src: ResourceSource = gather_order.source
+			if src != null and is_instance_valid(src):
+				return "%s · Coleta comunitária: %s" % [base_text, format_resource_label(src.get_resource_id())]
+		return base_text
+
+	# B0-Q07 A / B0-A05: Discrete control mode labels for controllable Founding House units.
+	# Never expose countdown timers, remaining seconds, or progress bars here.
+	match unit.get_control_mode():
+		UnitControlState.ControlMode.PERSONAL_POST_MOVE_WAIT:
+			return "Aguardando retorno"
+		UnitControlState.ControlMode.PERSONAL_ACTIVE:
+			return "Ordem pessoal"
+		UnitControlState.ControlMode.COMMUNITY_WORKING:
+			var active_order: UnitOrder = unit.get_current_order()
+			if active_order is RecoveryOrder:
+				return "Trabalho comunitário · Recuperação"
+			return "Trabalho comunitário"
+		_:
+			return "Trabalho comunitário"
 
 
 static func compute_display_percentage(current_weight: int, effective_capacity: int, raw_percentage: float) -> int:

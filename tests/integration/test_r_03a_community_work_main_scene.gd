@@ -1082,23 +1082,19 @@ func test_a17_blocked_reauthorization_remains_inert() -> void:
 		await _teardown_fixture(view)
 		return
 
+	# Reconciled for R-03B B3 (B0-Q05 B): administrative cancel excludes each worker persistently,
+	# driving the task legitimately into BLOCKED_REAUTHORIZATION (MoveOrder alone no longer permanently excludes).
 	var u1 := task.assigned_unit
 	var u2 := leader_b if u1 == leader_a else leader_a
-	u1.issue_order(MoveOrder.new(u1.global_position + Vector3(0.8, 0.0, 0.8), u1.global_position + Vector3(0.8, 0.0, 0.8), false))
+	u1.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(3)
 	await wait_physics_frames(1)
-	u2.issue_order(MoveOrder.new(u2.global_position + Vector3(-0.8, 0.0, 0.8), u2.global_position + Vector3(-0.8, 0.0, 0.8), false))
-
-	Engine.time_scale = 3.0
-	for _i: int in range(600):
-		if leader_a.get_current_order() == null and leader_b.get_current_order() == null:
-			break
-		await wait_physics_frames(1)
-	Engine.time_scale = 1.0
+	u2.cancel_current_order(UnitOrder.REASON_CANCELLED)
 	await wait_process_frames(3)
+	await wait_physics_frames(1)
 
-	assert_null(leader_a.get_current_order(), "A17: LeaderA personal move completed without timeout")
-	assert_null(leader_b.get_current_order(), "A17: LeaderB personal move completed without timeout")
+	assert_null(leader_a.get_current_order(), "A17: LeaderA order cleared cleanly")
+	assert_null(leader_b.get_current_order(), "A17: LeaderB order cleared cleanly")
 	assert_eq(task.state, WorkTask.State.BLOCKED_REAUTHORIZATION, "A17: Task enters BLOCKED_REAUTHORIZATION")
 
 	# Spawn a brand-new admitted worker -> blocked task must remain inert.
